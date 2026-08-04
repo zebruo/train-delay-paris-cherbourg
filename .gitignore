@@ -1,0 +1,32 @@
+# Config locale (voir config.example.py / config.sh.example)
+config.py
+config.sh
+
+# Environnement / éditeur
+__pycache__/
+.vscode/
+
+# Données collectées (grossissent en continu, jamais figées)
+observations.csv
+alertes.csv
+perturbations_detectees.csv
+
+# Référence GTFS régénérable (voir build_reference.py)
+reference_paris_cherbourg.csv
+reference_paris_cherbourg.meta.json
+gtfs/
+
+# Sorties générées (PDF, diagrammes, mockups de design)
+rapports/
+guide_statistiques.pdf
+organigramme_application.png
+mockup_*.png
+
+# Caches / état runtime
+calendar_cache.json
+verification_gtfs_etat.json
+verification_gtfs.log
+
+# Anciennes sauvegardes/tri, redondants avec git
+backups_code/
+a_verifier_avant_suppression/
