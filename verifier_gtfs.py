@@ -145,6 +145,7 @@ def comparer(routes_actuelles, routes_nouvelles):
         "nouveaux": len(nouveaux),
         "exemples_modifies": exemples_modifies,
         "exemples_disparus": sorted(disparus)[:3],
+        "exemples_nouveaux": sorted(nouveaux)[:3],
     }
 
 
@@ -274,6 +275,10 @@ def main():
     if resultat["exemples_disparus"]:
         print("  Exemples de services disparus :")
         for s in resultat["exemples_disparus"]:
+            print(f"    {s}")
+    if resultat["exemples_nouveaux"]:
+        print("  Exemples de services nouveaux :")
+        for s in resultat["exemples_nouveaux"]:
             print(f"    {s}")
     print("  Vérifier si une régénération est nécessaire (voir comparaison ci-dessus) : "
           "télécharger le nouveau GTFS puis python3 build_reference.py")
