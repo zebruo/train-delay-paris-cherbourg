@@ -1,0 +1,32 @@
+{% if not erreur %}
+{% if graphique_vide %}
+    <p class="info">Aucun relevé avec retard exploitable pour l'instant.</p>
+{% else %}
+<div class="zone-graphique">
+    <p class="info">
+        Chaque point = retard moyen de tous les relevés à cet instant (toutes gares et trains confondus).
+        Pointillé « moy. » = moyenne de ces points sur la période affichée.
+    </p>
+    <div class="ligne-periode">
+        <div class="champ">
+            <label for="periode">Période</label>
+            <select id="periode" name="periode"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change"
+                    hx-include="#filtres, this" hx-vals='{"vue": "graphique"}'>
+                {% for option in periode_options %}
+                    <option value="{{ option }}" {% if option == periode %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <p class="info stat-graphique">— soit {{ nb_releves }} relevés</p>
+        {% for segment in segments_periode %}
+            <p class="info stat-graphique">{{ segment }}</p>
+        {% endfor %}
+    </div>
+    <div id="graphique-plot"></div>
+</div>
+<script>
+    dessinerGraphique({{ donnees_json | safe }});
+</script>
+{% endif %}
+{% endif %}

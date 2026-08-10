@@ -1,0 +1,58 @@
+{% if not erreur %}
+<div class="zone-travaux">
+    <section class="section-travaux">
+        <p class="travaux-intro">Perturbations SNCF (travaux, incidents...) concernant une gare de la ligne</p>
+        <p class="info travaux-source">
+            Source : flux SNCF sncf-gtfs-rt-service-alerts, recoupé par gare — pas de filtrage
+            par gravité (beaucoup d'alertes SNCF n'indiquent ni cause ni effet exploitables).
+        </p>
+        <p class="resume-travaux">{{ resume_travaux }}</p>
+        <div class="zone-scroll">
+            <table class="table-alertes">
+                <thead>
+                    <tr><th>Gare(s) concernée(s)</th><th>Depuis</th><th>Jusqu'à</th><th>Alerte</th></tr>
+                </thead>
+                <tbody>
+                    {% for alerte in lignes_alertes %}
+                        <tr class="{{ 'alerte-active' if alerte.actif else 'alerte-passee' }}">
+                            <td>{{ alerte.gares }}</td>
+                            <td>{{ alerte.depuis }}</td>
+                            <td>{{ alerte.jusqua }}</td>
+                            <td>
+                                <details>
+                                    <summary>{{ alerte.texte }}</summary>
+                                    {{ alerte.description }}
+                                </details>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    <section class="section-travaux">
+        <p class="travaux-intro">Arrêts supprimés / trajets annulés détectés</p>
+        <p class="info travaux-source">
+            Source : flux SNCF sncf-gtfs-rt-trip-updates (schedule_relationship) — événements
+            ponctuels détectés en temps réel, distincts des alertes officielles ci-dessus.
+        </p>
+        <div class="zone-scroll">
+            <table class="table-evenements">
+                <thead>
+                    <tr><th>Train</th><th>Date</th><th>Événement</th><th>Détecté le</th></tr>
+                </thead>
+                <tbody>
+                    {% for evt in lignes_evenements %}
+                        <tr>
+                            <td>{{ evt.train }}</td>
+                            <td>{{ evt.date }}</td>
+                            <td>{{ evt.evenement }}</td>
+                            <td>{{ evt.detecte }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endif %}

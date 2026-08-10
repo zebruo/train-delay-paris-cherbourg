@@ -1,0 +1,50 @@
+{% if not erreur %}
+<div class="zone-train">
+    <div class="ligne-periode" id="filtres-train">
+        <div class="champ champ-case">
+            <input type="hidden" name="filtre_jour_retard" value="false">
+            <label>
+                <input type="checkbox" name="filtre_jour_retard" value="true"
+                       {% if filtre_jour_retard %}checked{% endif %}
+                       hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change"
+                       hx-include="#filtres, #filtres-train" hx-vals='{"vue": "train"}'>
+                Trains du jour en retard uniquement ({{ options_trajet|length }} trajets)
+            </label>
+        </div>
+        <div class="champ">
+            <label for="trajet">Trajet</label>
+            <select id="trajet" name="trajet"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change"
+                    hx-include="#filtres, #filtres-train" hx-vals='{"vue": "train"}'>
+                {% for valeur, label in options_trajet %}
+                    <option value="{{ valeur }}" {% if valeur == trajet_choisi %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="champ">
+            <label for="vue-train">Vue</label>
+            <select id="vue-train" name="vue_train"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change"
+                    hx-include="#filtres, #filtres-train" hx-vals='{"vue": "train"}'>
+                {% for option in vue_train_options %}
+                    <option value="{{ option }}" {% if option == vue_train %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if depart_arrivee %}
+            <p class="info stat-graphique">{{ depart_arrivee }}</p>
+        {% endif %}
+    </div>
+    <p class="info">{{ aide_vue_train }}</p>
+    {% if train_vide %}
+        <p class="info">Aucun trajet ne correspond aux filtres actuels.</p>
+    {% elif erreur_trajet %}
+        <p class="info">{{ erreur_trajet }}</p>
+    {% elif donnees_json is defined %}
+        <div id="train-plot"></div>
+        <script>
+            dessinerTrain({{ donnees_json | safe }});
+        </script>
+    {% endif %}
+</div>
+{% endif %}

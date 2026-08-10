@@ -1,0 +1,60 @@
+{% if not erreur %}
+<div class="zone-gtfs">
+    <p class="info">
+        Compare quotidiennement (cron sur le Pi, 3h15) la desserte Paris-Cherbourg du GTFS SNCF en
+        ligne à reference_paris_cherbourg.csv — n'alerte en détail qu'en cas d'aggravation depuis
+        la dernière alerte.
+    </p>
+    <div class="champ champ-case" id="filtres-gtfs">
+        <input type="hidden" name="gtfs_aggravations" value="false">
+        <label>
+            <input type="checkbox" name="gtfs_aggravations" value="true"
+                   {% if gtfs_aggravations %}checked{% endif %}
+                   hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change"
+                   hx-include="#filtres, #filtres-gtfs" hx-vals='{"vue": "gtfs"}'>
+            Afficher seulement les aggravations
+        </label>
+    </div>
+    {% if gtfs_vide_message %}
+        <p class="info">{{ gtfs_vide_message }}</p>
+    {% else %}
+        <div class="zone-scroll">
+            <table class="table-gtfs">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Référence datée du</th>
+                        <th>Export SNCF du jour</th>
+                        <th title="Nombre de trains (desserte Paris-Cherbourg) présents à la fois dans le référentiel de l'application et dans l'export SNCF du jour.">Communs</th>
+                        <th title="Parmi les trains communs, ceux dont l'horaire et les arrêts n'ont pas changé depuis le référentiel.">Identiques</th>
+                        <th title="Parmi les trains communs, ceux dont l'horaire ou la liste d'arrêts a changé — le trajet théorique affiché dans l'application peut être légèrement faux pour ces trains-là.">Modifiés</th>
+                        <th title="Trains présents dans le référentiel mais absents de l'export SNCF du jour — sans impact en soi, sauf s'ils sont en réalité toujours en service sous une autre forme.">Disparus</th>
+                        <th title="Trains présents dans l'export SNCF du jour mais absents du référentiel — ces trains-là ne sont actuellement suivis par aucun relevé de l'application. Le chiffre le plus important à surveiller.">Nouveaux</th>
+                        <th title="« ⚠ Aggravation » si l'écart (disparus + modifiés + nouveaux) a augmenté depuis la dernière alerte détaillée, « Stable » sinon, « Échec » si le serveur SNCF était injoignable ce jour-là.">Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ligne in lignes_gtfs %}
+                        <tr class="{{ ligne.css }}">
+                            <td>{{ ligne.date }}</td>
+                            <td>{{ ligne.reference }}</td>
+                            <td>{{ ligne.export }}</td>
+                            <td>{{ ligne.communs }}</td>
+                            <td>{{ ligne.identiques }}</td>
+                            <td>{{ ligne.modifies }}</td>
+                            <td>{{ ligne.disparus }}</td>
+                            <td>{{ ligne.nouveaux }}</td>
+                            <td>
+                                <details>
+                                    <summary>{{ ligne.statut }}</summary>
+                                    <pre class="gtfs-detail">{{ ligne.detail | safe }}</pre>
+                                </details>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+</div>
+{% endif %}

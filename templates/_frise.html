@@ -1,0 +1,41 @@
+{% if frise is defined %}
+<div class="zone-frise">
+    <p class="frise-titre">État de la ligne, gare par gare <span class="icone-info" title="{{ frise.tooltip }}">ℹ</span></p>
+    <div class="frise-scroll">
+        <svg viewBox="0 0 1000 55" preserveAspectRatio="none" class="frise-svg">
+            <defs>
+                <marker id="fleche-frise" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                    <path d="M0,0 L0,6 L7,3 z" class="frise-fleche" />
+                </marker>
+            </defs>
+            {% if frise.legende %}
+                <text x="0" y="8" class="frise-legende">{{ frise.legende }}</text>
+            {% endif %}
+            <line x1="{{ frise.ligne_x1 }}" y1="{{ frise.y_ligne }}" x2="{{ frise.ligne_x2 }}" y2="{{ frise.y_ligne }}"
+                  class="{{ 'frise-ligne-fond-estompee' if frise.ligne_estompee else 'frise-ligne-fond' }}" />
+            {% if frise.ligne_trajet %}
+                <line x1="{{ frise.ligne_trajet.x1 }}" y1="{{ frise.y_ligne }}" x2="{{ frise.ligne_trajet.x2 }}" y2="{{ frise.y_ligne }}"
+                      class="frise-ligne-trajet" />
+            {% endif %}
+            {% for c in [frise.connecteur_avant, frise.connecteur_apres] %}
+                {% if c %}
+                    <line x1="{{ c.x1 }}" y1="{{ c.y1 }}" x2="{{ c.x2 }}" y2="{{ c.y2 }}"
+                          class="frise-connecteur" marker-end="url(#fleche-frise)" />
+                    <text x="{{ c.label_x }}" y="{{ c.label_y }}" text-anchor="{{ c.label_ancrage }}"
+                          class="frise-connecteur-texte">{{ c.label_texte }}</text>
+                {% endif %}
+            {% endfor %}
+            {% for g in frise.gares %}
+                <circle cx="{{ g.x }}" cy="{{ frise.y_ligne }}" r="{{ g.rayon }}"
+                        class="frise-point {{ '' if g.sur_trajet else 'frise-point-estompe' }}"
+                        {% if g.sur_trajet %}fill="{{ g.point_fill }}"{% endif %} />
+                {% if g.texte_retard %}
+                    <text x="{{ g.x }}" y="{{ frise.y_ligne - 10 }}" text-anchor="middle" class="frise-retard">{{ g.texte_retard }}</text>
+                {% endif %}
+                <text x="{{ g.x }}" y="{{ frise.y_ligne + 14 }}" text-anchor="middle"
+                      class="{{ 'frise-nom' if g.sur_trajet else 'frise-nom-estompe' }}">{{ g.nom }}</text>
+            {% endfor %}
+        </svg>
+    </div>
+</div>
+{% endif %}

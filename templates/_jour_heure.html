@@ -1,0 +1,24 @@
+{% if not erreur %}
+{% if jour_heure_vide %}
+    <p class="info">Aucun relevé avec retard exploitable pour l'instant.</p>
+{% else %}
+<div class="zone-jour-heure">
+    <p class="info">
+        Retard moyen et proportion de trains en retard selon le jour de la semaine
+        (date réelle du trajet), l'heure du relevé, le type de jour et les vacances
+        scolaires — statistique simple, pas un modèle.
+    </p>
+    <div class="grille-jour-heure">
+        <div id="jh-jour_moyenne"></div>
+        <div id="jh-heure_moyenne"></div>
+        <div id="jh-jour_pct"></div>
+        <div id="jh-heure_pct"></div>
+        <div id="jh-type_jour"></div>
+        <div id="jh-vacances"></div>
+    </div>
+</div>
+<script>
+    dessinerJourHeure({{ donnees_json | safe }});
+</script>
+{% endif %}
+{% endif %}

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ titre_app }}</title>
+    <script>
+        // Appliqué avant le CSS/premier rendu, pour éviter un flash du
+        // mauvais thème au chargement — sans préférence enregistrée
+        // (première visite), on ne touche à rien : la règle @media
+        // (prefers-color-scheme) de style.css reste seule aux commandes.
+        (function () {
+            var theme = localStorage.getItem("theme");
+            if (theme) document.documentElement.dataset.theme = theme;
+        })();
+    </script>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/htmx.min.js"></script>
+    <script src="/static/plotly-basic.min.js"></script>
+    <script src="/static/theme_commun.js"></script>
+    <script src="/static/graphique.js"></script>
+    <script src="/static/train.js"></script>
+    <script src="/static/jour_heure.js"></script>
+</head>
+<body>
+    <div id="toast" onclick="masquerToast()">
+        <span class="toast-icone"></span>
+        <span class="toast-message"></span>
+    </div>
+    <header id="entete">
+        <button type="button" id="bouton-aide" onclick="document.getElementById('dialogue-aide').showModal()"
+                aria-label="Aide">?</button>
+        <button type="button" id="bouton-parametres" popovertarget="menu-parametres" popovertargetaction="toggle"
+                aria-label="Paramètres">⚙</button>
+        <div id="menu-parametres" popover>
+            <label class="switch-theme">
+                <input type="checkbox" id="case-theme-sombre" onchange="basculerTheme(this.checked)">
+                Thème sombre
+            </label>
+        </div>
+        <h1>{{ titre_app }}</h1>
+        <div id="controles">
+            <button type="button" id="bouton-rafraichir"
+                    hx-get="/rafraichir" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-trigger="click, every 300s [document.getElementById('auto-refresh').checked]"
+                    hx-on::before-request="afficherToast('info', 'Rafraîchissement lancé', 0)">
+                Rafraîchir depuis le Raspberry Pi
+            </button>
+            <label class="controle-case">
+                <input type="checkbox" id="auto-refresh" checked>
+                Rafraîchissement automatique (5 min)
+            </label>
+            <a href="/">Réinitialiser</a>
+            <span id="resume-collecte" class="info">{{ resume_collecte or "" }}</span>
+        </div>
+        {% include "_dialogue_aide.html" %}
+        <form id="filtres" hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change" hx-include="#periode">
+            <input type="hidden" id="vue-active" name="vue" value="{{ vue }}">
+            <div class="champ">
+                <label for="gare">Gare</label>
+                <select id="gare" name="gare">
+                    {% for option in gare_options %}
+                        {% if option.startswith("—") %}
+                            <option disabled>{{ option }}</option>
+                        {% else %}
+                            <option value="{{ option }}" {% if option == gare %}selected{% endif %}>{{ option }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="champ">
+                <label for="train">Train</label>
+                <select id="train" name="train">
+                    {% for option in train_options %}
+                        <option value="{{ option }}" {% if option == train %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="champ">
+                <label for="sens">Sens</label>
+                <select id="sens" name="sens">
+                    {% for option in sens_options %}
+                        <option value="{{ option }}" {% if option == sens %}selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="champ champ-case" id="case-limiter-ligne">
+                <input type="hidden" name="limiter_ligne" value="false">
+                <label>
+                    <input type="checkbox" name="limiter_ligne" value="true" {% if limiter_ligne %}checked{% endif %}
+                           onchange="toastLimiterLigne(this.checked)">
+                    Limiter aux gares de la ligne
+                </label>
+            </div>
+            <div class="champ champ-case" id="case-limiter-retard">
+                <input type="hidden" name="limiter_retard" value="false">
+                <label>
+                    <input type="checkbox" name="limiter_retard" value="true" {% if limiter_retard %}checked{% endif %}
+                           onchange="toastLimiterRetard(this.checked)">
+                    Limiter aux trains avec retard
+                </label>
+            </div>
+        </form>
+        <div id="stats" {% if vue == "graphique" %}style="display:none"{% endif %}>
+            {% include "_stats.html" %}
+        </div>
+        <nav id="onglets">
+            <button type="button" class="onglet {% if vue == 'tableau' %}actif{% endif %}"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "tableau"}' onclick="activerOnglet(this, 'tableau')">
+                Tableau
+            </button>
+            <button type="button" class="onglet {% if vue == 'graphique' %}actif{% endif %}"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "graphique"}' onclick="activerOnglet(this, 'graphique')">
+                Graphique
+            </button>
+            <button type="button" class="onglet {% if vue == 'train' %}actif{% endif %}"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "train"}' onclick="activerOnglet(this, 'train')">
+                Suivi d'un train
+            </button>
+            <button type="button" class="onglet {% if vue == 'jour_heure' %}actif{% endif %}"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "jour_heure"}' onclick="activerOnglet(this, 'jour_heure')">
+                Par jour / heure
+            </button>
+            <button type="button" class="onglet {% if vue == 'travaux' %}actif{% endif %}"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "travaux"}' onclick="activerOnglet(this, 'travaux')">
+                <span id="badge-travaux">{{ libelle_travaux }}</span>
+            </button>
+            <button type="button" class="onglet {% if vue == 'gtfs' %}actif{% endif %}"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "gtfs"}' onclick="activerOnglet(this, 'gtfs')">
+                Vérification GTFS
+            </button>
+        </nav>
+    </header>
+    <main id="zone-contenu">
+        {% include "_vue_dispatch.html" %}
+    </main>
+    <footer id="pied-de-page">
+        <div id="frise-contenu">
+            {% include "_frise.html" %}
+        </div>
+    </footer>
+    <script>
+        // Bulle générique en haut à gauche, pour tout message ponctuel
+        // (remplace les 3 petits points de l'ancien
+        // hx-indicator, et l'ancien span#statut toujours affiché dans
+        // l'entête — demande explicite de l'utilisateur, 2026-08-06/07).
+        // 4 types (icône + couleur thémée, réutilisant la palette déjà en
+        // place plutôt que d'introduire des couleurs fixes non thémées :
+        // succès reprend --pastille-fond/texte déjà utilisés pour le badge
+        // "circulations perturbées", erreur/avertissement reprennent le
+        // rouge/orange déjà utilisés pour les lignes en retard du Tableau).
+        // dureeMs explicite (3e argument) prioritaire sur la durée par
+        // défaut du type — utilisé pour "Rafraîchissement lancé" (0 = pas
+        // de disparition automatique, reste tant que la requête est en
+        // vol) et pour les 2 cases à cocher (8s, déjà choisi par
+        // l'utilisateur). Sortie animée via @keyframes + animationend
+        // (style.css) plutôt qu'une simple transition d'opacité : permet de
+        // savoir précisément quand la sortie est terminée avant de
+        // réinitialiser les classes.
+        const TOAST_ICONES = { succes: "✓", erreur: "✕", avertissement: "⚠", info: "ℹ" };
+        const TOAST_DUREES = { succes: 4000, erreur: 4000, avertissement: 6000, info: 4000 };
+
+        function afficherToast(type, message, dureeMs) {
+            const toast = document.getElementById("toast");
+            clearTimeout(toast._minuteur);
+            toast.removeEventListener("animationend", toast._surSortie);
+
+            toast.className = "toast-" + type;
+            toast.querySelector(".toast-icone").textContent = TOAST_ICONES[type] || TOAST_ICONES.info;
+            toast.querySelector(".toast-message").textContent = message;
+            // Force un recalcul de style entre le retrait et l'ajout de
+            // "visible" : sinon, si le toast était déjà visible (ex:
+            // "Rafraîchissement lancé" → "Données à jour" juste après),
+            // l'animation d'entrée ne rejouerait pas.
+            void toast.offsetWidth;
+            toast.classList.add("visible");
+
+            const duree = dureeMs !== undefined ? dureeMs : TOAST_DUREES[type];
+            if (duree) {
+                toast._minuteur = setTimeout(masquerToast, duree);
+            }
+        }
+
+        function masquerToast() {
+            const toast = document.getElementById("toast");
+            if (!toast.classList.contains("visible")) return;
+            clearTimeout(toast._minuteur);
+            toast.classList.add("sortie");
+            toast._surSortie = () => toast.classList.remove("visible", "sortie");
+            toast.addEventListener("animationend", toast._surSortie, { once: true });
+        }
+
+        // Portent _on_toggle_limiter_ligne (viewer.py:1369-1377) pour
+        // "Limiter aux gares de la ligne" — même texte. "Limiter aux trains
+        // avec retard" n'a pas d'équivalent côté viewer.py (juste
+        // command=self.render, aucun message) : rédigé pour ce port,
+        // demande explicite de l'utilisateur, 2026-08-07.
+        function toastLimiterLigne(coche) {
+            afficherToast("info", coche
+                ? "Gares hors ligne masquées (limité aux 11 gares de la ligne)."
+                : "Gares hors ligne incluses : les gares grisées (trains de jonction, "
+                  + "ex: vers Rouen, Rennes, Granville...) apparaissent maintenant partout dans l'appli.",
+                8000);
+        }
+
+        function toastLimiterRetard(coche) {
+            afficherToast("info", coche
+                ? "Limité aux circulations ayant eu du retard "
+                  + "à un moment de leur trajet."
+                : "Les circulations toujours restées à l'heure "
+                  + "apparaissent de nouveau dans le tableau et les stats.",
+                8000);
+        }
+
+        function activerOnglet(bouton, nom) {
+            document.getElementById("vue-active").value = nom;
+            document.querySelectorAll(".onglet").forEach((b) => b.classList.remove("actif"));
+            bouton.classList.add("actif");
+            mettreAJourVisibiliteFiltres(nom);
+        }
+
+        // "Limiter aux gares de la ligne"/"Limiter aux trains avec retard"
+        // sont sans effet sur certains onglets — masquées plutôt que
+        // grisées : une case cochée-mais-grisée avait déjà induit
+        // l'utilisateur en erreur côté viewer.py (elle laissait croire à
+        // tort que le filtre restait actif), corrigé là-bas en
+        // 2026-07-29/08-03 en remplaçant la case par un texte explicatif ;
+        // ici, masquée entièrement (display:none) — choix plus simple, fait
+        // exprès plutôt que par oubli. Même règle que _on_tab_changed
+        // (viewer.py) : "gares de la ligne" ignorée seulement sur Suivi
+        // d'un train (affiche toujours le trajet réel complet, gares hors
+        // ligne comprises) ; "trains avec retard" ignorée sur Graphique et
+        // Par jour/heure aussi (les deux utilisent df_avant_retard, pas
+        // df_filtre — voir construire_contexte) et sur Suivi d'un train
+        // (qui a son propre filtre "Trains du jour en retard uniquement").
+        function mettreAJourVisibiliteFiltres(vue) {
+            document.getElementById("case-limiter-ligne").style.display = vue === "train" ? "none" : "";
+            document.getElementById("case-limiter-retard").style.display =
+                vue === "train" || vue === "graphique" || vue === "jour_heure" ? "none" : "";
+        }
+        mettreAJourVisibiliteFiltres("{{ vue }}");
+
+        function basculerTheme(sombre) {
+            var theme = sombre ? "dark" : "light";
+            document.documentElement.dataset.theme = theme;
+            localStorage.setItem("theme", theme);
+            // Les graphiques Plotly lisent les couleurs du thème une seule
+            // fois, au tracé (couleurTheme(), graphique.js/train.js) — sans
+            // ce redessin, ils restaient sur les couleurs de l'ancien thème
+            // tant que l'onglet n'était pas rechargé via htmx (repéré par
+            // l'utilisateur, 2026-08-06). Ne redessine que le graphique de
+            // l'onglet actuellement affiché (l'autre n'a pas son conteneur
+            // dans le DOM).
+            if (document.getElementById("graphique-plot") && window._donneesGraphique) {
+                dessinerGraphique(window._donneesGraphique);
+            }
+            if (document.getElementById("train-plot") && window._donneesTrain) {
+                dessinerTrain(window._donneesTrain);
+            }
+            if (document.getElementById("jh-jour_moyenne") && window._donneesJourHeure) {
+                dessinerJourHeure(window._donneesJourHeure);
+            }
+        }
+
+        // Reflète le thème effectif (choix enregistré, sinon préférence
+        // système) sur la case à cocher au chargement de la page.
+        document.getElementById("case-theme-sombre").checked =
+            (document.documentElement.dataset.theme
+                || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+    </script>
+</body>
+</html>

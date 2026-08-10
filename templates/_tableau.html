@@ -1,0 +1,26 @@
+{% if not erreur %}
+<div class="zone-scroll">
+    <table>
+        <thead>
+            <tr>
+                {% for entete in entetes %}
+                    <th>{{ entete }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in lignes %}
+                {% if ligne.separateur %}
+                    <tr class="separateur"><td colspan="{{ entetes|length }}"></td></tr>
+                {% else %}
+                    <tr class="{{ ligne.css_class or '' }}">
+                        {% for cellule in ligne.cellules %}
+                            <td>{{ cellule }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}

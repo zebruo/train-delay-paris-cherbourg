@@ -1,0 +1,364 @@
+<dialog id="dialogue-aide">
+    <button type="button" class="dialogue-fermer" aria-label="Fermer"
+            onclick="this.closest('dialog').close()">×</button>
+    <h2>Comment lire les statistiques</h2>
+    <p class="info">
+        Guide de référence — ce que veut dire chaque chiffre, avec un exemple concret,
+        que ce soit dans l'application de suivi ou dans les rapports quotidien/hebdomadaire/mensuel.
+    </p>
+
+    <h3 class="aide-theme">1. Combien de trains ont été touchés ?</h3>
+
+    <section class="aide-section">
+        <h4>Circulations perturbées</h4>
+        <p>
+            Le nombre de trajets (un train, un jour donné) ayant eu du retard à un moment
+            de leur trajet — même s'ils l'ont ensuite rattrapé avant l'arrivée.
+        </p>
+        <div class="aide-exemple">
+            Prenons une période avec 200 circulations sur la ligne.<br>
+            40 d'entre elles ont eu du retard à un moment de leur trajet.<br>
+            → Affiché : « 40 circulations perturbées / 200 (20 %) »
+        </div>
+        <p class="aide-utilite">
+            Utile pour : avoir en un coup d'œil une idée de l'ampleur des perturbations du jour
+            ou de la semaine — une bonne ou une mauvaise période pour la ligne, « à quel point
+            la journée a été mauvaise ».
+        </p>
+        <p class="aide-pourquoi">
+            « Circulations perturbées » vs « ponctualité » ? La ponctualité officielle SNCF/ART
+            (Autorité de Régulation des Transports) mesure uniquement le retard à l'arrivée au
+            terminus. Un train retardé de 10 minutes entre Caen et Lison mais qui arrive à l'heure
+            à Cherbourg sera compté comme 100 % ponctuel dans les statistiques officielles,
+            ignorant la perturbation subie par les voyageurs descendant à Lison. Notre indicateur
+            compte tout train ayant subi un retard à un moment quelconque de son trajet, même s'il
+            a été rattrapé ensuite. La ponctualité officielle évalue la performance au terminus ;
+            le taux de « circulations perturbées » reflète l'impact réel vécu tout au long de la ligne.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>Retard cumulé <span class="aide-sous-titre">(reflète l'état final réel)</span></h4>
+        <p>
+            La somme des retards observés, en ne comptant chaque passage en gare qu'une seule fois
+            (le dernier retard connu à ce passage) — pas à chaque fois que le système a vérifié ce train.
+        </p>
+        <div class="aide-exemple">
+            Nos 40 circulations perturbées ont, ensemble, touché 90 passages en gare<br>
+            (un même train peut être en retard à plusieurs gares).<br>
+            Ces 90 passages cumulent 15 h de retard au total.<br>
+            → Affiché : « Retard cumulé : 15 h 00 min (90 passages impactés) »
+        </div>
+        <p class="aide-utilite">
+            Utile pour : comparer deux journées ou deux semaines entre elles sur le volume réel
+            de perturbation, ou chiffrer le temps perdu cumulé sur la ligne (utile pour un dossier
+            ou un argumentaire auprès de la SNCF).
+        </p>
+        <p class="aide-pourquoi">
+            Cette stat ne garde que le dernier retard connu par gare — si pour ce train, le dernier
+            relevé montre 0 min partout, du départ à l'arrivée, donc aucun « passage impacté »
+            comptabilisé pour lui, même si des retards ont pu être observés plus tôt.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>Retard moyen / relevé <span class="aide-sous-titre">(reflète toute l'histoire des prédictions même corrigées)</span></h4>
+        <p>
+            La moyenne de tous les relevés individuels du système (chaque interrogation, gare
+            par gare) — pas une moyenne par train ni par passage.
+        </p>
+        <div class="aide-exemple">
+            Ce même jour, le système a fait 8 000 relevés au total (la plupart à 0 min ou<br>
+            vite corrigés : un train à l'heure reste à l'heure à chaque relevé). La somme<br>
+            de tous les retards fait 900 minutes.<br>
+            → Affiché : « Retard moyen / relevé : 900 ÷ 8 000 = 0.1 min »
+        </div>
+        <p class="aide-utilite">
+            Utile pour : avoir un ordre de grandeur pour interpréter l'échelle de la courbe
+            d'évolution du retard dans le temps (onglet Graphique) — un écart soudain entre
+            « moy. » et « Retard moyen / relevé », le premier qui grimpe bien plus vite que le
+            second, trahit souvent un incident ponctuel (coupure partielle de collecte/flux SNCF
+            figé) plutôt qu'un vrai pic de retard généralisé.
+        </p>
+        <p class="aide-pourquoi">
+            Ce chiffre paraît minuscule à côté d'un retard max de 45 min — c'est normal, il est
+            dilué par des milliers de relevés à 0. À ne pas confondre avec la courbe de l'onglet
+            Graphique : celle-ci calcule une moyenne différente (instant par instant, puis ces
+            points sont moyennés entre eux) — les deux donnent un ordre de grandeur similaire,
+            rarement le chiffre exact.
+        </p>
+        <p class="aide-pourquoi">
+            Accessoirement, elle capture le volume de signaux d'alerte temporaires vus par le
+            système en temps réel, même corrigés ensuite — une sorte de « volatilité » des
+            prédictions plutôt qu'un résultat final.
+        </p>
+    </section>
+
+    <h3 class="aide-theme">2. Où et sur quel train le retard a-t-il été le plus fort ?</h3>
+
+    <section class="aide-section">
+        <h4>Retard max</h4>
+        <p>Le plus grand retard observé sur la période, avec le train concerné.</p>
+        <div class="aide-exemple">
+            → Affiché : « Retard max : train OCESN1234F1187_F → 45 min »<br>
+            Ce train a connu le pire retard de la période, 45 minutes, quelque part sur son trajet.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : repérer tout de suite le pire incident de la période, celui qui a le
+            plus affecté un train en particulier.
+        </p>
+        <p class="aide-pourquoi">
+            Le flux temps réel SNCF ne confirme jamais explicitement l'arrivée d'un train : le
+            trajet disparaît simplement du flux une fois terminé, souvent juste après l'heure
+            d'arrivée prévue. Ce retard max (et plus généralement toute valeur affichée pour un
+            trajet, y compris dans l'onglet « Suivi d'un train ») correspond donc à la dernière
+            prédiction connue avant cette disparition, pas à une confirmation réelle d'arrivée —
+            dans l'immense majorité des cas les deux se rejoignent, mais rien ne le garantit formellement.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>Gare la + touchée</h4>
+        <p>La gare avec le retard moyen le plus élevé, tous relevés confondus (y compris ceux à 0 min).</p>
+        <div class="aide-exemple">
+            → Affiché : « Gare la + touchée : Bayeux → moy 3.6 min »<br>
+            En moyenne sur tous les relevés de la période, Bayeux affiche 3.6 min de retard<br>
+            — la valeur la plus haute des 11 gares de la ligne.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : voir si les problèmes se concentrent sur un point précis de la ligne
+            (travaux, nœud engorgé) plutôt que d'être répartis partout.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>Les couleurs du Tableau</h4>
+        <p>
+            Trois couleurs de texte dans l'onglet Tableau, selon le retard observé au dernier
+            relevé d'une ligne — pas de couleur (texte noir) si tout va bien.
+        </p>
+        <div class="aide-exemple">
+            Rouge : retard à l'arrivée ≥ 10 min dans cette gare.<br>
+            Orange : retard à l'arrivée entre 5 et 10 min dans cette gare.<br>
+            Doré/jaune : arrivée correcte (&lt; 5 min), mais retard au départ ≥ 5 min<br>
+            — le train reste immobilisé plus longtemps que prévu à cette gare.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : repérer d'un coup d'œil non seulement l'ampleur d'un retard, mais aussi
+            son type : un retard déjà là à l'arrivée (rouge/orange) n'annonce pas la même chose
+            qu'un train à l'heure qui traîne au départ (doré).
+        </p>
+        <p class="aide-pourquoi">
+            Le doré existe pour un cas précis qui resterait sinon invisible : un train arrivé
+            pile à l'heure n'a aucune couleur d'alerte si on ne regarde que le retard à l'arrivée
+            — alors qu'il peut être en train d'accumuler un vrai retard de départ, pas encore
+            visible ailleurs. Sans cette couleur séparée, ce genre de ligne resterait noire, comme
+            si de rien n'était, jusqu'à ce que le retard finisse par apparaître à la gare suivante.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>Ligne dorée : incident frais, ou connu ? <span class="aide-sous-titre">(non distingué par l'appli)</span></h4>
+        <p>
+            Le doré signale qu'un train attend plus longtemps que prévu au départ d'une gare —
+            sans dire depuis quand cette attente est connue.
+        </p>
+        <div class="aide-exemple">
+            Cas 1 — nouveau : le train vient d'annoncer une attente imprévue (incident,<br>
+            croisement non planifié) — un vrai signal à surveiller.<br>
+            Cas 2 — déjà connu : l'attente est annoncée depuis longtemps (dès le départ du<br>
+            trajet, ou depuis plusieurs relevés) — la SNCF le sait déjà, ce n'est pas une<br>
+            surprise, juste un aléa stable.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : éviter de s'alarmer pour une ligne dorée qui traîne en réalité depuis
+            des heures sans rien de nouveau — mais il faut le vérifier soi-même, l'appli ne le
+            fait pas automatiquement.
+        </p>
+        <p class="aide-pourquoi">
+            Distinguer les deux cas demanderait de comparer ce retard de départ à ce qu'il valait
+            aux relevés précédents de ce même train, pas juste au dernier — une fonctionnalité
+            jugée utile seulement en surveillance active de l'appli (voir si un problème vient
+            d'apparaître), sans intérêt pour les statistiques ou les rapports PDF (qui ne retiennent
+            de toute façon que la dernière valeur connue) — pas construite pour l'instant. En
+            attendant, « Suivi d'un train » permet de vérifier à la main : si le retard de départ
+            est stable sur plusieurs relevés d'affilée, c'est le cas 2 ; s'il vient de changer par
+            rapport au relevé précédent, c'est le cas 1.
+        </p>
+    </section>
+
+    <h3 class="aide-theme">3. Autres points utiles — rapports PDF quotidien/hebdomadaire/mensuel</h3>
+
+    <section class="aide-section">
+        <h4>« Circulations sur l'axe Paris ↔ Cherbourg »</h4>
+        <p>
+            Le rapport ne suit pas seulement les trains Paris-Cherbourg de bout en bout : il suit
+            tout train empruntant un tronçon de cette ligne, même s'il continue ailleurs ensuite.
+        </p>
+        <div class="aide-exemple">
+            Un train Rennes → Caen, qui partage les gares de Lison, Bayeux et Caen avec la<br>
+            ligne Paris-Cherbourg, est inclus dans les statistiques — même s'il ne va jamais<br>
+            jusqu'à Paris ni jusqu'à Cherbourg.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : comprendre pourquoi des trains qu'on ne prend pas forcément soi-même
+            (ex: Rennes → Caen) apparaissent dans les statistiques du rapport.
+        </p>
+        <p class="aide-pourquoi">
+            C'est volontaire : un retard survenu sur un tronçon partagé est un vrai signal utile
+            pour la ligne, qu'il vienne d'un train qui va jusqu'au bout ou non.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>Période du rapport (2 h → 2 h)</h4>
+        <p>
+            Le rapport quotidien couvre une journée de 2 h du matin à 2 h le lendemain
+            (pas minuit à minuit, ni les 24 dernières heures).
+        </p>
+        <div class="aide-exemple">
+            Un rapport généré le 28/07 à 7 h couvre la période du 27/07 à 2 h au 28/07 à 2 h<br>
+            — le dernier cycle complet déjà terminé.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : comparer les rapports entre eux de façon cohérente d'un jour sur l'autre,
+            avec une même définition de « journée ».
+        </p>
+        <p class="aide-pourquoi">
+            2 h du matin est le creux du trafic nocturne (peu ou pas de trains) : ça limite le
+            risque qu'une circulation soit coupée en deux périodes différentes.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>Météo et Travaux / alertes</h4>
+        <p>
+            Moyennes météo (température, pluie, vent) et liste des perturbations SNCF en cours
+            sur la ligne pendant la période — sans traitement particulier, affichées telles que
+            publiées par les sources.
+        </p>
+        <div class="aide-exemple">Rien à calculer ici — ces deux blocs sont les plus simples du rapport.</div>
+        <p class="aide-utilite">
+            Utile pour : vérifier si un pic de retard coïncide avec une cause probable
+            (mauvais temps, travaux signalés).
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>Rupture de collecte le 31/07/2026</h4>
+        <p>
+            Un bug de collecte, corrigé ce jour-là, faisait manquer jusqu'à ~1 train sur 4
+            certains jours (un identifiant technique mal reconnu, sans rien signaler). Les
+            statistiques globales augmentent donc mécaniquement à partir de cette date.
+        </p>
+        <div class="aide-exemple">
+            Avant le 31/07/2026 : jusqu'à ~27 % des trains manqués certains jours.<br>
+            Après : quasi tous les trains sont captés.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : ne pas confondre une hausse des chiffres autour de cette date avec une
+            vraie dégradation de la ponctualité.
+        </p>
+        <p class="aide-pourquoi">
+            L'identifiant technique d'un train intégrait une date qui ne correspondait plus
+            toujours à la date réelle — corrigé, mais sans effet rétroactif sur l'historique
+            déjà collecté.
+        </p>
+    </section>
+
+    <h3 class="aide-theme">4. L'onglet « Vérification GTFS » : les horaires suivis sont-ils toujours à jour ?</h3>
+
+    <section class="aide-section">
+        <h4>À quoi sert cet onglet</h4>
+        <p>
+            Compare chaque jour les horaires théoriques publiés en ligne par la SNCF à ceux
+            utilisés par l'application (un fichier de référence, mis à jour manuellement de
+            temps en temps) — pour repérer quand cette référence devient obsolète.
+        </p>
+        <div class="aide-exemple">
+            Une ligne du tableau : « 589 communs (546 identiques, 43 modifiés), 160 disparus,<br>
+            4 nouveaux » — comparé à la référence actuellement utilisée.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : savoir si les trains suivis par l'application correspondent encore aux
+            horaires réels de la SNCF, sans avoir à comparer les fichiers à la main.
+        </p>
+        <p class="aide-pourquoi">
+            La référence n'est jamais mise à jour toute seule : la SNCF republie ses horaires en
+            continu, et un changement (nouvel horaire, nouvel arrêt, nouveau train) doit être
+            vérifié avant d'être appliqué, pas remplacé silencieusement.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>La colonne « Nouveaux » <span class="aide-sous-titre">(le chiffre le plus important)</span></h4>
+        <p>
+            Le nombre de trains présents dans les horaires SNCF en ligne, mais absents de la
+            référence utilisée par l'application — ces trains-là ne sont actuellement suivis par
+            aucun des relevés de l'application.
+        </p>
+        <div class="aide-exemple">
+            « Modifiés »/« Disparus » : un horaire théorique affiché peut être un peu faux,<br>
+            mais le train reste suivi.<br>
+            « Nouveaux » : le train n'est suivi du tout — aucun relevé, aucune statistique<br>
+            ne le concerne.
+        </div>
+        <p class="aide-utilite">
+            Utile pour : décider quand une mise à jour de la référence (bouton dédié, ou
+            manuellement) est vraiment nécessaire, plutôt que de réagir à chaque petite variation.
+        </p>
+        <p class="aide-pourquoi">
+            Les horaires SNCF publiés en ligne ne couvrent jamais que les ~151 prochains jours,
+            une fenêtre qui avance d'un jour chaque jour. Un train déjà prévu par la SNCF mais
+            plus loin dans le temps devient visible d'un coup le jour où cette fenêtre l'atteint
+            — sans que la SNCF n'ait rien changé de son côté. Ça peut faire bouger légèrement les
+            chiffres d'un jour sur l'autre sans signification particulière (observé : 135 puis
+            160 trains « disparus », 5 puis 4 « nouveaux », entre deux vérifications à quelques
+            heures d'écart, sans aucun changement réel d'horaire entre-temps).
+        </p>
+        <p class="aide-pourquoi">
+            D'où la règle simple à suivre : ne pas s'inquiéter d'un chiffre isolé sur un seul
+            jour, mais surveiller si « Nouveaux » reste supérieur à zéro plusieurs jours de suite
+            dans le tableau — c'est ce qui distingue un vrai changement durable d'un simple effet
+            de la fenêtre glissante.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>« Régénérer » et « Déployer vers le Pi » <span class="aide-sous-titre">(mettre à jour la référence)</span></h4>
+        <p>
+            Deux boutons séparés, en deux étapes volontairement distinctes. « Régénérer »
+            télécharge l'horaire SNCF du jour et reconstruit la référence — sur ce PC uniquement,
+            sans rien changer côté Pi. « Déployer vers le Pi » envoie ensuite cette nouvelle
+            référence là où elle compte vraiment : le Raspberry Pi, qui collecte les données en continu.
+        </p>
+        <div class="aide-exemple">
+            Avant l'envoi, une confirmation rappelle les deux versions en jeu :<br>
+            « Référentiel actuellement sur le Pi : 2026-07-19<br>
+            &nbsp;&nbsp;Référentiel local à déployer : 2026-08-04 »
+        </div>
+        <p class="aide-utilite">
+            Utile pour : mettre à jour la référence sans ligne de commande, tout en gardant la
+            main à chaque étape — rien ne part vers le Pi sans un clic de confirmation explicite.
+        </p>
+        <p class="aide-pourquoi">
+            Séparer « Régénérer » (local, sans conséquence) de « Déployer » (touche la collecte
+            en cours) évite qu'une régénération machinale ne modifie sans le vouloir ce qui
+            tourne réellement sur le Pi. Une fois déployée, la vérification est aussitôt relancée
+            là-bas : sans ça, le seuil d'alerte du Pi resterait basé sur l'ancienne référence
+            jusqu'au prochain passage automatique (3h15).
+        </p>
+    </section>
+
+    <h3 class="aide-theme">Sources des données</h3>
+    <p>Retards en temps réel : proxy.transport.data.gouv.fr (flux GTFS-RT SNCF, public, sans clé)</p>
+    <p>Météo actuelle : api.open-meteo.com (gratuit, sans clé)</p>
+    <p>Horaires théoriques (référence des trajets/arrêts) : eu.ftp.opendatasoft.com/sncf/plandata (GTFS statique SNCF)</p>
+    <p>Jours fériés : calendrier.api.gouv.fr</p>
+    <p>Vacances scolaires (zone B) : data.education.gouv.fr</p>
+    <p>Toutes ces sources sont publiques et gratuites, sans authentification.</p>
+
+    <form method="dialog">
+        <button type="submit">Fermer</button>
+    </form>
+</dialog>

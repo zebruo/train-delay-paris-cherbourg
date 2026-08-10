@@ -1,0 +1,13 @@
+{% if vue == "graphique" %}
+    {% include "_graphique.html" %}
+{% elif vue == "train" %}
+    {% include "_train.html" %}
+{% elif vue == "jour_heure" %}
+    {% include "_jour_heure.html" %}
+{% elif vue == "travaux" %}
+    {% include "_travaux.html" %}
+{% elif vue == "gtfs" %}
+    {% include "_gtfs.html" %}
+{% else %}
+    {% include "_tableau.html" %}
+{% endif %}

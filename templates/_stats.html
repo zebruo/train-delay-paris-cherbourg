@@ -1,0 +1,35 @@
+{% if erreur %}
+    <p class="info">{{ erreur }}</p>
+{% elif stats is none %}
+    <p class="info">Aucun relevé avec retard exploitable pour l'instant.</p>
+{% else %}
+    <div class="stat">
+        <div class="stat-label">Circulations perturbées <span class="icone-info" title="{{ tooltip_ratio_retard }}">ℹ</span></div>
+        <div class="stat-valeur">
+            {{ stats_ratio.en_retard }} / {{ stats_ratio.total }}
+            {% if pct_perturbe is not none %}
+                <span class="pastille">{{ "%.0f"|format(pct_perturbe) }} %</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">Retard cumulé <span class="icone-info" title="Somme des retards, une seule fois par passage réel (dernière valeur connue), pas par relevé — contrairement à « Retard moyen / relevé », chaque perturbation n'est comptée qu'une fois même si elle a été vue à plusieurs relevés successifs.">ℹ</span></div>
+        <div class="stat-valeur">{{ stats.heures }} h {{ "%02d"|format(stats.minutes) }} min</div>
+    </div>
+    {% if vue != "jour_heure" %}
+        <div class="stat">
+            <div class="stat-label">Retard moyen / relevé <span class="icone-info" title="{{ tooltip_moyen }}">ℹ</span></div>
+            <div class="stat-valeur">{{ format_min_sans_zero(stats.moyen) }} min</div>
+        </div>
+    {% endif %}
+    <div class="stat">
+        <div class="stat-label">Retard max</div>
+        <div class="stat-valeur">{{ stats.retard_max_texte }}</div>
+    </div>
+    {% if vue != "jour_heure" %}
+        <div class="stat">
+            <div class="stat-label">Gare la + touchée <span class="icone-info" title="{{ tooltip_pire_gare }}">ℹ</span></div>
+            <div class="stat-valeur">{{ stats.pire_gare_texte }}</div>
+        </div>
+    {% endif %}
+{% endif %}

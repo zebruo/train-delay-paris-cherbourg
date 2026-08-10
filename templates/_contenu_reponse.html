@@ -1,0 +1,18 @@
+{% include "_vue_dispatch.html" %}
+<div id="stats" hx-swap-oob="true" {% if vue == "graphique" %}style="display:none"{% endif %}>
+    {% include "_stats.html" %}
+</div>
+{% if message_statut_json is defined %}
+    <script>afficherToast("{{ message_statut_type }}", {{ message_statut_json | safe }}, 4000);</script>
+{% endif %}
+{% if resume_collecte is defined %}
+    <span id="resume-collecte" hx-swap-oob="true" class="info">{{ resume_collecte }}</span>
+{% endif %}
+{% if libelle_travaux is defined %}
+    <span id="badge-travaux" hx-swap-oob="true">{{ libelle_travaux }}</span>
+{% endif %}
+{% if frise is defined %}
+    <div id="frise-contenu" hx-swap-oob="true">
+        {% include "_frise.html" %}
+    </div>
+{% endif %}
