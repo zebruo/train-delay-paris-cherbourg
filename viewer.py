@@ -20,9 +20,10 @@ import matplotlib.patches
 import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
-from matplotlib.ticker import AutoMinorLocator, FuncFormatter
+from matplotlib.ticker import FuncFormatter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+from graphiques import finalize_axes, marquer_maximum, marquer_moyenne, tracer_serie_temporelle
 from generer_guide_statistiques import (
     COULEUR_ACCENT as GUIDE_COULEUR_ACCENT,
     COULEUR_EXEMPLE_FOND as GUIDE_COULEUR_EXEMPLE_FOND,
@@ -32,8 +33,10 @@ from generer_guide_statistiques import (
 from generer_guide_statistiques import generer as generer_guide_statistiques_pdf
 from formatting import (
     PARIS_TZ,
+    STATION_CODES,
     build_stop_names,
     build_trip_data,
+    calculer_stats_bloc,
     cle_circulation,
     derniers_par_passage,
     format_bool_oui_non,
@@ -41,12 +44,14 @@ from formatting import (
     format_gare,
     format_gare_frise,
     format_heure_avec_arret,
+    format_min_sans_zero,
     format_poll_time,
     format_retard,
     format_valeur,
     estimer_passage_reel,
     load_reference,
     sans_date_trip_id,
+    trajet_sens,
 )
 from tooltips import SimpleTooltip, SurvolArtistes, TreeviewHeaderTooltips
 from pi_status import recuperer_etat_pi
@@ -75,33 +80,6 @@ TRAJET_COLORMAP = matplotlib.colors.LinearSegmentedColormap.from_list(
     "bleu_orange", ["#2c6ea5", "#f2a53d"]
 )
 
-# Codes 5 lettres "maison" (pas des codes officiels SNCF confirmés), utilisés
-# uniquement pour raccourcir l'affichage de la colonne "Sens".
-STATION_CODES = {
-    "Cherbourg": "CHERB",
-    "Valognes": "VALOG",
-    "Carentan": "CAREN",
-    "Lison": "LISON",
-    "Bayeux": "BAYEU",
-    "Caen": "CAEN",
-    "Lisieux": "LISIE",
-    "Bernay": "BERNA",
-    "Évreux Normandie": "EVREU",
-    "Paris Saint-Lazare": "PARIS",
-    "Mantes-la-Jolie": "MANTE",
-    "Coutances": "COUTA",
-    "Dol-de-Bretagne": "DOLDE",
-    "Elbeuf - Saint-Aubin": "ELBEU",
-    "Granville": "GRANV",
-    "Oissel": "OISSE",
-    "Rennes": "RENNE",
-    "Rouen Rive Droite": "ROUEN",
-    "Saint-Lô": "ST-LÔ",
-    "Serquigny": "SERQU",
-    "Trouville - Deauville": "TROUV",
-    "Vernon - Giverny": "VERNO",
-}
-
 # Les 11 gares réellement sur la ligne Paris-Cherbourg (voir GARES_LIGNE dans
 # build_reference.py). Sert à distinguer les gares "de passage" qu'un train
 # de jonction traverse (ex: vers Rouen, Rennes, Granville...) mais qui ne
@@ -118,14 +96,6 @@ GARES_LIGNE_ORDRE = (
     "Paris Saint-Lazare", "Mantes-la-Jolie", "Évreux Normandie", "Bernay",
     "Lisieux", "Caen", "Bayeux", "Lison", "Carentan", "Valognes", "Cherbourg",
 )
-
-
-def format_min_sans_zero(valeur):
-    """Une décimale, sauf si elle est nulle (ex: '2' plutôt que '2.0', mais
-    '3.6' reste '3.6') — utilisé pour les moyennes affichées dans les barres
-    de stats, où ".0" n'apporte rien et alourdit la lecture."""
-    arrondi = round(valeur, 1)
-    return f"{arrondi:.0f}" if arrondi == int(arrondi) else f"{arrondi:.1f}"
 
 
 class App(tk.Tk, OngletVerificationGTFSMixin):
@@ -1061,7 +1031,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
         df["gare"] = df["stop_id"].map(self.stop_names).fillna(df["stop_id"])
         df["train"] = df["trip_id"].str.split(":").str[0]
-        df["sens"] = df["trip_id"].map(self._trajet_sens)
+        df["sens"] = df["trip_id"].map(lambda t: trajet_sens(t, self.trajet_gares))
         df["heure_theorique"] = df.apply(
             lambda r: format_heure_avec_arret(
                 self.scheduled_times.get((sans_date_trip_id(r["trip_id"]), r["stop_id"])), r["start_date"],
@@ -1092,7 +1062,13 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         if self.filtre_train_var.get() not in trains:
             self.filtre_train_var.set("Tous")
 
-        sens_valeurs = ["Tous"] + sorted(df["sens"].dropna().unique().tolist())
+        # "" (pas seulement NaN) exclu : valeur renvoyée par trajet_sens
+        # quand le trajet théorique du train n'est plus dans le référentiel
+        # actuel (voir sans_date_trip_id) — sans ce filtre, elle apparaissait
+        # comme une entrée vide dans la combobox, triée juste après "Tous"
+        # (chaîne vide < tout le reste), repéré par l'utilisateur 2026-08-04
+        # après la régénération du référentiel qui a réduit sa couverture.
+        sens_valeurs = ["Tous"] + sorted(v for v in df["sens"].dropna().unique() if v)
         self.filtre_sens_combo["values"] = sens_valeurs
         if self.filtre_sens_var.get() not in sens_valeurs:
             self.filtre_sens_var.set("Tous")
@@ -1109,14 +1085,6 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         module, partagée avec le côté collecteur."""
         self.alertes = charger_alertes(LOCAL_ALERTES)
         self.evenements = charger_evenements()
-
-    def _trajet_sens(self, trip_id):
-        gares = self.trajet_gares.get(sans_date_trip_id(trip_id))
-        if not gares or len(gares) < 2:
-            return ""
-        origine = STATION_CODES.get(gares[0], gares[0])
-        destination = STATION_CODES.get(gares[-1], gares[-1])
-        return f"{origine} → {destination}"
 
     def _update_trajet_list(self, df):
         # df attendu : _filtered_df_pour_trajets() (Gare/Train/Sens
@@ -1138,7 +1106,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # hors ligne resterait sinon invisible dans ce menu alors qu'il est
         # bien visible une fois le trajet ouvert. Basé sur la dernière valeur
         # connue par passage (derniers_par_passage), pas le maximum brut sur
-        # tous les relevés — même correctif que _calculer_stats_bloc, sinon
+        # tous les relevés — même correctif que calculer_stats_bloc, sinon
         # ce libellé afficherait une prédiction ponctuelle depuis corrigée
         # (repéré par l'utilisateur, 2026-08-03).
         retard_max_reel = derniers_par_passage(self.df).groupby(
@@ -1510,67 +1478,12 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         self._render_travaux_tab()
         self._render_verification_gtfs_tab()
 
-    @staticmethod
-    def _calculer_stats_bloc(df):
-        """Calcule le bloc de statistiques partagé entre la barre du haut
-        (_render_stats) et la ligne de stats par période de l'onglet
-        Graphique (_render_chart) : ratio de circulations perturbées,
-        retard cumulé, gare la + touchée et retard max par train — mêmes
-        formules dans les deux cas, seul le DataFrame passé en argument
-        change (historique filtré complet, ou la période choisie
-        seulement). Factorisé suite à un audit de code, 2026-07-30 : les
-        deux appelants dupliquaient exactement ce calcul. Suppose df non
-        vide sur retard_min (les deux appelants vérifient déjà ce cas
-        avant d'appeler cette méthode)."""
-        circulation = cle_circulation(df)
-        total = circulation.nunique()
-        en_retard = circulation[df["retard_min"] > 0].nunique() if total else 0
-
-        # Une seule valeur par passage réel (dernier relevé connu), pas une
-        # par relevé : un même passage est vu à plusieurs relevés tant qu'il
-        # reste dans la fenêtre du flux temps réel, sommer directement sur df
-        # le compterait autant de fois (voir mémoire du projet, 2026-07-28 —
-        # même piège déjà corrigé dans generer_rapport.py). Factorisé dans
-        # formatting.py (voir derniers_par_passage) : sert aussi de base à
-        # "Retard max" ci-dessous.
-        derniers = derniers_par_passage(df)
-        passages_impactes = derniers[derniers > 0]
-        heures, minutes = divmod(round(passages_impactes.sum()), 60)
-
-        moyennes_par_gare = df.groupby("gare")["retard_min"].mean()
-        if moyennes_par_gare.empty or moyennes_par_gare.max() <= 0:
-            pire_gare_texte = "aucun retard significatif"
-        else:
-            pire_gare_texte = (
-                f"{moyennes_par_gare.idxmax()} → moy {format_min_sans_zero(moyennes_par_gare.max())} min"
-            )
-
-        # Basé sur la dernière valeur connue par passage (derniers
-        # ci-dessus), pas le maximum brut sur tous les relevés : sinon une
-        # prédiction ponctuelle depuis corrigée (ex: 50 min révisés ensuite
-        # à 20) resterait affichée comme "le" retard max, alors que la
-        # réalité est très différente — repéré par l'utilisateur, 2026-08-03.
-        train_par_passage = derniers.index.get_level_values("trip_id").str.split(":").str[0]
-        maximums_par_train = derniers.groupby(train_par_passage).max()
-        if maximums_par_train.empty or maximums_par_train.max() <= 0:
-            retard_max_texte = "aucun retard significatif"
-        else:
-            retard_max_texte = f"train {maximums_par_train.idxmax()} → {maximums_par_train.max():.0f} min"
-
-        return dict(
-            total=total, en_retard=en_retard,
-            heures=heures, minutes=minutes, nb_passages_impactes=len(passages_impactes),
-            moyen=df["retard_min"].mean(),
-            pire_gare_texte=pire_gare_texte,
-            retard_max_texte=retard_max_texte,
-        )
-
     def _render_stats(self, df):
         # Calculé à part sur les données d'avant "Limiter aux trains avec
         # retard" (voir _filtered_df_avant_retard) : sinon, dès que cette
         # case est cochée, le ratio afficherait toujours 100 %.
         df_avant_retard = self._filtered_df_avant_retard()
-        stats_ratio = self._calculer_stats_bloc(df_avant_retard)
+        stats_ratio = calculer_stats_bloc(df_avant_retard)
         total_trains = stats_ratio["total"]
         if total_trains == 0:
             self.stat_ratio_retard_var.set("Circulations perturbées : -")
@@ -1581,7 +1494,14 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 f"{circulations_perturbees} circulations perturbées / {total_trains} "
                 f"({100 * circulations_perturbees / total_trains:.0f} %)"
             )
-            nb_trains_observes = df_avant_retard["trip_id"].nunique()
+            # sans_date_trip_id : le trip_id brut se termine par un suffixe
+            # de date qui change chaque jour pour un même train réel — un
+            # .nunique() direct comptait (motifs de train × jours observés),
+            # incomparable à len(self.trajet_gares) (indexé sans cette
+            # date) — bug réel corrigé ici (et côté app_fastapi.py),
+            # 2026-08-10 : affichait 562/562 alors que le vrai chiffre est
+            # 478/562.
+            nb_trains_observes = df_avant_retard["trip_id"].map(sans_date_trip_id).nunique()
             self._tooltip_ratio_retard.texte = (
                 f"{circulations_perturbees} circulations perturbées (retard à un moment de "
                 f"leur trajet, même rattrapé ensuite) sur {total_trains} déjà observées "
@@ -1599,7 +1519,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             self._tooltip_pire_gare.texte = ""
             return
 
-        stats = self._calculer_stats_bloc(df)
+        stats = calculer_stats_bloc(df)
         self.stat_cumule_var.set(
             f"Retard cumulé : {stats['heures']} h {stats['minutes']:02d} min "
             f"({stats['nb_passages_impactes']} passages impactés)"
@@ -1755,34 +1675,6 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 texte.insert("end", "\n" + ligne)
         texte.config(state="disabled", height=max(len(lignes), 1))
 
-    def _tracer_serie_temporelle(self, ax, serie, couleur):
-        """Trace une série temporelle en couleur pleine, avec les trous de
-        collecte en gris pointillé plutôt que reliés comme de vraies
-        données. Un relevé toutes les 5 min (cron de collecte) : un écart
-        entre deux points consécutifs nettement supérieur à ça (marge prise
-        à 10 min) signale un vrai trou de collecte (ex: peu/pas de trains la
-        nuit), pas une série de vraies valeurs à 0 (voir mémoire du projet,
-        2026-07-21). Utilisée pour le retard moyen et pour la proportion de
-        trains en retard (2026-07-23), d'où la factorisation."""
-        SEUIL_TROU = pd.Timedelta(minutes=10)
-        ecarts = serie.index.to_series().diff()
-        apres_trou = ecarts[ecarts > SEUIL_TROU].index
-        for t in apres_trou:
-            i = serie.index.get_loc(t)
-            ax.plot(
-                serie.index[i - 1:i + 1], serie.values[i - 1:i + 1],
-                color="#bbbbbb", linestyle="--", linewidth=1, zorder=1,
-            )
-        # Ligne principale coupée aux mêmes endroits (NaN juste avant chaque
-        # reprise) pour ne pas la relier en travers du trou.
-        coupures = pd.Series(float("nan"), index=apres_trou - pd.Timedelta(milliseconds=1))
-        avec_coupures = pd.concat([serie, coupures]).sort_index()
-        ax.plot(avec_coupures.index, avec_coupures.values, color=couleur,
-                marker="o", markersize=1.5, linewidth=1, zorder=2)
-        # En arrière-plan (zorder) et en pointillés : à 0 min de retard, une
-        # ligne de référence pleine et au premier plan masquerait la courbe.
-        ax.axhline(0, color="gray", linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)
-
     def _incruster_travaux(self, ax, debut_visible, fin_visible, gares_visibles):
         """Grise en fond les périodes où une alerte SNCF (travaux, incident...
         voir alertes.csv/collect_alertes.py) concernant une gare de la ligne
@@ -1812,70 +1704,6 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             self._survol_graphique.enregistrer(patch, f"{alerte['gares']} — {alerte['texte']}")
             dessine = True
         return dessine
-
-    def _marquer_maximum(self, ax, serie, couleur, unite, explication):
-        """Repère le pic de la série (valeur + date/heure) : une étoile sur
-        le point, une étiquette à côté, et une info-bulle (sur les deux) qui
-        explique ce que ce maximum apporte de plus que les stats déjà
-        affichées ailleurs — voir SurvolArtistes. Appelée après
-        _finalize_axes plutôt que depuis _tracer_serie_temporelle : comme
-        pour les barres "n=", le cadrage à marge quasi nulle laisse trop peu
-        de place en haut pour l'étiquette si elle est ajoutée avant — on
-        agrandit donc l'axe après coup, une fois sa vraie position connue
-        (voir mémoire du projet, 2026-07-23)."""
-        serie_valide = serie.dropna()
-        if serie_valide.empty:
-            return
-        t_max = serie_valide.idxmax()
-        v_max = serie_valide.loc[t_max]
-        if v_max <= 0:
-            # Une courbe plate à 0 n'a pas de vrai pic à signaler — une étoile
-            # "Max : 0.0" pointerait arbitrairement le premier point, comme
-            # si c'était une information notable.
-            return
-        point, = ax.plot(t_max, v_max, marker="*", markersize=11, color=couleur,
-                          markeredgecolor="black", markeredgewidth=0.5, zorder=4)
-        t_max_local = pd.Timestamp(t_max).tz_convert(PARIS_TZ)
-        etiquette = ax.annotate(
-            f"Max : {v_max:.1f}{unite}\n{t_max_local.strftime('%d/%m %Hh%M')}",
-            xy=(t_max, v_max), xytext=(8, 8), textcoords="offset points",
-            fontsize=7, color="#333333",
-            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec=couleur, alpha=0.9),
-        )
-        self._survol_graphique.enregistrer(point, explication)
-        self._survol_graphique.enregistrer(etiquette, explication)
-        y_min, y_max = ax.get_ylim()
-        ax.set_ylim(top=y_max + (y_max - y_min) * 0.18)
-
-    def _marquer_moyenne(self, ax, serie, couleur, unite, explication, survol=None):
-        """Ligne pointillée horizontale à la moyenne de la période/vue
-        actuellement affichée — complète _marquer_maximum (qui montre le
-        pire moment) en donnant un niveau de référence pour juger si un
-        point/une barre est au-dessus ou en dessous de la tendance
-        générale, plutôt que de devoir comparer à l'œil sans repère.
-        survol : instance SurvolArtistes à utiliser pour l'info-bulle — par
-        défaut celle de l'onglet Graphique, mais réutilisée aussi par les
-        barres de l'onglet Par jour/heure (self._survol_jour_heure)."""
-        if survol is None:
-            survol = self._survol_graphique
-        serie_valide = serie.dropna()
-        if serie_valide.empty:
-            return
-        moyenne = serie_valide.mean()
-        ligne = ax.axhline(moyenne, color=couleur, linestyle="--", linewidth=1, alpha=0.6, zorder=1)
-        etiquette = ax.annotate(
-            f"moy. {moyenne:.1f}{unite}",
-            xy=(1, moyenne), xycoords=("axes fraction", "data"),
-            xytext=(-4, 4), textcoords="offset points",
-            fontsize=7, color=couleur, ha="right",
-            # Fond blanc semi-opaque : sans lui, l'étiquette devient illisible
-            # quand la ligne de moyenne passe pile devant une barre de la
-            # même couleur (repéré par l'utilisateur, 2026-07-30, sur les
-            # graphiques à barres de l'onglet Par jour/heure).
-            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.8),
-        )
-        survol.enregistrer(ligne, explication)
-        survol.enregistrer(etiquette, explication)
 
     def _render_chart(self, df):
         self.ax.clear()
@@ -1921,7 +1749,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             # avec les autres) — on agrège plutôt par relevé (retard moyen de
             # tout ce qui est sélectionné à cet instant), une vraie tendance.
             moyenne_par_releve = plot_df.groupby("poll_time")["retard_min"].mean().sort_index()
-            self._tracer_serie_temporelle(self.ax, moyenne_par_releve, "#1f77b4")
+            tracer_serie_temporelle(self.ax, moyenne_par_releve, "#1f77b4")
             travaux_incrustes = self._incruster_travaux(self.ax, debut_visible, fin_visible, gares_visibles)
 
             legende = [
@@ -1946,8 +1774,8 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             # 2026-07-28) que la barre du haut, mais limitées à cette période
             # (voir _build_chart) — recalculées à chaque rendu pour suivre le
             # sélecteur de période (24h/3j/7j/tout l'historique). Même calcul
-            # que _render_stats, voir _calculer_stats_bloc.
-            stats_periode = self._calculer_stats_bloc(plot_df)
+            # que _render_stats, voir calculer_stats_bloc.
+            stats_periode = calculer_stats_bloc(plot_df)
 
             self.nb_releves_periode_var.set(f"— soit {len(plot_df)} relevés")
             segments_periode = [
@@ -1967,7 +1795,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 return 100 * en_retard / total if total else float("nan")
 
             pct_par_releve = plot_df.groupby("poll_time").apply(_pct_en_retard, include_groups=False).sort_index()
-            self._tracer_serie_temporelle(self.ax2, pct_par_releve, "#c2410c")
+            tracer_serie_temporelle(self.ax2, pct_par_releve, "#c2410c")
             self._incruster_travaux(self.ax2, debut_visible, fin_visible, gares_visibles)
             self.ax2.set_ylabel("% trains en retard")
             self.ax2.set_xlabel("Heure du relevé")
@@ -2011,121 +1839,38 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             # 10 min reste imperceptible même sur "dernières 24h", tout en
             # empêchant une marge nulle si jamais un seul point était tracé.
             MARGE_X_MIN_TEMPS = 10 / (24 * 60)  # 10 min, en jours (unité de l'axe date de matplotlib)
-            self._finalize_axes(self.ax, marge_bas=True, marge_x_min=MARGE_X_MIN_TEMPS)
-            self._finalize_axes(self.ax2, marge_bas=True, marge_x_min=MARGE_X_MIN_TEMPS)
-            self._marquer_maximum(
+            finalize_axes(self.ax, marge_bas=True, marge_x_min=MARGE_X_MIN_TEMPS)
+            finalize_axes(self.ax2, marge_bas=True, marge_x_min=MARGE_X_MIN_TEMPS)
+            marquer_maximum(
                 self.ax, moyenne_par_releve, "#1f77b4", " min",
                 "Indique à quel moment la moyenne, tous trains confondus, a été la plus haute. "
                 "C'est différent du \"Retard max\" affiché en haut de l'appli, qui est le "
                 "pire retard d'un seul train à un instant donné, pas une moyenne. Les deux "
                 "se complètent : l'un dit \"le pire cas isolé jamais vu\", l'autre dit "
                 "\"le pire moment pour la ligne dans son ensemble\".",
+                survol=self._survol_graphique,
             )
-            self._marquer_maximum(
+            marquer_maximum(
                 self.ax2, pct_par_releve, "#c2410c", " %",
                 "Indique le pic de trains simultanément en retard.",
+                survol=self._survol_graphique,
             )
-            self._marquer_moyenne(
+            marquer_moyenne(
                 self.ax, moyenne_par_releve, "#1f77b4", " min",
                 "Moyenne sur la période actuellement affichée (24h/3j/7j/tout l'historique, "
                 "selon le sélecteur ci-dessus) — sert de repère pour juger si un point de la "
                 "courbe est au-dessus ou en dessous de la tendance générale de cette période.",
+                survol=self._survol_graphique,
             )
-            self._marquer_moyenne(
+            marquer_moyenne(
                 self.ax2, pct_par_releve, "#c2410c", " %",
                 "Moyenne sur la période actuellement affichée (24h/3j/7j/tout l'historique, "
                 "selon le sélecteur ci-dessus) — sert de repère pour juger si un point de la "
                 "courbe est au-dessus ou en dessous de la tendance générale de cette période.",
+                survol=self._survol_graphique,
             )
             self.figure.autofmt_xdate()
         self.canvas.draw()
-
-    def _finalize_axes(self, ax, marge_bas=False, marge_x_min=0.1):
-        """Marges/bordures communes aux graphiques 'Graphique' et 'Suivi d'un
-        train' : zéro exactement à l'intersection des axes (pas de marge de 5%
-        par défaut), plage Y minimale lisible quand toutes les valeurs sont
-        quasi identiques (sinon matplotlib invente une échelle du type
-        '1e-17'), et suppression des bordures haut/droite.
-        marge_bas=True (onglet 'Suivi d'un train' uniquement) redonne un peu
-        d'espace sous la valeur minimale, pour que la ligne pointillée de
-        référence à 0 reste visible en pointillés au lieu de se confondre
-        avec le bord inférieur du graphique.
-        marge_x_min : plancher de la marge en X, dans l'unité de l'axe
-        appelant — 0.1 par défaut convient à l'axe par gares (indices ~0-10)
-        de "Suivi d'un train", mais est bien trop grand pour un axe temporel
-        (0.1 = 0.1 JOUR = 2.4h) : le Graphique doit passer un plancher bien
-        plus petit, sinon cette marge, fixe en valeur absolue, devient très
-        visible sur une courte période ("dernières 24h") tout en restant
-        invisible sur une longue ("7 derniers jours") — voir mémoire du
-        projet, 2026-07-24."""
-        ax.margins(x=0, y=0)
-        y_min, y_max = ax.get_ylim()
-        degenere = y_max - y_min < 1
-        if degenere:
-            centre = (y_min + y_max) / 2
-            if marge_bas:
-                # Mêmes marges resserrées que le cas normal (voir plus bas) —
-                # sinon un trajet plat (ex: 0 min partout) affichait un grand
-                # espace vide au-dessus/en-dessous, disproportionné par
-                # rapport aux trajets avec un vrai retard.
-                ax.set_ylim(centre - 0.1, centre + 1)
-            else:
-                bas, haut = centre - 2.5, centre + 2.5
-                if bas < 0:
-                    # Un retard/% n'est jamais négatif : ne pas descendre
-                    # sous 0 juste pour garder une plage symétrique
-                    # artificielle (ex: barres d'une catégorie sans aucune
-                    # variation, toutes à 0 min) — on décale la plage vers le
-                    # haut plutôt que de la rétrécir, pour garder la même
-                    # échelle visuelle que les autres graphiques dégénérés.
-                    haut -= bas
-                    bas = 0
-                ax.set_ylim(bas, haut)
-        elif marge_bas:
-            marge = max((y_max - y_min) * 0.02, 0.75)
-            marge_haut = max((y_max - y_min) * 0.02, 1)
-            ax.set_ylim(y_min - marge, y_max + marge_haut)
-
-        # Un retard (ou un %) n'est jamais négatif : sur les deux onglets
-        # utilisant cette méthode (Graphique/Suivi d'un train ET Par jour/
-        # heure), une graduation en dessous de 0 n'a pas de sens — filtrée
-        # systématiquement, pas seulement quand marge_bas laisse une marge
-        # sous 0 pour le pointillé de référence. Sans ça, un trajet/une
-        # catégorie sans aucune variation (ex: 0 min partout) retombait sur
-        # la plage symétrique par défaut de la branche "degenere" ci-dessus,
-        # avec des graduations négatives visibles.
-        _, y_max_actuel = ax.get_ylim()
-        # Borné aussi par le haut avec la limite actuelle : le locator par
-        # défaut propose parfois une graduation légèrement au-delà (ex: 30
-        # pour une vue qui va jusqu'à 26) — la fixer explicitement sans ce
-        # filtre réélargirait l'axe pour l'inclure.
-        ax.set_yticks([t for t in ax.get_yticks() if 0 <= t <= y_max_actuel])
-        # Petits traits intermédiaires entre deux graduations (ex: entre 1 et
-        # 2 min) sans chiffres, pour lire les valeurs plus finement sans
-        # alourdir l'axe. Le locator automatique déborde sous 0 (la marge du
-        # bas n'a pas de graduation majeure pour le contenir) — filtré
-        # explicitement pour les mêmes raisons que les majeures.
-        ax.yaxis.set_minor_locator(AutoMinorLocator(2))
-        ax.set_yticks([t for t in ax.yaxis.get_minorticklocs() if 0 <= t <= y_max_actuel], minor=True)
-        ax.tick_params(axis="y", which="minor", length=3)
-
-        if marge_bas:
-            # Petite marge en x aussi, pour que la première/dernière gare ne
-            # soit pas collée au bord du graphique. Calculée à partir de
-            # dataLim (l'étendue réelle des données tracées), pas de
-            # get_xlim() : le Graphique appelle cette méthode successivement
-            # sur self.ax puis self.ax2, qui partagent leur axe X (sharex) —
-            # lire get_xlim() au 2e appel aurait relu la plage déjà élargie
-            # par le 1er, doublant la marge (et créant un grand vide au
-            # début du graphique qui ressemblait à tort à un trou de
-            # collecte, voir mémoire du projet, 2026-07-24). dataLim n'est
-            # pas affecté par set_xlim(), donc stable peu importe l'ordre
-            # ou le nombre d'appels.
-            x_min, x_max = ax.dataLim.intervalx
-            marge_x = max((x_max - x_min) * 0.02, marge_x_min)
-            ax.set_xlim(x_min - marge_x, x_max + marge_x)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
 
     SEUIL_FIABLE = 30  # nb minimal de relevés pour considérer une barre fiable
 
@@ -2179,9 +1924,9 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         if xlabel:
             ax.set_xlabel(xlabel)
         ax.axhline(0, color="gray", linewidth=0.6)
-        self._finalize_axes(ax)
+        finalize_axes(ax)
         if afficher_moyenne:
-            self._marquer_moyenne(
+            marquer_moyenne(
                 ax, pd.Series(valeurs), couleur, unite,
                 "Moyenne de toutes les barres de ce graphique — sert de repère pour comparer "
                 "chaque catégorie à la tendance générale.",
@@ -2368,7 +2113,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # En arrière-plan (zorder) et en pointillés : à 0 min de retard, une
         # ligne de référence pleine et au premier plan masquerait les courbes.
         self.train_ax.axhline(0, color="gray", linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)
-        self._finalize_axes(self.train_ax, marge_bas=True)
+        finalize_axes(self.train_ax, marge_bas=True)
         self.train_figure.tight_layout()
         self.train_canvas.draw()
 

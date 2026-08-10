@@ -125,9 +125,20 @@ def estimer_passage_reel(heure_gtfs, start_date, retard_min):
     return pd.Timestamp(dt_reel.astimezone(ZoneInfo("UTC")))
 
 
+VALEUR_MANQUANTE = "–"  # tiret cadratin (U+2013), PAS un simple "-" (U+002D) :
+# un "-" seul en début de cellule est interprété comme une liste à puce par
+# le rendu Markdown de st.table (chaque cellule y est rendue en Markdown) —
+# provoquait un "<ul><li></li></ul>" vide (le "•" visible) avec une hauteur
+# de ligne différente des autres (marges par défaut d'une liste), repéré
+# par l'utilisateur, 2026-08-05.
+
+
 def format_valeur(valeur):
-    """Affiche '-' plutôt que 'nan' pour une valeur manquante (pandas NaN)."""
-    return "-" if pd.isna(valeur) else valeur
+    """Affiche VALEUR_MANQUANTE plutôt que 'nan' pour une valeur manquante
+    (pandas NaN). Renvoie toujours une chaîne (voir format_retard pour la
+    raison : mélange str/float dans une même colonne, inoffensif dans
+    Tkinter mais qui fait échouer la sérialisation Arrow de Streamlit)."""
+    return VALEUR_MANQUANTE if pd.isna(valeur) else str(valeur)
 
 
 def format_entier(valeur):
@@ -135,16 +146,20 @@ def format_entier(valeur):
     entière en float64 dès qu'elle contient au moins une valeur manquante
     (ex: 'arrets_restants', vide tant que le terminus du trajet n'est pas
     connu), ce qui affiche '2.0' au lieu de '2'."""
-    return "-" if pd.isna(valeur) else f"{int(valeur):d}"
+    return VALEUR_MANQUANTE if pd.isna(valeur) else f"{int(valeur):d}"
 
 
 def format_retard(valeur):
     """Comme format_valeur, avec un '+' devant les retards strictement
     positifs (ex: '+15.0') pour les distinguer visuellement des trains à
-    l'heure (0.0, sans '+')."""
+    l'heure (0.0, sans '+'). Renvoie toujours une chaîne (jamais le float
+    brut) : Tkinter affichait les deux de façon identique (Treeview
+    stringifie tout), mais un mélange str/float dans la même colonne fait
+    échouer la sérialisation Arrow de Streamlit (app_streamlit.py, repéré
+    2026-08-04)."""
     if pd.isna(valeur):
-        return "-"
-    return f"+{valeur}" if valeur > 0 else valeur
+        return VALEUR_MANQUANTE
+    return f"+{valeur}" if valeur > 0 else str(valeur)
 
 
 def format_bool_oui_non(valeur):
@@ -189,6 +204,106 @@ def derniers_par_passage(df):
     corrigés à 20) reste comptée comme si elle avait tenu jusqu'au bout —
     repéré par l'utilisateur, 2026-08-03."""
     return derniers_par_passage_avec_date(df)["retard_min"]
+
+
+def format_min_sans_zero(valeur):
+    """Une décimale, sauf si elle est nulle (ex: '2' plutôt que '2.0', mais
+    '3.6' reste '3.6') — utilisé pour les moyennes affichées dans les barres
+    de stats, où ".0" n'apporte rien et alourdit la lecture."""
+    arrondi = round(valeur, 1)
+    return f"{arrondi:.0f}" if arrondi == int(arrondi) else f"{arrondi:.1f}"
+
+
+def calculer_stats_bloc(df):
+    """Calcule le bloc de statistiques partagé entre la barre du haut de
+    viewer.py (_render_stats) et sa ligne de stats par période de l'onglet
+    Graphique (_render_chart) : ratio de circulations perturbées, retard
+    cumulé, gare la + touchée et retard max par train — mêmes formules dans
+    les deux cas, seul le DataFrame passé en argument change (historique
+    filtré complet, ou la période choisie seulement). Factorisé ici (pas
+    seulement dans viewer.py) car app_streamlit.py en a besoin aussi, sans
+    dépendre de tkinter. Suppose df non vide sur retard_min (les appelants
+    vérifient déjà ce cas avant d'appeler cette fonction)."""
+    circulation = cle_circulation(df)
+    total = circulation.nunique()
+    en_retard = circulation[df["retard_min"] > 0].nunique() if total else 0
+
+    # Une seule valeur par passage réel (dernier relevé connu), pas une par
+    # relevé : un même passage est vu à plusieurs relevés tant qu'il reste
+    # dans la fenêtre du flux temps réel, sommer directement sur df le
+    # compterait autant de fois (voir mémoire du projet, 2026-07-28).
+    derniers = derniers_par_passage(df)
+    passages_impactes = derniers[derniers > 0]
+    heures, minutes = divmod(round(passages_impactes.sum()), 60)
+
+    moyennes_par_gare = df.groupby("gare")["retard_min"].mean()
+    if moyennes_par_gare.empty or moyennes_par_gare.max() <= 0:
+        pire_gare_texte = "aucun retard significatif"
+    else:
+        pire_gare_texte = (
+            f"{moyennes_par_gare.idxmax()} → moy {format_min_sans_zero(moyennes_par_gare.max())} min"
+        )
+
+    # Basé sur la dernière valeur connue par passage (derniers ci-dessus),
+    # pas le maximum brut sur tous les relevés : sinon une prédiction
+    # ponctuelle depuis corrigée (ex: 50 min révisés ensuite à 20) resterait
+    # affichée comme "le" retard max, alors que la réalité est très
+    # différente — repéré par l'utilisateur, 2026-08-03.
+    train_par_passage = derniers.index.get_level_values("trip_id").str.split(":").str[0]
+    maximums_par_train = derniers.groupby(train_par_passage).max()
+    if maximums_par_train.empty or maximums_par_train.max() <= 0:
+        retard_max_texte = "aucun retard significatif"
+    else:
+        retard_max_texte = f"train {maximums_par_train.idxmax()} → {maximums_par_train.max():.0f} min"
+
+    return dict(
+        total=total, en_retard=en_retard,
+        heures=heures, minutes=minutes, nb_passages_impactes=len(passages_impactes),
+        moyen=df["retard_min"].mean(),
+        pire_gare_texte=pire_gare_texte,
+        retard_max_texte=retard_max_texte,
+    )
+
+
+# Codes 5 lettres "maison" (pas des codes officiels SNCF confirmés), utilisés
+# uniquement pour raccourcir l'affichage de la colonne "Sens".
+STATION_CODES = {
+    "Cherbourg": "CHERB",
+    "Valognes": "VALOG",
+    "Carentan": "CAREN",
+    "Lison": "LISON",
+    "Bayeux": "BAYEU",
+    "Caen": "CAEN",
+    "Lisieux": "LISIE",
+    "Bernay": "BERNA",
+    "Évreux Normandie": "EVREU",
+    "Paris Saint-Lazare": "PARIS",
+    "Mantes-la-Jolie": "MANTE",
+    "Coutances": "COUTA",
+    "Dol-de-Bretagne": "DOLDE",
+    "Elbeuf - Saint-Aubin": "ELBEU",
+    "Granville": "GRANV",
+    "Oissel": "OISSE",
+    "Rennes": "RENNE",
+    "Rouen Rive Droite": "ROUEN",
+    "Saint-Lô": "ST-LÔ",
+    "Serquigny": "SERQU",
+    "Trouville - Deauville": "TROUV",
+    "Vernon - Giverny": "VERNO",
+}
+
+
+def trajet_sens(trip_id, trajet_gares):
+    """Sens d'un trajet ('CHERB → PARIS') à partir de ses gares de départ et
+    d'arrivée théoriques (trajet_gares, voir build_trip_data) — chaîne vide
+    si le trajet théorique du train n'est plus dans le référentiel actuel
+    (voir sans_date_trip_id) ou n'a qu'une seule gare."""
+    gares = trajet_gares.get(sans_date_trip_id(trip_id))
+    if not gares or len(gares) < 2:
+        return ""
+    origine = STATION_CODES.get(gares[0], gares[0])
+    destination = STATION_CODES.get(gares[-1], gares[-1])
+    return f"{origine} → {destination}"
 
 
 def load_reference():
