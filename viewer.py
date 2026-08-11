@@ -39,6 +39,7 @@ from formatting import (
     calculer_stats_bloc,
     cle_circulation,
     derniers_par_passage,
+    duree_theorique,
     format_bool_oui_non,
     format_entier,
     format_gare,
@@ -860,7 +861,8 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # Un peu plus haut que le minimum requis par les points/étiquettes
         # (80px) : laisse la place à la légende "Trajet : ..." et au
         # connecteur en pointillé vers une gare hors ligne (voir
-        # _infos_trajet_sens), affichés quand un Sens précis est sélectionné.
+        # _infos_trajet_depuis_route), affichés sur Suivi d'un train quand
+        # une circulation précise est sélectionnée.
         self.frise_canvas = tk.Canvas(self, height=95, bg=fond, highlightthickness=0)
         self.frise_canvas.pack(fill="x", padx=10, pady=(0, 5))
         # Redessiner au redimensionnement : les positions des gares sont
@@ -1149,21 +1151,29 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             self.select_trajet_var.set("")
             self._render_train_tab()
 
-    def _infos_trajet_sens(self):
-        """Pour le Sens actuellement sélectionné (hors "Tous"), retrouve la
-        liste réelle des gares parcourues (via trajet_gares, dans l'ordre
-        réel de circulation) par une circulation représentative de ce sens,
-        et repère si elle entre/sort de la ligne par une gare hors des 11
-        (ex: Saint-Lô via Lison) — pour que la frise mette en évidence le
-        tronçon réellement emprunté plutôt que de montrer les gares non
-        desservies comme un simple "pas de donnée" (voir mémoire du projet,
-        2026-07-24). Une seule circulation prise comme représentative :
-        comme pour le libellé du Sens lui-même (_trajet_sens), on suppose
-        que les trip_id partageant la même origine/destination suivent le
-        même trajet physique.
+    def _infos_trajet_depuis_route(self, route):
+        """À partir de la liste réelle des gares parcourues par UNE
+        circulation précise (route, déjà dans l'ordre réel de circulation —
+        voir trajet_gares), repère si elle entre/sort de la ligne par une
+        gare hors des 11 (ex: Saint-Lô via Lison) — pour que la frise mette
+        en évidence le tronçon réellement emprunté plutôt que de montrer les
+        gares non desservies comme un simple "pas de donnée" (voir mémoire
+        du projet, 2026-07-24).
 
-        Retourne None si Sens = "Tous", ou si aucune circulation ne
-        correspond (ex: juste après un changement de filtre). Sinon :
+        Ancienne version (repéré par l'utilisateur, 2026-08-11 — même
+        session que le port FastAPI, voir app_fastapi.py) : cette méthode
+        s'appelait _infos_trajet_sens et essayait de deviner une circulation
+        "représentative" pour tout le Sens sélectionné (ex: "PARIS →
+        CHERB"), en prenant juste la première trouvée. Mais un Sens recouvre
+        plusieurs trajets physiques réellement différents (certains
+        Paris-Cherbourg sautent Évreux Normandie/Bernay/Lisieux, d'autres
+        s'y arrêtent) — aucun représentant unique n'est correct pour tous.
+        La frise n'estompe donc plus jamais selon le Sens seul : seulement
+        quand une circulation précise est réellement sélectionnée dans
+        Suivi d'un train (voir _render_frise, qui construit `route` à partir
+        de select_trajet_var dans ce cas, et passe None sinon).
+
+        Retourne None si route est vide/absente. Sinon :
         (gares_sur_trajet, ordre_reel, connecteur_avant, connecteur_apres) :
         - gares_sur_trajet : sous-ensemble de GARES_LIGNE_ORDRE réellement
           desservi, dans l'ordre GARES_LIGNE_ORDRE (pour le positionnement) ;
@@ -1176,13 +1186,6 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
           être tous les deux renseignés (une seule gare de la ligne
           traversée, hors ligne des deux côtés) ou tous les deux None (le
           trajet ne quitte jamais les 11 gares)."""
-        sens = self.filtre_sens_var.get()
-        if sens == "Tous":
-            return None
-        trip_ids = self.df.loc[self.df["sens"] == sens, "trip_id"].unique()
-        if len(trip_ids) == 0:
-            return None
-        route = self.trajet_gares.get(sans_date_trip_id(trip_ids[0]))
         if not route:
             return None
         gares_set = set(route)
@@ -1249,11 +1252,17 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         _build_frise_ligne), d'où le recalcul ici plutôt que de dépendre
         d'un df passé en paramètre par render().
 
-        Quand un Sens précis est sélectionné (voir _infos_trajet_sens), les
-        gares non desservies par ce trajet sont estompées (point creux, nom
+        Sur l'onglet Suivi d'un train, quand une circulation précise est
+        sélectionnée (voir _infos_trajet_depuis_route), les gares non
+        desservies par ce trajet réel sont estompées (point creux, nom
         grisé) plutôt que traitées comme un simple "pas de donnée" (point
         gris plein, comme pour une vraie absence de relevé) — les deux
-        situations ne veulent pas dire la même chose."""
+        situations ne veulent pas dire la même chose. Sur les autres
+        onglets, jamais d'estompage par trajet : un Sens (ex: "PARIS →
+        CHERB") recouvre plusieurs trajets physiques réellement différents
+        (repéré par l'utilisateur, 2026-08-11), donc il n'existe pas de
+        "trajet" unique et correct à représenter tant qu'aucune circulation
+        précise n'est choisie."""
         self.frise_canvas.delete("all")
         if self.df is None:
             return
@@ -1263,15 +1272,26 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
         df = self._filtered_df_avant_retard()
         moyennes = df.groupby("gare")["retard_min"].mean()
-        infos_trajet = self._infos_trajet_sens()
+
+        infos_trajet = None
+        if self.notebook.select() == str(self.train_tab):
+            selection = self.select_trajet_var.get()
+            cle_trajet = self.trajet_labels.get(selection) if selection else None
+            if cle_trajet is not None:
+                trip_id, _start_date = cle_trajet
+                route = self.trajet_gares.get(sans_date_trip_id(trip_id))
+                if route:
+                    infos_trajet = self._infos_trajet_depuis_route(route)
 
         nb_releves_frise = int(df["retard_min"].count())
         self._tooltip_frise.texte = (
-            "Retard moyen / relevé propre à chaque gare ≠ "
-            "du \"Retard moyen / relevé\" affiché en haut qui est issu des filtres actifs "
+            "Retard moyen par relevé propre à chaque gare ≠ "
+            "du \"Retard moyen par relevé\" affiché en haut qui est issu des filtres actifs "
             f"alors que cette frise (calculée sur {nb_releves_frise} relevés) reste "
             "toujours limitée aux 11 gares de la ligne et ignore \"Limiter aux trains avec "
-            "retard\" précisément (pour donner un vrai état de la ligne)."
+            "retard\" précisément (pour donner un vrai état de la ligne). Point gris plein : "
+            "aucune donnée pour cette gare sous les filtres actuels. Point creux (Suivi "
+            "d'un train uniquement) : gare que le train sélectionné ne dessert pas du tout."
         )
 
         marge = 90
@@ -2067,16 +2087,27 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             return
         position_gare = {gare: i for i, gare in enumerate(ordre_gares)}
 
+        horaires_bruts = self.trajet_horaires.get(sans_date_trip_id(trip_id), [])
         horaires = [
             format_heure_avec_arret(h, start_date, arret)
             for h, arret in zip(
-                self.trajet_horaires.get(sans_date_trip_id(trip_id), []),
+                horaires_bruts,
                 self.trajet_arrets.get(sans_date_trip_id(trip_id), []),
             )
         ]
         if horaires and horaires[0] and horaires[-1]:
+            # Icône horloge + durée théorique en préfixe, comme côté web
+            # (app_fastapi.py, demandé par l'utilisateur pour cette version-là
+            # le 2026-08-10, ajouté ici le 2026-08-11) — sans la mise en forme
+            # CSS (icône légèrement agrandie) de la version web, pas
+            # transposable à un ttk.Label unique. ◷ (U+25F7) plutôt que ⏱ :
+            # ce dernier rendait comme un rectangle vide (glyphe manquant,
+            # absent de DejaVu Sans — vérifié dans sa table cmap) sur ce
+            # bureau Linux, contrairement à ◷, couvert par cette police.
+            duree = duree_theorique(horaires_bruts[0], horaires_bruts[-1], start_date)
             self.depart_arrivee_var.set(
-                f"Départ {format_gare(ordre_gares[0])} à {horaires[0]}  →  "
+                (f"◷ {duree}  —  " if duree else "")
+                + f"Départ {format_gare(ordre_gares[0])} à {horaires[0]}  →  "
                 f"Arrivée {format_gare(ordre_gares[-1])} à {horaires[-1]}"
             )
         else:

@@ -7,7 +7,6 @@
     --accent: #b01678;
     --pastille-fond: rgba(33, 197, 94, 0.16);
     --pastille-texte: #16a34a;
-    --separateur-fond: beige;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -20,7 +19,6 @@
         --accent: #c21758;
         --pastille-fond: rgba(34, 197, 94, 0.2);
         --pastille-texte: #4ade80;
-        --separateur-fond: #3a3728;
     }
 }
 
@@ -40,7 +38,6 @@ enregistré), seule la règle @media ci-dessus s'applique. */
     --accent: #c21758;
     --pastille-fond: rgba(34, 197, 94, 0.2);
     --pastille-texte: #4ade80;
-    --separateur-fond: #3a3728;
 }
 
 :root[data-theme="light"] {
@@ -52,7 +49,6 @@ enregistré), seule la règle @media ci-dessus s'applique. */
     --accent: #b01678;
     --pastille-fond: rgba(33, 197, 94, 0.16);
     --pastille-texte: #16a34a;
-    --separateur-fond: beige;
 }
 
 * {
@@ -128,6 +124,56 @@ faisait plus rien. */
     top: 0;
     left: 0;
     pointer-events: none;
+}
+
+/* Même classe wipée, troisième symptôme repéré en pratique (Playwright,
+2026-08-10) : Plotly pose aussi .js-plotly-plot .modebar{position:absolute;
+top:2px;right:2px} pour sa barre d'outils (zoom/pan/appareil photo...).
+Sans ce palliatif, un changement de période (onglet Graphique) faisait
+retomber la barre d'outils en flux normal, agglutinée en haut à gauche du
+graphique au lieu d'être ancrée en haut à droite. */
+#graphique-plot .modebar,
+#train-plot .modebar {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+}
+
+/* Toujours la même classe wipée : une fois la barre d'outils replacée en
+haut à droite (ci-dessus), ses boutons restaient empilés verticalement au
+lieu d'être en ligne — .modebar-group{float:left} est ce qui les aligne
+côte à côte, .modebar-btn/.modebar-btn svg leur mise en forme individuelle
+(taille, curseur, alignement de l'icône) ; les trois viennent aussi de
+.js-plotly-plot, repéré en pratique (Playwright, 2026-08-10). */
+#graphique-plot .modebar-group,
+#train-plot .modebar-group {
+    float: left;
+    /* display: inline-block sciemment omis : présent dans la feuille de
+    style injectée par Plotly (copiée ici à l'identique), mais sans effet —
+    float != none force déjà l'affichage en bloc, l'inline-block d'origine
+    est ignoré par les navigateurs (repéré par le linter CSS, 2026-08-12). */
+    box-sizing: border-box;
+    padding-left: 8px;
+    position: relative;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+#graphique-plot .modebar-btn,
+#train-plot .modebar-btn {
+    position: relative;
+    font-size: 16px;
+    padding: 3px 4px;
+    height: 22px;
+    cursor: pointer;
+    line-height: normal;
+    box-sizing: border-box;
+}
+
+#graphique-plot .modebar-btn svg,
+#train-plot .modebar-btn svg {
+    position: relative;
+    top: 2px;
 }
 
 /* La page elle-même ne défile jamais (voir #zone-contenu plus bas, qui
@@ -839,6 +885,12 @@ toucher .champ ailleurs (ex: les filtres Gare/Train/Sens de l'entête). */
     font-weight: 600;
 }
 
+/* Icône ⏱ de la durée théorique (Suivi d'un train) légèrement agrandie par
+rapport au texte autour, pour ressortir un peu sans être criarde. */
+.duree-icone {
+    font-size: 1.3em;
+}
+
 /* #graphique-plot/#train-plot : même taille, regroupées (audit 2026-08-10).
 #jh-* (Par jour/heure) n'a pas d'équivalent ici : chaque graphique fait
 32vh via .grille-jour-heure > div plus bas, pas 65vh plein. */
@@ -1003,7 +1055,7 @@ thead th:last-child {
 }
 
 tbody td {
-    padding: 0.35rem 0.4rem;
+    padding: 0.25rem 0.4rem;
     text-align: center;
     white-space: nowrap;
 }
@@ -1031,8 +1083,8 @@ th:nth-child(13), td:nth-child(13) { width: 4%; }
 
 tr.separateur td {
     padding: 0;
-    height: 0.75rem;
-    background: var(--separateur-fond);
+    height: 0.2rem;
+    background: var(--fond-secondaire);
 }
 
 /* Contrairement à viewer.py (Treeview, colore toute la ligne), ces 3

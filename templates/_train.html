@@ -1,6 +1,9 @@
 {% if not erreur %}
 <div class="zone-train">
     <div class="ligne-periode" id="filtres-train">
+        {% if depart_arrivee %}
+            <p class="info stat-graphique">{{ depart_arrivee | safe }}</p>
+        {% endif %}
         <div class="champ champ-case">
             <input type="hidden" name="filtre_jour_retard" value="false">
             <label>
@@ -31,9 +34,6 @@
                 {% endfor %}
             </select>
         </div>
-        {% if depart_arrivee %}
-            <p class="info stat-graphique">{{ depart_arrivee }}</p>
-        {% endif %}
     </div>
     <p class="info">{{ aide_vue_train }}</p>
     {% if train_vide %}

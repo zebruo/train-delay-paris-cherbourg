@@ -4,7 +4,13 @@
         <thead>
             <tr>
                 {% for entete in entetes %}
-                    <th>{{ entete }}</th>
+                    {% if entete == "Arr. (min)" %}
+                        <th>{{ entete }} <span class="icone-info" title="Retard prévu à l'arrivée dans cette gare, au moment de ce relevé. Vide pour la toute première gare du trajet (un train n'y arrive pas, il y part). Couleur : rouge si ≥ 10 min, orange si entre 5 et 10 min.">ℹ</span></th>
+                    {% elif entete == "Dép. (min)" %}
+                        <th>{{ entete }} <span class="icone-info" title="Retard prévu au départ de cette gare, au moment de ce relevé. Vide pour la dernière gare du trajet (un train n'y repart pas, il y arrive). Couleur : si l'arrivée dans cette gare est déjà en retard, même couleur que la colonne Arrêt. Sinon, doré/jaune ce train est arrivé à l'heure mais il est resté plus longtemps que prévu en gare.">ℹ</span></th>
+                    {% else %}
+                        <th>{{ entete }}</th>
+                    {% endif %}
                 {% endfor %}
             </tr>
         </thead>

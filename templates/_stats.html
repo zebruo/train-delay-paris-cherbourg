@@ -13,7 +13,7 @@
         </div>
     </div>
     <div class="stat">
-        <div class="stat-label">Retard cumulé <span class="icone-info" title="Somme des retards, une seule fois par passage réel (dernière valeur connue), pas par relevé — contrairement à « Retard moyen / relevé », chaque perturbation n'est comptée qu'une fois même si elle a été vue à plusieurs relevés successifs.">ℹ</span></div>
+        <div class="stat-label">Retard cumulé <span class="icone-info" title="{{ tooltip_cumule }}">ℹ</span></div>
         <div class="stat-valeur">{{ stats.heures }} h {{ "%02d"|format(stats.minutes) }} min</div>
     </div>
     {% if vue != "jour_heure" %}

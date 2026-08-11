@@ -22,7 +22,7 @@ from google.transit import gtfs_realtime_pb2
 
 from calendar_data import Calendrier
 from formatting import sans_date_trip_id
-from perturbations import detecter_evenements, enregistrer_evenements
+from perturbations import CANCELED, SKIPPED, detecter_evenements, enregistrer_evenements
 
 FEED_URL = "https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-trip-updates"
 WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
@@ -120,8 +120,27 @@ def main():
         trip = entity.trip_update.trip
         if sans_date_trip_id(trip.trip_id) not in known_trip_ids:
             continue
+        # Un trajet annulé (CANCELED) liste parfois quand même ses arrêts en
+        # détail dans stop_time_update, avec un delay résiduel jamais mis à
+        # jour (souvent 0) — constaté en pratique, 2026-08-12 (804 lignes sur
+        # 2 trajets annulés dans observations.csv, apparaissant "à l'heure"
+        # alors que le trajet n'a jamais eu lieu), malgré le commentaire de
+        # detecter_evenements (perturbations.py) supposant qu'un trajet
+        # annulé n'a "normalement" pas d'arrêts détaillés. On ignore donc
+        # explicitement le trajet entier ici, pas seulement dans la détection
+        # d'événements.
+        if trip.schedule_relationship == CANCELED:
+            continue
 
         for stu in entity.trip_update.stop_time_update:
+            # Même logique pour un arrêt isolé supprimé (SKIPPED) sur un
+            # trajet qui continue par ailleurs : son delay résiduel ne
+            # reflète plus une vraie prédiction, mais restait enregistré tel
+            # quel (voir mémoire du projet et perturbations.detecter_evenements,
+            # qui capture déjà l'événement séparément dans
+            # perturbations_detectees.csv — mais observations.csv l'ignorait).
+            if stu.schedule_relationship == SKIPPED:
+                continue
             raw_rows.append({
                 "poll_time": poll_time,
                 "trip_id": trip.trip_id,

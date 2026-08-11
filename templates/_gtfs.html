@@ -25,12 +25,12 @@
                         <th>Date</th>
                         <th>Référence datée du</th>
                         <th>Export SNCF du jour</th>
-                        <th title="Nombre de trains (desserte Paris-Cherbourg) présents à la fois dans le référentiel de l'application et dans l'export SNCF du jour.">Communs</th>
-                        <th title="Parmi les trains communs, ceux dont l'horaire et les arrêts n'ont pas changé depuis le référentiel.">Identiques</th>
-                        <th title="Parmi les trains communs, ceux dont l'horaire ou la liste d'arrêts a changé — le trajet théorique affiché dans l'application peut être légèrement faux pour ces trains-là.">Modifiés</th>
-                        <th title="Trains présents dans le référentiel mais absents de l'export SNCF du jour — sans impact en soi, sauf s'ils sont en réalité toujours en service sous une autre forme.">Disparus</th>
-                        <th title="Trains présents dans l'export SNCF du jour mais absents du référentiel — ces trains-là ne sont actuellement suivis par aucun relevé de l'application. Le chiffre le plus important à surveiller.">Nouveaux</th>
-                        <th title="« ⚠ Aggravation » si l'écart (disparus + modifiés + nouveaux) a augmenté depuis la dernière alerte détaillée, « Stable » sinon, « Échec » si le serveur SNCF était injoignable ce jour-là.">Statut</th>
+                        <th>Communs <span class="icone-info" title="Nombre de trains (desserte Paris-Cherbourg) présents à la fois dans le référentiel de l'application et dans l'export SNCF du jour.">ℹ</span></th>
+                        <th>Identiques <span class="icone-info" title="Parmi les trains communs, ceux dont l'horaire et les arrêts n'ont pas changé depuis le référentiel.">ℹ</span></th>
+                        <th>Modifiés <span class="icone-info" title="Les horaires/arrêts que l'appli affiche ne correspondent plus exactement à la réalité SNCF actuelle — c'est un signal que le référentiel commence à dater.">ℹ</span></th>
+                        <th>Disparus <span class="icone-info" title="Trains présents dans le référentiel mais absents de l'export SNCF du jour — sans impact en soi, sauf s'ils sont en réalité toujours en service sous une autre forme.">ℹ</span></th>
+                        <th>Nouveaux <span class="icone-info" title="Trains présents dans l'export SNCF du jour mais absents du référentiel — ces trains-là ne sont actuellement suivis par aucun relevé de l'application. Le chiffre le plus important à surveiller.">ℹ</span></th>
+                        <th>Statut <span class="icone-info" title="« ⚠ Aggravation » si l'écart (disparus + modifiés + nouveaux) a augmenté depuis la dernière alerte détaillée, « Stable » sinon, « Échec » si le serveur SNCF était injoignable ce jour-là.">ℹ</span></th>
                     </tr>
                 </thead>
                 <tbody>

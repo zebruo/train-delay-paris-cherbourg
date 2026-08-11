@@ -34,6 +34,7 @@ from formatting import (
     calculer_stats_bloc,
     cle_circulation,
     derniers_par_passage,
+    duree_theorique,
     estimer_passage_reel,
     format_bool_oui_non,
     format_entier,
@@ -115,6 +116,24 @@ def mise_en_forme_hover(texte, largeur=55):
     le graphique. Insère des <br> aux mêmes endroits qu'un retour à la
     ligne classique (textwrap), repéré en pratique (Playwright, 2026-08-05)."""
     return "<br>".join(textwrap.wrap(texte, largeur))
+
+
+def json_pour_script(valeur):
+    """json.dumps() qui échappe aussi "</" — une chaîne contenant
+    "</script>" (ex: un nom de gare hypothétique) ne doit pas fermer
+    prématurément la balise <script> dans laquelle ce JSON est injecté
+    (_graphique.html/_jour_heure.html/_train.html, ou le toast de
+    /rafraichir). Centralise un motif qui était répété à l'identique à
+    4 endroits (audit du 2026-08-10)."""
+    return json.dumps(valeur).replace("</", "<\\/")
+
+
+def _format_start_date(start_date):
+    """AAAAMMJJ (start_date GTFS, ex: "20260810") -> JJ/MM/AAAA. Distinct de
+    _format_date_gtfs (plus bas) : format source différent ("AAAA-MM-JJ",
+    horodatages du journal verifier_gtfs.py)."""
+    return datetime.strptime(str(start_date), "%Y%m%d").strftime("%d/%m/%Y")
+
 
 # Chargé une fois au démarrage (voir lifespan plus bas), équivalent du
 # @st.cache_data de la version Streamlit — change rarement.
@@ -221,11 +240,19 @@ def options_gare(df):
     return options
 
 
+def _gare_est_filtree(gare):
+    """Une "Gare" réellement sélectionnée dans le filtre — pas "Toutes" ni
+    un séparateur visuel "— ... —" (voir options_gare). Même garde répétée
+    à 2 endroits (filtrer_df, calculer_contexte_graphique) avant cette
+    factorisation (audit du 2026-08-10)."""
+    return bool(gare) and gare != "Toutes" and not gare.startswith("—")
+
+
 def filtrer_df(df, gare, train, sens, appliquer_limite_ligne):
     """Comme _filtered_df_avant_retard (viewer.py) : Gare/Train/Sens +
     "Limiter aux gares de la ligne", sans "Limiter aux trains avec retard"
     (voir restreindre_aux_trains_en_retard, appliqué à part)."""
-    if gare and gare != "Toutes" and not gare.startswith("—"):
+    if _gare_est_filtree(gare):
         df = df[df["gare"] == gare]
     if train and train != "Tous":
         df = df[df["train"] == train]
@@ -305,24 +332,29 @@ FRISE_MARGE_X = 90
 FRISE_Y_LIGNE = 30
 
 
-def _infos_trajet_sens(df, sens):
-    """Porte _infos_trajet_sens (viewer.py:1152-1200) : pour le Sens
-    sélectionné (jamais "Tous"), retrouve la liste réelle des gares
-    parcourues (via reference_donnees["trajet_gares"], dans l'ordre réel de
-    circulation) par une circulation représentative de ce sens, et repère
-    si elle entre/sort de la ligne par une gare hors des 11 (ex: Saint-Lô
-    via Lison). Une seule circulation prise comme représentative : comme
-    pour le libellé du Sens lui-même, on suppose que les trip_id partageant
-    la même origine/destination suivent le même trajet physique.
+def _infos_trajet_depuis_route(route):
+    """Porte _infos_trajet_sens (viewer.py:1152-1200), mais appliquée à une
+    circulation précise plutôt qu'à un Sens : à partir de sa liste réelle de
+    gares parcourues (route, déjà dans l'ordre réel de circulation — voir
+    reference_donnees["trajet_gares"]), repère si elle entre/sort de la
+    ligne par une gare hors des 11 (ex: Saint-Lô via Lison).
 
-    Retourne None si aucune circulation ne correspond. Sinon :
+    Ancienne version (repéré par l'utilisateur, 2026-08-11, corrigé puis
+    abandonné le jour même) : cette fonction essayait de deviner une
+    circulation "représentative" pour tout un Sens (ex: "PARIS → CHERB"),
+    d'abord en prenant juste la première trouvée, puis celle qui dessert le
+    plus de gares — mais un Sens recouvre plusieurs trajets physiques
+    réellement différents (certains Paris-Cherbourg sautent Évreux
+    Normandie/Bernay/Lisieux, d'autres s'y arrêtent, d'autres encore filent
+    direct de Paris à Caen), donc aucun représentant unique n'est correct
+    pour tous. La frise n'estompe plus désormais que pour une circulation
+    précise et réellement sélectionnée (Suivi d'un train), plus jamais pour
+    un Sens générique (Tableau/Graphique/...), voir calculer_contexte_frise.
+
+    Retourne None si route est vide/absente. Sinon :
     (gares_sur_trajet, ordre_reel, connecteur_avant, connecteur_apres) —
     voir le docstring de la méthode d'origine pour le détail des deux
     connecteurs."""
-    trip_ids = df.loc[df["sens"] == sens, "trip_id"].unique()
-    if len(trip_ids) == 0:
-        return None
-    route = reference_donnees["trajet_gares"].get(sans_date_trip_id(trip_ids[0]))
     if not route:
         return None
     gares_set = set(route)
@@ -368,7 +400,7 @@ def _connecteur_frise(xs, connecteur, entrant, vers_la_gauche):
     }
 
 
-def calculer_contexte_frise(df, df_avant_retard, sens):
+def calculer_contexte_frise(df_avant_retard, vue, trajet_choisi):
     """Porte _render_frise (viewer.py:1236-1367) : vue d'ensemble des 11
     gares de la ligne, un point par gare coloré selon le retard moyen
     (mêmes seuils que le Tableau), calculée sur df_avant_retard — jamais
@@ -376,11 +408,21 @@ def calculer_contexte_frise(df, df_avant_retard, sens):
     moyenne en excluant les trains ponctuels. Toujours les 11 gares, même
     si "Limiter aux gares de la ligne" est décochée (ce filtre ne retire
     jamais ces 11-là de df_avant_retard, seulement d'éventuelles gares hors
-    ligne). Quand un Sens précis est sélectionné, les gares non desservies
-    par ce trajet sont estompées plutôt que traitées comme un simple "pas
-    de donnée" (voir _infos_trajet_sens)."""
+    ligne).
+
+    Les gares non desservies ne sont estompées QUE sur l'onglet Suivi d'un
+    train (vue == "train"), lorsqu'une circulation précise est choisie
+    (trajet_choisi) — jamais selon le Sens seul (voir le docstring de
+    _infos_trajet_depuis_route pour pourquoi ça a été essayé puis
+    abandonné, 2026-08-11) : sur les autres onglets, qui montrent
+    potentiellement des dizaines de circulations différentes à la fois, il
+    n'existe pas de "trajet" unique et correct à représenter."""
     moyennes = df_avant_retard.groupby("gare")["retard_min"].mean()
-    infos_trajet = _infos_trajet_sens(df, sens) if sens != "Tous" else None
+    route = None
+    if vue == "train" and trajet_choisi:
+        trip_id = trajet_choisi.split("|")[0]
+        route = reference_donnees["trajet_gares"].get(sans_date_trip_id(trip_id))
+    infos_trajet = _infos_trajet_depuis_route(route) if route else None
 
     n = len(GARES_LIGNE_ORDRE)
     largeur_utile = FRISE_VIEWBOX_W - 2 * FRISE_MARGE_X
@@ -434,10 +476,12 @@ def calculer_contexte_frise(df, df_avant_retard, sens):
 
     nb_releves = int(df_avant_retard["retard_min"].count())
     tooltip = (
-        "Retard moyen / relevé propre à chaque gare ≠ du « Retard moyen / relevé » "
+        "Retard moyen par relevé propre à chaque gare ≠ du « Retard moyen par relevé » "
         "affiché en haut, qui suit les filtres actifs, alors que cette frise "
         f"(calculée sur {nb_releves} relevés) reste toujours limitée aux 11 gares "
-        "de la ligne et ignore « Limiter aux trains avec retard »."
+        "de la ligne et ignore « Limiter aux trains avec retard ». Point gris plein : "
+        "aucune donnée pour cette gare sous les filtres actuels. Point creux (Suivi "
+        "d'un train uniquement) : gare que le train sélectionné ne dessert pas du tout."
     )
 
     return {"frise": {
@@ -490,11 +534,6 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     df_filtre = restreindre_aux_trains_en_retard(df_avant_retard) if limiter_retard else df_avant_retard
     stats_ratio = calculer_stats_bloc(df_avant_retard)
 
-    # Frise (#pied-de-page, base.html) : comme le badge d'onglet, présente
-    # sur CHAQUE requête indépendamment de `vue` (widget persistant sous
-    # tous les onglets) — calculée ici plutôt que dans construire_contexte.
-    contexte.update(calculer_contexte_frise(df, df_avant_retard, sens))
-
     # Porte self.summary_var (viewer.py:1459-1464) — nb de relevés APRÈS
     # filtres (df_filtre, comme le Tableau) sur le total collecté, avec la
     # date de début (premier poll_time) et l'horodatage du tout dernier
@@ -515,8 +554,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     # Tooltips de la barre de stats générales (_stats.html) — portées de
     # _render_stats (viewer.py:1481-1536), icône ℹ commune à celle de la
     # frise (.icone-info, style.css). "Retard max" n'a pas d'équivalent
-    # côté viewer.py (jamais eu de tooltip). "Retard cumulé" est statique,
-    # posée directement dans le template plutôt que calculée ici.
+    # côté viewer.py (jamais eu de tooltip).
     if stats_ratio["total"]:
         # sans_date_trip_id : indispensable ici, pas juste par cohérence
         # avec ailleurs — le trip_id brut se termine par un suffixe de date
@@ -551,8 +589,22 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
             "relevés issus des filtres actifs ci-dessus (pas seulement les 300 dernières "
             "lignes affichées dans le tableau)."
         )
+        # "Jours cumulés perdus" : reformulation volontairement parlante du
+        # même chiffre que stats.heures/minutes, pour illustrer concrètement
+        # l'intérêt réel de cette stat (communication/ampleur), pas une
+        # analyse fine — repéré par l'utilisateur, 2026-08-10 : la valeur
+        # brute en heures ne dit rien seule tant qu'on ne sait pas depuis
+        # quand elle cumule ni ce qu'elle représente à l'échelle.
+        jours_cumules, heures_restantes = divmod(stats["heures"], 24)
+        tooltip_cumule = (
+            "Additionne le dernier retard connu pour chaque passage impacté (un train "
+            f"à une gare précise), depuis le tout début de la collecte, le "
+            f"{date_debut_collecte}. Son intérêt est surtout de donner une idée de l'ampleur du "
+            f"volume total de retard généré par la ligne sur toute cette période "
+            f"(soit environ {jours_cumules} jours et {heures_restantes} h cumulés)."
+        )
     else:
-        tooltip_moyen = tooltip_pire_gare = ""
+        tooltip_moyen = tooltip_pire_gare = tooltip_cumule = ""
 
     contexte.update({
         "gare_options": options_gare(df),
@@ -565,6 +617,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
         "tooltip_ratio_retard": tooltip_ratio_retard,
         "tooltip_moyen": tooltip_moyen,
         "tooltip_pire_gare": tooltip_pire_gare,
+        "tooltip_cumule": tooltip_cumule,
     })
     return contexte, df, df_avant_retard, df_filtre, alertes_df, alertes_actif
 
@@ -592,6 +645,13 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
             "entetes": [ENTETES[c] for c in COLONNES],
             "lignes": construire_lignes_tableau(df_filtre),
         })
+
+    # Frise (#pied-de-page, base.html) : comme le badge d'onglet, présente
+    # sur CHAQUE requête indépendamment de `vue` (widget persistant sous
+    # tous les onglets) — calculée ici (après la branche par vue, pas dans
+    # preparer_contexte_commun) pour pouvoir accéder à contexte["trajet_choisi"]
+    # (Suivi d'un train uniquement, absent/vide sur les autres onglets).
+    contexte.update(calculer_contexte_frise(df_avant_retard, contexte["vue"], contexte.get("trajet_choisi")))
     return contexte
 
 
@@ -688,7 +748,7 @@ def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens):
     )
 
     elements_filtres = []
-    if gare and gare != "Toutes" and not gare.startswith("—"):
+    if _gare_est_filtree(gare):
         elements_filtres.append(f"Gare {gare}")
     if train and train != "Tous":
         elements_filtres.append(f"Train {train}")
@@ -703,10 +763,7 @@ def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens):
         "titre_bas": "Évolution de la proportion de trains en retard" + suffixe_filtres,
         "periode": periode,
     }
-    # Prudence standard : une chaîne de texte contenant "</script>" (ex: un
-    # nom de gare hypothétique) ne doit pas fermer prématurément la balise
-    # <script> dans laquelle ce JSON est injecté (_graphique.html).
-    donnees_json = json.dumps(donnees).replace("</", "<\\/")
+    donnees_json = json_pour_script(donnees)
 
     stats_periode = calculer_stats_bloc(plot_df)
     segments_periode = [
@@ -735,10 +792,12 @@ def _stats_par_categorie(df, colonne, ordre=None):
     groupes = df.groupby(colonne)
     moyenne = groupes["retard_min"].mean()
     n = groupes.size()
-    pct = groupes.apply(
-        lambda g: 100 * g.loc[g["retard_min"] > 0, "circulation"].nunique() / g["circulation"].nunique(),
-        include_groups=False,
-    )
+    # _pct_en_retard : même formule que le lambda utilisé ici avant cette
+    # factorisation (audit du 2026-08-10) — signature déjà compatible
+    # (reçoit directement un groupe), en plus protégée contre une division
+    # par zéro (sans conséquence pratique ici, groupby ne produit jamais un
+    # groupe réellement vide, mais plus sûr).
+    pct = groupes.apply(_pct_en_retard, include_groups=False)
     stats = pd.DataFrame({"moyenne": moyenne, "n": n, "pct": pct})
     return stats.reindex(ordre) if ordre is not None else stats
 
@@ -820,7 +879,7 @@ def calculer_contexte_jour_heure(df_avant_retard):
     }
     return {
         "jour_heure_vide": False,
-        "donnees_json": json.dumps(donnees).replace("</", "<\\/"),
+        "donnees_json": json_pour_script(donnees),
     }
 
 
@@ -851,7 +910,7 @@ def calculer_contexte_travaux(alertes_df, alertes_actif):
     evenements_df = charger_evenements(PERTURBATIONS_FILE)
     lignes_evenements = []
     for _, ligne in evenements_df.sort_values("poll_time", ascending=False).iterrows():
-        date_str = datetime.strptime(str(ligne["start_date"]), "%Y%m%d").strftime("%d/%m/%Y")
+        date_str = _format_start_date(ligne["start_date"])
         evenement = "Trajet annulé (entier)" if ligne["type"] == "trajet_annule" else f"Arrêt supprimé : {ligne['gare']}"
         lignes_evenements.append({
             "train": ligne["train"], "date": date_str, "evenement": evenement,
@@ -1014,7 +1073,7 @@ def construire_options_trajet(df_pour_trajets, df_complet, filtre_jour_retard):
     options = []
     for _, row in ordre.iterrows():
         trip_id, start_date = row["trip_id"], row["start_date"]
-        date_str = datetime.strptime(str(start_date), "%Y%m%d").strftime("%d/%m/%Y")
+        date_str = _format_start_date(start_date)
         label = f"{row['train']} du {date_str} (retard max {row['retard_max']:.0f} min)"
         options.append((f"{trip_id}|{start_date}", label))
     return options
@@ -1153,8 +1212,14 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
     ]
 
     if horaires_affiches and horaires_affiches[0] and horaires_affiches[-1]:
+        duree = duree_theorique(horaires_bruts[0], horaires_bruts[-1], start_date)
+        # <span> autour de l'icône seule (agrandie en CSS, .duree-icone) —
+        # rendu via |safe côté template : gares/horaires viennent du
+        # référentiel GTFS/de nos propres calculs, jamais d'une saisie
+        # utilisateur, donc aucun risque d'y injecter du HTML.
         contexte["depart_arrivee"] = (
-            f"Départ {format_gare(ordre_gares[0])} à {horaires_affiches[0]}  →  "
+            (f'<span class="duree-icone">⏱</span> {duree}  —  ' if duree else "")
+            + f"Départ {format_gare(ordre_gares[0])} à {horaires_affiches[0]}  →  "
             f"Arrivée {format_gare(ordre_gares[-1])} à {horaires_affiches[-1]}"
         )
 
@@ -1176,7 +1241,7 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
         "titre": f"Évolution du retard gare par gare — {dict(options_trajet).get(trajet_choisi, '')}",
         **donnees_vue,
     }
-    contexte["donnees_json"] = json.dumps(donnees).replace("</", "<\\/")
+    contexte["donnees_json"] = json_pour_script(donnees)
     return contexte
 
 
@@ -1186,7 +1251,15 @@ def construire_lignes_tableau(df_filtre):
     différents, couleur calculée AVANT le formatage d'affichage)."""
     recent = df_filtre.tail(300).sort_values("poll_time", ascending=False, kind="stable").reset_index(drop=True)
 
-    couleurs = recent.apply(couleur_ligne, axis=1)
+    # .apply(axis=1) convertit les None renvoyés par couleur_ligne() en NaN
+    # (float) dans la Series résultante dès qu'elle mélange des chaînes et
+    # des None — vérifié en pratique (couleurs.dtype reste "object" mais
+    # couleurs.iloc[i] est bien nan, pas None). Sans ce fillna, le nan
+    # traversait tel quel jusqu'au template ({{ ligne.css_class or '' }} ne
+    # le filtre pas : nan est "truthy" en Python), donnant class="nan" dans
+    # le HTML — sans effet visuel (aucune règle CSS ne cible .nan), mais
+    # incorrect (repéré en construisant un mockup, 2026-08-10).
+    couleurs = recent.apply(couleur_ligne, axis=1).fillna("")
     groupes = list(zip(recent["train"], recent["poll_time"]))
 
     recent["poll_time"] = recent["poll_time"].map(format_poll_time)
@@ -1269,8 +1342,6 @@ def rafraichir(request: Request, gare: str = "Toutes", train: str = "Tous", sens
     contexte["message_statut_type"] = message_statut_type
     # Injecté dans un <script>afficherToast(...)</script> (_contenu_reponse.
     # html) : échappé ici en JSON, pas via un filtre Jinja "tojson" (n'existe
-    # pas dans Jinja2 nu, seulement chez Flask) — même pattern que
-    # donnees_json ailleurs dans ce fichier, y compris l'échappement de
-    # "</" pour ne jamais fermer prématurément la balise <script>.
-    contexte["message_statut_json"] = json.dumps(message_statut).replace("</", "<\\/")
+    # pas dans Jinja2 nu, seulement chez Flask).
+    contexte["message_statut_json"] = json_pour_script(message_statut)
     return templates.TemplateResponse(request, "_contenu_reponse.html", contexte)

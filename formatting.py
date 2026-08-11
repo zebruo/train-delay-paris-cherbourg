@@ -125,6 +125,24 @@ def estimer_passage_reel(heure_gtfs, start_date, retard_min):
     return pd.Timestamp(dt_reel.astimezone(ZoneInfo("UTC")))
 
 
+def duree_theorique(depart_gtfs, arrivee_gtfs, start_date):
+    """Durée théorique d'un trajet complet (premier départ -> dernière
+    arrivée), à partir des heures GTFS brutes (pas déjà formatées pour
+    l'affichage) et de start_date — réutilise estimer_passage_reel
+    (retard=0) plutôt que de comparer les chaînes "HH:MM:SS" à la main, pour
+    gérer correctement un trajet à cheval sur minuit (heure GTFS >= 24:00,
+    voir le docstring de format_heure_avec_date). Partagée entre
+    app_fastapi.py et viewer.py (contrairement à la plupart des fonctions de
+    préparation de données, dupliquées entre les deux — celle-ci gère un cas
+    limite sensible, mieux vaut une seule version à tenir à jour)."""
+    depart_dt = estimer_passage_reel(depart_gtfs, start_date, 0)
+    arrivee_dt = estimer_passage_reel(arrivee_gtfs, start_date, 0)
+    if depart_dt is None or arrivee_dt is None:
+        return ""
+    minutes = int((arrivee_dt - depart_dt).total_seconds() // 60)
+    return f"{minutes // 60}h{minutes % 60:02d}"
+
+
 VALEUR_MANQUANTE = "–"  # tiret cadratin (U+2013), PAS un simple "-" (U+002D) :
 # un "-" seul en début de cellule est interprété comme une liste à puce par
 # le rendu Markdown de st.table (chaque cellule y est rendue en Markdown) —
