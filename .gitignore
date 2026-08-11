@@ -34,3 +34,5 @@ a_verifier_avant_suppression/
 # Outils ponctuels de test/monitoring du ventilo Pi, sans lien avec l'appli
 monitor_ventilo_pi.py
 test_ventilo_pi.sh
+ventilo_regulation.py
+ventilo-regulation.service
