@@ -13,6 +13,7 @@ import pandas as pd
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
 REFERENCE_FILE = "reference_paris_cherbourg.csv"
+CALENDRIER_FILE = "reference_paris_cherbourg_calendrier.csv"
 GTFS_STOPS_FILE = "gtfs/stops.txt"
 SEUIL_ARRET_NOTABLE = 10  # minutes
 
@@ -311,13 +312,23 @@ STATION_CODES = {
 }
 
 
-def trajet_sens(trip_id, trajet_gares):
+def trajet_sens(trip_id, variantes):
     """Sens d'un trajet ('CHERB → PARIS') à partir de ses gares de départ et
-    d'arrivée théoriques (trajet_gares, voir build_trip_data) — chaîne vide
-    si le trajet théorique du train n'est plus dans le référentiel actuel
-    (voir sans_date_trip_id) ou n'a qu'une seule gare."""
-    gares = trajet_gares.get(sans_date_trip_id(trip_id))
-    if not gares or len(gares) < 2:
+    d'arrivée théoriques (variantes, voir build_trip_data) — chaîne vide si
+    le trajet théorique du train n'est plus dans le référentiel actuel
+    (voir sans_date_trip_id) ou n'a qu'une seule gare.
+
+    Pas sensible à la date, contrairement à choisir_variante : l'origine et
+    la destination d'un train ne changent pas d'une variante d'horaire à
+    l'autre en pratique (seuls les horaires précis varient selon la
+    période) — la dernière variante connue suffit donc ici, plutôt que de
+    payer le coût d'un .apply(axis=1) juste pour ce champ (appelé via un
+    simple .map() par trip_id, sans accès à start_date)."""
+    liste = variantes.get(sans_date_trip_id(trip_id))
+    if not liste:
+        return ""
+    gares = liste[-1]["gares"]
+    if len(gares) < 2:
         return ""
     origine = STATION_CODES.get(gares[0], gares[0])
     destination = STATION_CODES.get(gares[-1], gares[-1])
@@ -325,7 +336,58 @@ def trajet_sens(trip_id, trajet_gares):
 
 
 def load_reference():
-    return pd.read_csv(REFERENCE_FILE)
+    # dtype=str sur service_id : sinon pandas le déduit numérique et perd le
+    # zéro-padding (ex. "000399" -> 399), le désynchronisant des clés du
+    # calendrier chargées par load_calendrier() (elles aussi en str) — bug
+    # réel rencontré le 2026-08-12 : choisir_variante() ne trouvait plus
+    # jamais de correspondance et retombait systématiquement sur le repli
+    # "dernière variante", recréant silencieusement le bug que ce correctif
+    # visait justement à corriger.
+    return pd.read_csv(REFERENCE_FILE, dtype={"service_id": str})
+
+
+def load_calendrier():
+    """service_id -> ensemble des dates valides ('AAAAMMJJ'), depuis
+    CALENDRIER_FILE (généré par build_reference.py à partir de
+    calendar_dates.txt) — ce flux GTFS national n'a pas de calendar.txt
+    (motif hebdomadaire + exceptions), juste des lignes "service_id,date"
+    explicites, une par date réellement valide. Utilisé par
+    choisir_variante() pour savoir, parmi les variantes d'horaire connues
+    d'un même train, laquelle est valide à une date donnée."""
+    calendrier = {}
+    df = pd.read_csv(CALENDRIER_FILE, dtype=str)
+    for service_id, date in zip(df["service_id"], df["date"]):
+        calendrier.setdefault(service_id, set()).add(date)
+    return calendrier
+
+
+def choisir_variante(variantes, calendrier, trip_id, start_date):
+    """Parmi les variantes d'horaire connues pour ce train (plusieurs
+    peuvent exister pour un même trip_id sans date — voir build_trip_data,
+    ex: horaire légèrement différent en vacances/service d'été), choisit
+    celle dont le service_id est réellement valide à start_date (voir
+    load_calendrier) — plutôt que de toujours retenir la même variante
+    quelle que soit la date interrogée. Bug réel trouvé le 2026-08-12 :
+    l'heure théorique affichée pour un train ne correspondait pas à la
+    vraie fiche horaire SNCF pour le jour consulté (2 gares décalées de
+    1-2 min sur 7, train 3306 du 12/08 — la variante retenue jusqu'ici
+    était toujours "la plus tardive dans l'ordre du trip_id", sans lien
+    avec la date réellement demandée).
+
+    Repli sur la dernière variante connue (comportement d'avant ce
+    correctif) si aucune ne correspond exactement — ex: une date hors de
+    la fenêtre couverte par calendar_dates.txt (le GTFS national n'expose
+    qu'une fenêtre glissante d'environ 151 jours, voir mémoire du projet).
+    Retourne None si le train est totalement inconnu du référentiel."""
+    liste = variantes.get(sans_date_trip_id(trip_id))
+    if not liste:
+        return None
+    if start_date not in (None, ""):
+        cible = str(int(start_date))
+        for variante in liste:
+            if cible in calendrier.get(variante["service_id"], ()):
+                return variante
+    return liste[-1]
 
 
 def build_stop_names(ref):
@@ -347,40 +409,39 @@ def build_stop_names(ref):
 
 
 def build_trip_data(ref):
-    """Un seul passage sur reference_paris_cherbourg.csv (regroupé par trip_id)
-    pour construire, pour chaque trajet :
-    - trajet_gares : la liste complète et ordonnée des gares théoriques du
-      trajet, y compris celles jamais observées en temps réel (ex: Paris
-      Saint-Lazare pendant les travaux, voir mémoire projet) ;
-    - trajet_horaires : l'heure théorique brute ('HH:MM:SS', encore au format
-      GTFS, éventuellement >= 24:00) à chaque arrêt, dans le même ordre.
-      Priorité au départ (comme SNCF Connect, vérifié empiriquement) —
-      l'écart de quelques minutes avec l'arrivée correspond au temps d'arrêt
-      en gare intermédiaire ; repli sur l'arrivée pour le terminus, qui n'a
-      pas d'heure de départ. Passer par format_heure_avec_date()/
-      format_heure_avec_arret() pour l'affichage (nécessite aussi le jour de
-      circulation réel) ;
-    - scheduled_times : le même horaire théorique brut, mais indexé par
-      (trip_id, stop_id) pour un accès direct ligne par ligne ;
-    - trajet_arrets / temps_arret : durée d'arrêt en gare intermédiaire (en
-      minutes, None pour l'origine/le terminus), dans le même ordre que
-      trajet_horaires, et indexée par (trip_id, stop_id).
-
-    Les 4 dicts sont indexés par sans_date_trip_id(trip_id), pas le trip_id
-    brut du référentiel (voir cette fonction) : plusieurs lignes du
-    référentiel peuvent partager le même train réel sous des dates
+    """Un seul passage sur reference_paris_cherbourg.csv (regroupé par
+    trip_id brut) pour construire, pour chaque train (sans_date_trip_id),
+    la liste de toutes ses variantes d'horaire connues — plusieurs lignes
+    du référentiel peuvent partager le même train réel sous des dates
     échantillonnées différentes (parfois avec un horaire légèrement
-    différent selon la période — vacances, service d'été/hiver...). Dans ce
-    cas, seule la variante à la date la plus tardive est gardée (itération
-    dans l'ordre croissant du trip_id via groupby, donc de la date) — un
-    choix arbitraire mais déterministe, sans impact sur le retard réel
-    (toujours donné directement par SNCF, jamais recalculé depuis ce
-    référentiel) — voir mémoire du projet, 2026-07-31."""
-    trajet_gares = {}
-    trajet_horaires = {}
-    scheduled_times = {}
-    trajet_arrets = {}
-    temps_arret = {}
+    différent selon la période : vacances, service d'été/hiver...), voir
+    choisir_variante() pour comment la bonne variante est choisie selon la
+    date réellement demandée (PAS géré ici — ce n'était pas le cas avant
+    le 2026-08-12, où seule la variante la plus tardive était gardée sans
+    lien avec la date interrogée, un bug réel trouvé ce jour-là).
+
+    Retourne un seul dict, `variantes`, indexé par sans_date_trip_id(trip_id)
+    -> liste de variantes (une par service_id distinct rencontré), chacune
+    un dict :
+    - service_id : pour le croisement avec calendrier (voir load_calendrier) ;
+    - gares : liste ordonnée des gares théoriques du trajet, y compris
+      celles jamais observées en temps réel (ex: Paris Saint-Lazare
+      pendant les travaux, voir mémoire projet) ;
+    - horaires : l'heure théorique brute ('HH:MM:SS', encore au format
+      GTFS, éventuellement >= 24:00) à chaque arrêt, dans le même ordre que
+      gares. Priorité au départ (comme SNCF Connect, vérifié
+      empiriquement) — l'écart de quelques minutes avec l'arrivée
+      correspond au temps d'arrêt en gare intermédiaire ; repli sur
+      l'arrivée pour le terminus, qui n'a pas d'heure de départ. Passer
+      par format_heure_avec_date()/format_heure_avec_arret() pour
+      l'affichage (nécessite aussi le jour de circulation réel) ;
+    - arrets : durée d'arrêt en gare intermédiaire (en minutes, None pour
+      l'origine/le terminus), même ordre que gares/horaires ;
+    - horaires_par_stop / arrets_par_stop : les deux mêmes listes, mais
+      indexées par stop_id pour un accès direct ligne par ligne (préparer_
+      données, dans app_fastapi.py/viewer.py, itère sur des relevés bruts
+      identifiés par stop_id, pas par position dans la liste)."""
+    variantes = {}
     for trip_id, groupe in ref.groupby("trip_id"):
         cle = sans_date_trip_id(trip_id)
         groupe = groupe.sort_values("stop_sequence")
@@ -390,11 +451,13 @@ def build_trip_data(ref):
             calculer_temps_arret_min(arrivee, depart)
             for arrivee, depart in zip(groupe["scheduled_arrival"], groupe["scheduled_departure"])
         ]
-        trajet_gares[cle] = groupe["stop_name"].tolist()
-        trajet_arrets[cle] = arrets
-        for stop_id, arret in zip(groupe["stop_id"], arrets):
-            temps_arret[(cle, stop_id)] = arret
-        trajet_horaires[cle] = heures_brutes
-        for stop_id, heure in zip(groupe["stop_id"], heures_brutes):
-            scheduled_times[(cle, stop_id)] = heure
-    return trajet_gares, trajet_horaires, scheduled_times, trajet_arrets, temps_arret
+        stop_ids = groupe["stop_id"].tolist()
+        variantes.setdefault(cle, []).append({
+            "service_id": str(groupe["service_id"].iloc[0]),
+            "gares": groupe["stop_name"].tolist(),
+            "horaires": heures_brutes,
+            "arrets": arrets,
+            "horaires_par_stop": dict(zip(stop_ids, heures_brutes)),
+            "arrets_par_stop": dict(zip(stop_ids, arrets)),
+        })
+    return variantes

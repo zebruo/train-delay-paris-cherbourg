@@ -40,6 +40,13 @@ GTFS_DIR = "gtfs"
 GTFS_URL = "https://eu.ftp.opendatasoft.com/sncf/plandata/Export_OpenData_SNCF_GTFS_NewTripId.zip"
 META_FILE = "reference_paris_cherbourg.meta.json"
 REFERENCE_FILE = "reference_paris_cherbourg.csv"
+# Compagnon de REFERENCE_FILE : dates de validité (calendar_dates.txt, ce
+# flux GTFS n'a pas de calendar.txt — chaque service_id liste explicitement
+# ses dates valides une par une) restreintes aux service_id réellement
+# utilisés par nos trajets — permet à formatting.py de choisir, pour un
+# même train, la bonne variante d'horaire selon la date réelle plutôt que
+# de deviner (voir build_trip_data, mémoire du projet 2026-08-12).
+CALENDRIER_FILE = "reference_paris_cherbourg_calendrier.csv"
 
 
 def load_stop_names():
@@ -68,6 +75,40 @@ def trips_sur_la_ligne():
     return {trip_id for trip_id, gares in gares_par_trajet.items() if len(gares) >= 2}
 
 
+def load_service_ids(trip_ids_retenus):
+    """trip_id -> service_id (trips.txt), restreint à trip_ids_retenus —
+    un même train réel (même dateless trip_id, voir sans_date_trip_id)
+    peut avoir plusieurs variantes d'horaire selon la période, chacune
+    associée à un service_id différent qui définit ses dates réelles de
+    validité (voir enregistrer_calendrier)."""
+    service_par_trip = {}
+    with open(f"{GTFS_DIR}/trips.txt", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row["trip_id"] in trip_ids_retenus:
+                service_par_trip[row["trip_id"]] = row["service_id"]
+    return service_par_trip
+
+
+def enregistrer_calendrier(service_ids_utiles):
+    """Écrit CALENDRIER_FILE : les dates réellement valides (calendar_dates.txt)
+    pour chacun des service_id utilisés par nos trajets — ce flux GTFS n'a
+    pas de calendar.txt (motif hebdomadaire + exceptions), juste des lignes
+    "service_id,date,exception_type" explicites (toujours exception_type=1
+    en pratique, vérifié). Filtré aux service_ids_utiles pour rester petit
+    (quelques milliers de lignes, contre 230k+ dans le fichier source pour
+    tout le réseau SNCF) — inutile de garder les autres."""
+    lignes = []
+    with open(f"{GTFS_DIR}/calendar_dates.txt", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row["service_id"] in service_ids_utiles and row["exception_type"] == "1":
+                lignes.append({"service_id": row["service_id"], "date": row["date"]})
+    with open(CALENDRIER_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["service_id", "date"])
+        writer.writeheader()
+        writer.writerows(lignes)
+    return len(lignes)
+
+
 def enregistrer_meta():
     """Note, dans META_FILE, la version du GTFS (feed_version, lu localement
     dans GTFS_DIR/feed_info.txt) utilisée pour générer
@@ -87,6 +128,7 @@ def enregistrer_meta():
 def main():
     stop_names = load_stop_names()
     trip_ids_retenus = trips_sur_la_ligne()
+    service_par_trip = load_service_ids(trip_ids_retenus)
 
     # Second passage : tous les arrêts réels de ces trajets (pas seulement
     # ceux sur nos 11 gares), pour ne pas tronquer leur trajet théorique.
@@ -102,6 +144,7 @@ def main():
                     "stop_sequence": row["stop_sequence"],
                     "scheduled_arrival": row["arrival_time"],
                     "scheduled_departure": row["departure_time"],
+                    "service_id": service_par_trip.get(row["trip_id"], ""),
                 })
 
     with open(REFERENCE_FILE, "w", newline="", encoding="utf-8") as f:
@@ -112,6 +155,11 @@ def main():
     trip_ids = {r["trip_id"] for r in reference_rows}
     print(f"{len(reference_rows)} arrêts de référence sauvegardés, "
           f"couvrant {len(trip_ids)} trajets distincts.")
+
+    service_ids_utiles = set(service_par_trip.values())
+    nb_dates = enregistrer_calendrier(service_ids_utiles)
+    print(f"{nb_dates} dates de validité sauvegardées dans {CALENDRIER_FILE} "
+          f"({len(service_ids_utiles)} service_id distincts).")
 
     enregistrer_meta()
 
@@ -157,14 +205,14 @@ def lire_feed_version_distante(pi_host, chemin_distant=CHEMIN_DISTANT_PI, timeou
 
 
 def deployer_vers_pi(pi_host, chemin_distant=CHEMIN_DISTANT_PI, timeout=30):
-    """Envoie REFERENCE_FILE + META_FILE vers le Pi par rsync — pour le
-    bouton "Déployer vers le Pi" de viewer.py. Ne relance pas
-    verifier_gtfs.py là-bas ni ne touche à autre chose : ça reste à la
+    """Envoie REFERENCE_FILE + CALENDRIER_FILE + META_FILE vers le Pi par
+    rsync — pour le bouton "Déployer vers le Pi" de viewer.py. Ne relance
+    pas verifier_gtfs.py là-bas ni ne touche à autre chose : ça reste à la
     charge de l'appelant (voir onglet_verification_gtfs.py), pour garder
     cette fonction simple et testable isolément. Retourne True/False."""
     try:
         subprocess.run(
-            ["rsync", "-az", REFERENCE_FILE, META_FILE, f"{pi_host}:{chemin_distant}/"],
+            ["rsync", "-az", REFERENCE_FILE, CALENDRIER_FILE, META_FILE, f"{pi_host}:{chemin_distant}/"],
             check=True, capture_output=True, timeout=timeout,
         )
         return True

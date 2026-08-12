@@ -32,6 +32,7 @@ from formatting import (
     build_stop_names,
     build_trip_data,
     calculer_stats_bloc,
+    choisir_variante,
     cle_circulation,
     derniers_par_passage,
     duree_theorique,
@@ -44,6 +45,7 @@ from formatting import (
     format_poll_time,
     format_retard,
     format_valeur,
+    load_calendrier,
     load_reference,
     sans_date_trip_id,
     trajet_sens,
@@ -144,16 +146,14 @@ reference_donnees = {}
 async def lifespan(app: FastAPI):
     reference = load_reference()
     stop_names = build_stop_names(reference)
-    trajet_gares, trajet_horaires, scheduled_times, trajet_arrets, temps_arret = build_trip_data(reference)
     reference_donnees["stop_names"] = stop_names
-    reference_donnees["trajet_gares"] = trajet_gares
-    reference_donnees["scheduled_times"] = scheduled_times
-    reference_donnees["temps_arret"] = temps_arret
-    # trajet_horaires/trajet_arrets : pas utilisés par le Tableau/Graphique,
-    # seulement par l'onglet Suivi d'un train (voir calculer_contexte_train)
-    # pour les horaires théoriques affichés sur l'axe X.
-    reference_donnees["trajet_horaires"] = trajet_horaires
-    reference_donnees["trajet_arrets"] = trajet_arrets
+    # variantes/calendrier : remplacent les anciens trajet_gares/
+    # trajet_horaires/scheduled_times/trajet_arrets/temps_arret séparés —
+    # un même train peut avoir plusieurs variantes d'horaire selon la
+    # période, choisir_variante() choisit la bonne selon la date réelle
+    # demandée (voir formatting.py, correctif du 2026-08-12).
+    reference_donnees["variantes"] = build_trip_data(reference)
+    reference_donnees["calendrier"] = load_calendrier()
     yield
 
 
@@ -194,8 +194,8 @@ def charger_observations():
         except (pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError) as exc:
             return None, f"{LOCAL_OBSERVATIONS} semble corrompu ({type(exc).__name__})."
         df = preparer_donnees(
-            df, reference_donnees["stop_names"], reference_donnees["trajet_gares"],
-            reference_donnees["scheduled_times"], reference_donnees["temps_arret"],
+            df, reference_donnees["stop_names"], reference_donnees["variantes"],
+            reference_donnees["calendrier"],
         )
         _cache_observations["mtime"] = mtime
         _cache_observations["df"] = df
@@ -207,17 +207,33 @@ def charger_observations():
     return _cache_observations["df"].copy(), None
 
 
-def preparer_donnees(df, stop_names, trajet_gares, scheduled_times, temps_arret):
+def preparer_donnees(df, stop_names, variantes, calendrier):
     df["gare"] = df["stop_id"].map(stop_names).fillna(df["stop_id"])
     df["train"] = df["trip_id"].str.split(":").str[0]
-    df["sens"] = df["trip_id"].map(lambda t: trajet_sens(t, trajet_gares))
-    df["heure_theorique"] = df.apply(
-        lambda r: format_heure_avec_arret(
-            scheduled_times.get((sans_date_trip_id(r["trip_id"]), r["stop_id"])), r["start_date"],
-            temps_arret.get((sans_date_trip_id(r["trip_id"]), r["stop_id"])),
-        ),
-        axis=1,
-    )
+    df["sens"] = df["trip_id"].map(lambda t: trajet_sens(t, variantes))
+
+    # Mémoïse choisir_variante par (trip_id, start_date) : beaucoup de
+    # lignes (une par gare, répétées à chaque relevé) partagent la même
+    # circulation réelle — pas la peine de refaire la recherche parmi les
+    # variantes/le calendrier à chaque ligne individuellement.
+    cache_variante = {}
+
+    def variante_pour_ligne(trip_id, start_date):
+        cle = (trip_id, start_date)
+        if cle not in cache_variante:
+            cache_variante[cle] = choisir_variante(variantes, calendrier, trip_id, start_date)
+        return cache_variante[cle]
+
+    def heure_theorique_ligne(r):
+        variante = variante_pour_ligne(r["trip_id"], r["start_date"])
+        if variante is None:
+            return format_heure_avec_arret(None, r["start_date"], None)
+        return format_heure_avec_arret(
+            variante["horaires_par_stop"].get(r["stop_id"]), r["start_date"],
+            variante["arrets_par_stop"].get(r["stop_id"]),
+        )
+
+    df["heure_theorique"] = df.apply(heure_theorique_ligne, axis=1)
     df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
     df["retard_depart_min"] = (df["departure_delay_s"] / 60).round(1)
     df["retard_min"] = df["retard_arrivee_min"].fillna(df["retard_depart_min"])
@@ -336,8 +352,9 @@ def _infos_trajet_depuis_route(route):
     """Porte _infos_trajet_sens (viewer.py:1152-1200), mais appliquée à une
     circulation précise plutôt qu'à un Sens : à partir de sa liste réelle de
     gares parcourues (route, déjà dans l'ordre réel de circulation — voir
-    reference_donnees["trajet_gares"]), repère si elle entre/sort de la
-    ligne par une gare hors des 11 (ex: Saint-Lô via Lison).
+    reference_donnees["variantes"]/choisir_variante), repère si elle
+    entre/sort de la ligne par une gare hors des 11 (ex: Saint-Lô via
+    Lison).
 
     Ancienne version (repéré par l'utilisateur, 2026-08-11, corrigé puis
     abandonné le jour même) : cette fonction essayait de deviner une
@@ -420,8 +437,11 @@ def calculer_contexte_frise(df_avant_retard, vue, trajet_choisi):
     moyennes = df_avant_retard.groupby("gare")["retard_min"].mean()
     route = None
     if vue == "train" and trajet_choisi:
-        trip_id = trajet_choisi.split("|")[0]
-        route = reference_donnees["trajet_gares"].get(sans_date_trip_id(trip_id))
+        trip_id, start_date = trajet_choisi.split("|")
+        variante = choisir_variante(
+            reference_donnees["variantes"], reference_donnees["calendrier"], trip_id, start_date,
+        )
+        route = variante["gares"] if variante else None
     infos_trajet = _infos_trajet_depuis_route(route) if route else None
 
     n = len(GARES_LIGNE_ORDRE)
@@ -560,7 +580,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
         # avec ailleurs — le trip_id brut se termine par un suffixe de date
         # qui change chaque jour pour un même train réel, donc un .nunique()
         # direct compte (motifs de train × jours observés) et grossit sans
-        # borne avec le temps, incomparable à len(trajet_gares) (indexé
+        # borne avec le temps, incomparable à len(variantes) (indexé
         # sans cette date) — bug réel trouvé et corrigé ici (et dans
         # viewer.py, qui avait le même calcul), 2026-08-10 : affichait
         # 562/562 alors que le vrai chiffre est 478/562.
@@ -569,7 +589,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
             f"{stats_ratio['en_retard']} circulations perturbées (retard à un moment de "
             f"leur trajet, même rattrapé ensuite) sur {stats_ratio['total']} déjà observées "
             f"depuis le début de la collecte (issues de {nb_trains_observes} trains "
-            f"différents parmi les {len(reference_donnees['trajet_gares'])} du référentiel), "
+            f"différents parmi les {len(reference_donnees['variantes'])} du référentiel), "
             f"soit {100 * stats_ratio['en_retard'] / stats_ratio['total']:.0f} %."
         )
     else:
@@ -1192,7 +1212,8 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
     trip_id, start_date = trajet_choisi.split("|")
     trajet = df[(df["trip_id"] == trip_id) & (df["start_date"].astype(str) == start_date)].copy()
 
-    ordre_gares = reference_donnees["trajet_gares"].get(sans_date_trip_id(trip_id), [])
+    variante = choisir_variante(reference_donnees["variantes"], reference_donnees["calendrier"], trip_id, start_date)
+    ordre_gares = variante["gares"] if variante else []
     if not ordre_gares:
         contexte["erreur_trajet"] = (
             "Trajet théorique introuvable dans le référentiel actuel — ce train a peut-être "
@@ -1204,8 +1225,8 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
         return contexte
 
     position_gare = {g: i for i, g in enumerate(ordre_gares)}
-    horaires_bruts = reference_donnees["trajet_horaires"].get(sans_date_trip_id(trip_id), [])
-    arrets_bruts = reference_donnees["trajet_arrets"].get(sans_date_trip_id(trip_id), [])
+    horaires_bruts = variante["horaires"]
+    arrets_bruts = variante["arrets"]
     horaires_par_gare = dict(zip(ordre_gares, horaires_bruts))
     horaires_affiches = [
         format_heure_avec_arret(h, start_date, a) for h, a in zip(horaires_bruts, arrets_bruts)

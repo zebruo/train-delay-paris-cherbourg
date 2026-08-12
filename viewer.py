@@ -33,10 +33,10 @@ from generer_guide_statistiques import (
 from generer_guide_statistiques import generer as generer_guide_statistiques_pdf
 from formatting import (
     PARIS_TZ,
-    STATION_CODES,
     build_stop_names,
     build_trip_data,
     calculer_stats_bloc,
+    choisir_variante,
     cle_circulation,
     derniers_par_passage,
     duree_theorique,
@@ -50,6 +50,7 @@ from formatting import (
     format_retard,
     format_valeur,
     estimer_passage_reel,
+    load_calendrier,
     load_reference,
     sans_date_trip_id,
     trajet_sens,
@@ -122,8 +123,14 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
         reference = load_reference()
         self.stop_names = build_stop_names(reference)
-        (self.trajet_gares, self.trajet_horaires, self.scheduled_times,
-         self.trajet_arrets, self.temps_arret) = build_trip_data(reference)
+        # self.variantes/self.calendrier remplacent les anciens
+        # trajet_gares/trajet_horaires/scheduled_times/trajet_arrets/
+        # temps_arret séparés — un même train peut avoir plusieurs
+        # variantes d'horaire selon la période, choisir_variante() choisit
+        # la bonne selon la date réellement demandée (voir formatting.py,
+        # correctif du 2026-08-12).
+        self.variantes = build_trip_data(reference)
+        self.calendrier = load_calendrier()
         self.trajet_labels = {}
         self.df = None
         self.alertes = pd.DataFrame(columns=["id", "gares", "cause", "effet", "debut", "fin", "texte", "description", "poll_time"])
@@ -1033,14 +1040,30 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
         df["gare"] = df["stop_id"].map(self.stop_names).fillna(df["stop_id"])
         df["train"] = df["trip_id"].str.split(":").str[0]
-        df["sens"] = df["trip_id"].map(lambda t: trajet_sens(t, self.trajet_gares))
-        df["heure_theorique"] = df.apply(
-            lambda r: format_heure_avec_arret(
-                self.scheduled_times.get((sans_date_trip_id(r["trip_id"]), r["stop_id"])), r["start_date"],
-                self.temps_arret.get((sans_date_trip_id(r["trip_id"]), r["stop_id"])),
-            ),
-            axis=1,
-        )
+        df["sens"] = df["trip_id"].map(lambda t: trajet_sens(t, self.variantes))
+
+        # Mémoïse choisir_variante par (trip_id, start_date) : beaucoup de
+        # lignes (une par gare, répétées à chaque relevé) partagent la même
+        # circulation réelle — pas la peine de refaire la recherche parmi
+        # les variantes/le calendrier à chaque ligne individuellement.
+        cache_variante = {}
+
+        def variante_pour_ligne(trip_id, start_date):
+            cle = (trip_id, start_date)
+            if cle not in cache_variante:
+                cache_variante[cle] = choisir_variante(self.variantes, self.calendrier, trip_id, start_date)
+            return cache_variante[cle]
+
+        def heure_theorique_ligne(r):
+            variante = variante_pour_ligne(r["trip_id"], r["start_date"])
+            if variante is None:
+                return format_heure_avec_arret(None, r["start_date"], None)
+            return format_heure_avec_arret(
+                variante["horaires_par_stop"].get(r["stop_id"]), r["start_date"],
+                variante["arrets_par_stop"].get(r["stop_id"]),
+            )
+
+        df["heure_theorique"] = df.apply(heure_theorique_ligne, axis=1)
         df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
         df["retard_depart_min"] = (df["departure_delay_s"] / 60).round(1)
         df["retard_min"] = df["retard_arrivee_min"].fillna(df["retard_depart_min"])
@@ -1278,10 +1301,10 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             selection = self.select_trajet_var.get()
             cle_trajet = self.trajet_labels.get(selection) if selection else None
             if cle_trajet is not None:
-                trip_id, _start_date = cle_trajet
-                route = self.trajet_gares.get(sans_date_trip_id(trip_id))
-                if route:
-                    infos_trajet = self._infos_trajet_depuis_route(route)
+                trip_id, start_date = cle_trajet
+                variante = choisir_variante(self.variantes, self.calendrier, trip_id, start_date)
+                if variante:
+                    infos_trajet = self._infos_trajet_depuis_route(variante["gares"])
 
         nb_releves_frise = int(df["retard_min"].count())
         self._tooltip_frise.texte = (
@@ -1517,7 +1540,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             # sans_date_trip_id : le trip_id brut se termine par un suffixe
             # de date qui change chaque jour pour un même train réel — un
             # .nunique() direct comptait (motifs de train × jours observés),
-            # incomparable à len(self.trajet_gares) (indexé sans cette
+            # incomparable à len(self.variantes) (indexé sans cette
             # date) — bug réel corrigé ici (et côté app_fastapi.py),
             # 2026-08-10 : affichait 562/562 alors que le vrai chiffre est
             # 478/562.
@@ -1526,7 +1549,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 f"{circulations_perturbees} circulations perturbées (retard à un moment de "
                 f"leur trajet, même rattrapé ensuite) sur {total_trains} déjà observées "
                 f"depuis le début de la collecte (issues de {nb_trains_observes} trains "
-                f"différents parmi les {len(self.trajet_gares)} du référentiel), soit "
+                f"différents parmi les {len(self.variantes)} du référentiel), soit "
                 f"{100 * circulations_perturbees / total_trains:.0f} %."
             )
 
@@ -2058,7 +2081,8 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # Toutes les gares théoriques du trajet (horaires), même celles jamais
         # observées en temps réel (ex: Paris Saint-Lazare, voir README/mémoire) —
         # sinon la dernière gare *observée* donne l'illusion d'être le terminus.
-        ordre_gares = self.trajet_gares.get(sans_date_trip_id(trip_id), [])
+        variante = choisir_variante(self.variantes, self.calendrier, trip_id, start_date)
+        ordre_gares = variante["gares"] if variante else []
         if not ordre_gares:
             # Le référentiel (reference_paris_cherbourg.csv) a pu être
             # régénéré depuis que cette circulation a été observée — un train
@@ -2087,13 +2111,10 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             return
         position_gare = {gare: i for i, gare in enumerate(ordre_gares)}
 
-        horaires_bruts = self.trajet_horaires.get(sans_date_trip_id(trip_id), [])
+        horaires_bruts = variante["horaires"]
         horaires = [
             format_heure_avec_arret(h, start_date, arret)
-            for h, arret in zip(
-                horaires_bruts,
-                self.trajet_arrets.get(sans_date_trip_id(trip_id), []),
-            )
+            for h, arret in zip(horaires_bruts, variante["arrets"])
         ]
         if horaires and horaires[0] and horaires[-1]:
             # Icône horloge + durée théorique en préfixe, comme côté web
@@ -2119,14 +2140,14 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 "Trait plein = gare déjà passée (figé) — pointillé = pas encore atteinte (peut encore changer),\n"
                 "ou jamais confirmée si le train est sorti du flux avant son heure d'arrivée prédite (plus fréquent en cas de fort retard)."
             )
-            self._render_train_escalier(trajet, ordre_gares, position_gare, start_date, trip_id)
+            self._render_train_escalier(trajet, ordre_gares, position_gare, start_date, horaires_bruts)
         else:
             self.aide_vue_train_var.set(
                 "Chaque ligne = un relevé (bleu = ancien, orange = récent) — montre\n"
                 "l'historique complet des révisions de prévision, gare par gare. Cliquer\n"
                 "un relevé dans la légende l'affiche/le masque."
             )
-            self._render_train_detail(trajet, ordre_gares, position_gare, start_date, trip_id, cle_trajet)
+            self._render_train_detail(trajet, ordre_gares, position_gare, start_date, horaires_bruts, cle_trajet)
 
         labels = [
             f"{format_gare(g)}\n{h}" if h else format_gare(g)
@@ -2148,7 +2169,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         self.train_figure.tight_layout()
         self.train_canvas.draw()
 
-    def _render_train_escalier(self, trajet, ordre_gares, position_gare, start_date, trip_id):
+    def _render_train_escalier(self, trajet, ordre_gares, position_gare, start_date, horaires_bruts):
         """Une seule ligne 'escalier' : la dernière valeur connue par gare,
         tracée dans l'ordre du trajet — un palier plat entre deux gares où le
         retard n'a pas changé, une marche vers le haut/bas sinon (voir
@@ -2162,7 +2183,10 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # comparer aux horaires théoriques calculés par estimer_passage_reel.
         dernier_poll_trajet = pd.to_datetime(trajet["poll_time"]).max()
         dernieres = trajet.sort_values("poll_time").groupby("gare").last()
-        heure_par_gare = dict(zip(ordre_gares, self.trajet_horaires.get(sans_date_trip_id(trip_id), [])))
+        # horaires_bruts (variante déjà choisie par l'appelant, _render_train_tab)
+        # plutôt que refaire un choisir_variante ici : même trip_id/start_date,
+        # pas la peine de repayer la recherche parmi les variantes/le calendrier.
+        heure_par_gare = dict(zip(ordre_gares, horaires_bruts))
 
         points = []
         for gare in ordre_gares:
@@ -2195,7 +2219,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             ]
             self.train_ax.legend(handles=legende, loc="upper left")
 
-    def _render_train_detail(self, trajet, ordre_gares, position_gare, start_date, trip_id, cle_trajet):
+    def _render_train_detail(self, trajet, ordre_gares, position_gare, start_date, horaires_bruts, cle_trajet):
         """Contrairement à l'Escalier, garde une ligne par relevé (légende
         interactive, voir _construire_legende_detail — repliée par défaut
         pour rester lisible sur un train suivi longtemps)."""
@@ -2217,7 +2241,10 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
         n = len(polls)
         colormap = TRAJET_COLORMAP
-        heure_par_gare = dict(zip(ordre_gares, self.trajet_horaires.get(sans_date_trip_id(trip_id), [])))
+        # horaires_bruts (variante déjà choisie par l'appelant, _render_train_tab)
+        # plutôt que refaire un choisir_variante ici : même trip_id/start_date,
+        # pas la peine de repayer la recherche parmi les variantes/le calendrier.
+        heure_par_gare = dict(zip(ordre_gares, horaires_bruts))
         visibilite = self._detail_visibilite.setdefault(cle_trajet, {})
         # Repliée (par défaut) : seuls le premier et le dernier relevé sont
         # affichés, comme avant — dépliée : chaque relevé suit son propre

@@ -14,6 +14,7 @@ perturbations_detectees.csv
 # Référence GTFS régénérable (voir build_reference.py)
 reference_paris_cherbourg.csv
 reference_paris_cherbourg.meta.json
+reference_paris_cherbourg_calendrier.csv
 gtfs/
 
 # Sorties générées (PDF, diagrammes, mockups de design)

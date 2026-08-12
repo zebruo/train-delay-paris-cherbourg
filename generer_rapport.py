@@ -33,9 +33,9 @@ from matplotlib.offsetbox import AnnotationBbox, HPacker, TextArea
 from matplotlib.ticker import AutoMinorLocator
 
 from formatting import (
-    PARIS_TZ, build_stop_names, build_trip_data, cle_circulation, derniers_par_passage,
-    derniers_par_passage_avec_date, estimer_passage_reel, format_gare, format_heure_avec_arret,
-    load_reference, sans_date_trip_id,
+    PARIS_TZ, build_stop_names, build_trip_data, choisir_variante, cle_circulation,
+    derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel, format_gare,
+    format_heure_avec_arret, load_calendrier, load_reference,
 )
 
 OBSERVATIONS_FILE = "observations.csv"
@@ -61,15 +61,18 @@ PERIODES = {
 }
 
 
-def trajet_sens(trip_id, trajet_gares):
+def trajet_sens(trip_id, start_date, variantes, calendrier):
     """Origine -> destination théoriques d'un trip_id, en toutes lettres —
     contrairement à viewer.App._trajet_sens() (codes 5 lettres, pensés pour
     la place réduite d'un menu déroulant), un PDF a la place pour les noms
-    complets, plus lisibles pour une lecture ponctuelle."""
-    gares = trajet_gares.get(sans_date_trip_id(trip_id))
-    if not gares or len(gares) < 2:
+    complets, plus lisibles pour une lecture ponctuelle. choisir_variante
+    (pas juste sans_date_trip_id) : un même train peut avoir plusieurs
+    variantes d'horaire selon la période, voir formatting.py, correctif du
+    2026-08-12."""
+    variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+    if not variante or len(variante["gares"]) < 2:
         return ""
-    return f"{gares[0]} → {gares[-1]}"
+    return f"{variante['gares'][0]} → {variante['gares'][-1]}"
 
 
 def finaliser_axes(ax, marge_x_min=0.1, y_max_min=None):
@@ -200,7 +203,7 @@ def calculer_periode(nom_periode, maintenant_utc):
     return debut_local, fin_local
 
 
-def circulation_est_arrivee(circ, trip_id, trajet_gares, trajet_horaires):
+def circulation_est_arrivee(circ, trip_id, start_date, variantes, calendrier):
     """Une circulation est considérée arrivée si son terminus théorique est
     figé (dépassé) au dernier relevé connu — même logique, et même horloge
     de référence, que le figé/pas-encore-atteint des mini-graphiques
@@ -215,21 +218,22 @@ def circulation_est_arrivee(circ, trip_id, trajet_gares, trajet_horaires):
     Si le terminus n'a même pas été observé (train sorti de la fenêtre de
     60 min du flux temps réel, ou trou de collecte), la circulation est
     exclue par prudence plutôt que supposée arrivée sans preuve."""
-    route = trajet_gares.get(sans_date_trip_id(trip_id))
-    if not route:
+    variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+    if not variante:
         return False
+    route = variante["gares"]
     terminus = route[-1]
     lignes_terminus = circ[circ["gare"] == terminus]
     if lignes_terminus.empty:
         return False
     derniere = lignes_terminus.sort_values("poll_time").iloc[-1]
     dernier_poll = circ["poll_time"].max()
-    heure_terminus = dict(zip(route, trajet_horaires.get(sans_date_trip_id(trip_id), []))).get(terminus)
+    heure_terminus = dict(zip(route, variante["horaires"])).get(terminus)
     passage_estime = estimer_passage_reel(heure_terminus, derniere["start_date"], derniere["retard_min"])
     return passage_estime is not None and passage_estime <= dernier_poll
 
 
-def filtrer_periode_arrivees(df, trajet_gares, trajet_horaires, debut_utc, fin_utc):
+def filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc):
     """(df_periode_complet, df_periode) sur [debut_utc, fin_utc) : toutes
     gares confondues, puis restreint aux 11 gares de la ligne — circulations
     non-arrivées exclues des deux (voir circulation_est_arrivee). Factorisé
@@ -241,7 +245,7 @@ def filtrer_periode_arrivees(df, trajet_gares, trajet_horaires, debut_utc, fin_u
     circulations_arrivees = {
         (trip_id, start_date)
         for (trip_id, start_date), circ in sous_df.groupby(["trip_id", "start_date"])
-        if circulation_est_arrivee(circ, trip_id, trajet_gares, trajet_horaires)
+        if circulation_est_arrivee(circ, trip_id, start_date, variantes, calendrier)
     }
     idx = pd.MultiIndex.from_frame(sous_df[["trip_id", "start_date"]])
     df_periode_complet = sous_df[idx.isin(circulations_arrivees)]
@@ -249,12 +253,12 @@ def filtrer_periode_arrivees(df, trajet_gares, trajet_horaires, debut_utc, fin_u
     return df_periode_complet, df_periode
 
 
-def stats_perturbees_periode(df, trajet_gares, trajet_horaires, debut_utc, fin_utc):
+def stats_perturbees_periode(df, variantes, calendrier, debut_utc, fin_utc):
     """(en_retard, total) circulations perturbées sur [debut_utc, fin_utc) —
     factorisé pour être réutilisable sur une période différente de celle du
     rapport (ex: le mois précédent, pour la comparaison du rapport
     mensuel)."""
-    _, df_periode = filtrer_periode_arrivees(df, trajet_gares, trajet_horaires, debut_utc, fin_utc)
+    _, df_periode = filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc)
     circulation = cle_circulation(df_periode)
     total = circulation.nunique()
     en_retard = circulation[df_periode["retard_min"] > 0].nunique() if total else 0
@@ -273,9 +277,8 @@ def charger_donnees():
     ignore volontairement ce filtre pour la même raison."""
     ref = load_reference()
     stop_names = build_stop_names(ref)
-    # trajet_arrets (pas temps_arret, qui est indexé par stop_id) : liste
-    # alignée avec trajet_gares[trip_id], même usage que viewer.py.
-    trajet_gares, trajet_horaires, _, trajet_arrets, _ = build_trip_data(ref)
+    variantes = build_trip_data(ref)
+    calendrier = load_calendrier()
     df = pd.read_csv(OBSERVATIONS_FILE)
     df["gare"] = df["stop_id"].map(stop_names).fillna(df["stop_id"])
     df["train"] = df["trip_id"].str.split(":").str[0]
@@ -290,7 +293,7 @@ def charger_donnees():
         alertes["fin"] = pd.to_datetime(alertes["fin"], utc=True, errors="coerce")
     except (FileNotFoundError, pd.errors.EmptyDataError):
         alertes = pd.DataFrame(columns=["gares", "texte", "debut", "fin"])
-    return df, alertes, trajet_gares, trajet_horaires, trajet_arrets
+    return df, alertes, variantes, calendrier
 
 
 def generer(nom_periode, maintenant=None):
@@ -300,7 +303,7 @@ def generer(nom_periode, maintenant=None):
     laquelle le rapport aurait dû être généré plutôt que de dépendre de
     l'heure système actuelle."""
     titre = PERIODES[nom_periode]
-    df, alertes, trajet_gares, trajet_horaires, trajet_arrets = charger_donnees()
+    df, alertes, variantes, calendrier = charger_donnees()
 
     if maintenant is None:
         maintenant = pd.Timestamp.now(tz="UTC")
@@ -323,7 +326,7 @@ def generer(nom_periode, maintenant=None):
     # utilisé pour les stats globales (retard moyen, gare la + touchée,
     # sélection du top 5...) — même périmètre par défaut que l'appli
     # (limiter_ligne_var coché).
-    df_periode_complet, df_periode = filtrer_periode_arrivees(df, trajet_gares, trajet_horaires, debut_utc, fin_utc)
+    df_periode_complet, df_periode = filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc)
 
     circulation = cle_circulation(df_periode)
     total = circulation.nunique()
@@ -366,7 +369,7 @@ def generer(nom_periode, maintenant=None):
     ).max().rename("retard_max")
     infos = infos.merge(retard_max_par_circulation, on=["trip_id", "start_date"], how="left")
     top5 = infos.sort_values(["retard_max", "start_date"], ascending=[False, False]).head(5).copy()
-    top5["sens"] = top5["trip_id"].apply(lambda t: trajet_sens(t, trajet_gares))
+    top5["sens"] = top5.apply(lambda r: trajet_sens(r["trip_id"], r["start_date"], variantes, calendrier), axis=1)
 
     # Bornée aux deux extrémités (pas juste "fin >= début") maintenant que la
     # période a une vraie fin fixe (2h), potentiellement plusieurs heures
@@ -454,7 +457,7 @@ def generer(nom_periode, maintenant=None):
         premiere_donnee = df["poll_time"].min()
         if moyenne_mois is not None and pd.notna(premiere_donnee) and premiere_donnee <= debut_mois_precedent:
             en_retard_prec, total_prec = stats_perturbees_periode(
-                df, trajet_gares, trajet_horaires, debut_mois_precedent.tz_convert("UTC"), debut_utc,
+                df, variantes, calendrier, debut_mois_precedent.tz_convert("UTC"), debut_utc,
             )
             moyenne_mois_precedent = 100 * en_retard_prec / total_prec if total_prec else None
         else:
@@ -701,11 +704,11 @@ def generer(nom_periode, maintenant=None):
             for i, (_, ligne) in enumerate(top5.iterrows()):
                 ax_g = fig.add_subplot(gs[3 + lignes_mensuel + i, :])
                 trip_id, start_date = ligne["trip_id"], ligne["start_date"]
-                cle_trip_id = sans_date_trip_id(trip_id)
-                route = trajet_gares.get(cle_trip_id, [])
+                variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+                route = variante["gares"] if variante else []
                 position_gare = {g: p for p, g in enumerate(route)}
-                horaires_bruts = trajet_horaires.get(cle_trip_id, [])
-                arrets = trajet_arrets.get(cle_trip_id, [])
+                horaires_bruts = variante["horaires"] if variante else []
+                arrets = variante["arrets"] if variante else []
                 heure_par_gare = dict(zip(route, horaires_bruts))
 
                 circ = df_periode_complet[
