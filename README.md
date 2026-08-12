@@ -1,8 +1,8 @@
 # train-delay-paris-cherbourg
 
 Suivi en temps réel des retards sur la ligne SNCF Paris ↔ Cherbourg : collecte
-GTFS-RT sur Raspberry Pi, interface de suivi (Tkinter), rapports PDF
-automatiques et détection des perturbations.
+GTFS-RT sur Raspberry Pi, interface web (FastAPI + htmx) et desktop (Tkinter),
+rapports PDF automatiques et détection des perturbations.
 
 ## Architecture
 
@@ -12,20 +12,29 @@ automatiques et détection des perturbations.
   - `verifier_gtfs.py` (03:15) : compare le référentiel local aux horaires théoriques publiés par la SNCF, détecte quand `reference_paris_cherbourg.csv` devient obsolète.
   - `backup_local.sh` (03:10) puis `backup_to_nas.sh` (03:20) : sauvegarde locale puis vers le NAS.
   - Rapports PDF quotidien (03:30), hebdomadaire (03:35 le lundi) et mensuel (03:40 le 1er du mois), envoyés au NAS.
-- **PC** — `viewer.py` (Tkinter), l'interface de consultation. Rapatrie les données du Pi par SSH/rsync (bouton "Rafraîchir") et ne modifie jamais rien côté Pi, à l'exception de l'onglet "Vérification GTFS" (bouton "Déployer vers le Pi").
+- **PC** — deux interfaces de consultation, au choix, qui partagent le même code (`formatting.py`) et rapatrient les données du Pi par SSH/rsync :
+  - `app_fastapi.py` — appli web (FastAPI + htmx + Plotly.js), lecture seule.
+  - `viewer.py` (Tkinter) — mêmes fonctionnalités, plus l'onglet "Guide statistiques" et les actions qui écrivent sur le Pi (bouton "Déployer vers le Pi" de l'onglet "Vérification GTFS").
 - **NAS** — destination des sauvegardes et des rapports PDF.
 
-## Fonctionnalités (`viewer.py`)
+## Fonctionnalités
+
+Communes aux deux interfaces :
 
 - **Tableau** — dernier relevé par gare/train, code couleur (rouge/orange/doré) selon le retard à l'arrivée et au départ.
 - **Graphique / Par jour-heure** — vue d'ensemble des retards sur la période.
 - **Suivi d'un train** — évolution du retard relevé par relevé pour une circulation donnée.
-- **Vérification GTFS** — écart entre le référentiel utilisé par l'appli et les horaires SNCF actuellement publiés ; boutons "Régénérer" et "Déployer vers le Pi".
+- **Travaux / Alertes** — perturbations SNCF en cours et passées (annulations, arrêts supprimés).
+- **Vérification GTFS** — écart entre le référentiel utilisé par l'appli et les horaires SNCF actuellement publiés (disparus/modifiés/nouveaux/renommés).
+
+Propre à `viewer.py` :
+
 - **Guide statistiques** — explication de chaque statistique et code couleur (le même contenu alimente aussi `guide_statistiques.pdf`, via `generer_guide_statistiques.py`).
+- Boutons "Lancer la vérification maintenant", "Régénérer" et "Déployer vers le Pi" sur l'onglet "Vérification GTFS" — absents de la version web, qui reste volontairement en lecture seule tant qu'il n'y a pas d'authentification.
 
 Les rapports PDF (`generer_rapport.py`) et le référentiel des trajets
 (`build_reference.py`, à partir de l'export GTFS statique national SNCF)
-tournent indépendamment de `viewer.py`.
+tournent indépendamment des deux interfaces.
 
 ## Installation
 
@@ -63,7 +72,8 @@ python3 build_reference.py
 ## Utilisation
 
 ```bash
-python3 viewer.py          # interface (PC)
+uvicorn app_fastapi:app        # interface web (PC), sur http://127.0.0.1:8000
+python3 viewer.py              # interface desktop Tkinter (PC)
 python3 collect_realtime.py    # collecte (Pi, prévu pour cron)
 python3 generer_rapport.py quotidien|hebdomadaire|mensuel
 ```
