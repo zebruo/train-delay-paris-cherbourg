@@ -1005,7 +1005,8 @@ tr.gtfs-aggrave {
 .table-gtfs th:nth-child(6), .table-gtfs td:nth-child(6) { width: 8%; }
 .table-gtfs th:nth-child(7), .table-gtfs td:nth-child(7) { width: 8%; }
 .table-gtfs th:nth-child(8), .table-gtfs td:nth-child(8) { width: 8%; }
-.table-gtfs th:nth-child(9), .table-gtfs td:nth-child(9) { width: 22%; }
+.table-gtfs th:nth-child(9), .table-gtfs td:nth-child(9) { width: 8%; }
+.table-gtfs th:nth-child(10), .table-gtfs td:nth-child(10) { width: 14%; }
 
 /* Regroupe .zone-travaux/.zone-gtfs (règles identiques, audit 2026-08-10). */
 .zone-travaux details summary,

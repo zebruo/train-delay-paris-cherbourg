@@ -955,6 +955,7 @@ def _format_date_gtfs(valeur, avec_heure=False):
 
 TITRES_EXEMPLES_GTFS = (
     "Exemples de services modifiés :",
+    "Exemples de services renommés (mêmes arrêts/horaires, identifiant changé) :",
     "Exemples de services disparus :",
     "Exemples de services nouveaux :",
 )
@@ -998,7 +999,7 @@ def calculer_contexte_gtfs(request):
             lignes.append({
                 "date": date_affichee, "reference": "-", "export": "-",
                 "communs": "-", "identiques": "-", "modifies": "-",
-                "disparus": "-", "nouveaux": "-", "statut": "Échec",
+                "disparus": "-", "nouveaux": "-", "renommes": "-", "statut": "Échec",
                 "css": "gtfs-echec", "detail": _surligner_exemples_gtfs(e["texte"]),
             })
             continue
@@ -1008,7 +1009,7 @@ def calculer_contexte_gtfs(request):
             "export": _format_date_gtfs(e["export"]),
             "communs": e["communs"], "identiques": e["identiques"],
             "modifies": e["modifies"], "disparus": e["disparus"],
-            "nouveaux": e["nouveaux"],
+            "nouveaux": e["nouveaux"], "renommes": e["renommes"],
             "statut": "⚠ Aggravation" if e["aggrave"] else "Stable",
             "css": "gtfs-aggrave" if e["aggrave"] else "",
             "detail": _surligner_exemples_gtfs(e["texte"]),

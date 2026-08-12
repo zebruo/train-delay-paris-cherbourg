@@ -14,11 +14,12 @@ acceptable pour un cron quotidien.
 Pour éviter de réafficher le même rapport détaillé chaque jour tant que rien
 n'a empiré, seule une ligne de suivi courte est loggée si l'écart par
 rapport à reference_paris_cherbourg.csv (services disparus + modifiés +
-nouveaux) n'a pas augmenté depuis la dernière alerte détaillée — l'écart ne
-peut que croître tant que la référence n'est pas régénérée, donc ce seuil
-mobile suffit à ne réalerter qu'en cas d'aggravation réelle, et se
-réinitialise naturellement après une régénération (l'écart retombe près de
-zéro, en dessous de tout seuil précédent).
+nouveaux + renommés, voir comparer()) n'a pas augmenté depuis la dernière
+alerte détaillée — l'écart ne peut que croître tant que la référence n'est
+pas régénérée, donc ce seuil mobile suffit à ne réalerter qu'en cas
+d'aggravation réelle, et se réinitialise naturellement après une
+régénération (l'écart retombe près de zéro, en dessous de tout seuil
+précédent).
 
 Ne régénère JAMAIS reference_paris_cherbourg.csv automatiquement : vu
 l'ampleur possible des changements (135 services disparus, 43 modifiés
@@ -123,10 +124,35 @@ def comparer(routes_actuelles, routes_nouvelles):
             g.setdefault(sans_date_trip_id(tid), []).append((tid, r))
         return g
 
+    def signature(g, cle):
+        return tuple((a[1], a[2], a[3]) for a in g[cle][0][1])
+
     g_anc, g_nouv = grouper(routes_actuelles), grouper(routes_nouvelles)
     disparus = set(g_anc) - set(g_nouv)
     nouveaux = set(g_nouv) - set(g_anc)
     communs = set(g_anc) & set(g_nouv)
+
+    # Rapprochement des "renommés" : la SNCF réattribue parfois le segment
+    # ligne/route d'un trip_id à un service par ailleurs inchangé (ex: un
+    # car de substitution détaché de la ligne principale vers une route ad
+    # hoc, cas OCESN446805R1187_R constaté le 2026-08-12, mêmes arrêts et
+    # horaires des deux côtés) — sans_date_trip_id() ne retire que la date
+    # finale, donc ce genre de changement fait apparaître le même service
+    # comme disparu ET nouveau. Rapprochement strict (mêmes arrêts + mêmes
+    # horaires exacts), pas approximatif : un service réellement remplacé
+    # par un autre très proche (quelques minutes d'écart, ex: 13111/3344)
+    # doit rester compté en disparu+nouveau, pas être noyé ici.
+    nouveaux_par_signature = {}
+    for cle in nouveaux:
+        nouveaux_par_signature.setdefault(signature(g_nouv, cle), []).append(cle)
+    renommes = []
+    for cle_disp in list(disparus):
+        candidats = nouveaux_par_signature.get(signature(g_anc, cle_disp))
+        if candidats:
+            renommes.append((cle_disp, candidats.pop()))
+    for cle_disp, cle_nouv in renommes:
+        disparus.discard(cle_disp)
+        nouveaux.discard(cle_nouv)
 
     identiques, exemples_modifies = 0, []
     for s in communs:
@@ -143,9 +169,11 @@ def comparer(routes_actuelles, routes_nouvelles):
         "modifies": len(communs) - identiques,
         "disparus": len(disparus),
         "nouveaux": len(nouveaux),
+        "renommes": len(renommes),
         "exemples_modifies": exemples_modifies,
         "exemples_disparus": sorted(disparus)[:3],
         "exemples_nouveaux": sorted(nouveaux)[:3],
+        "exemples_renommes": sorted(renommes)[:3],
     }
 
 
@@ -153,7 +181,12 @@ RE_RESUME = re.compile(
     r"Vérification GTFS \(export du jour : (?P<export>\S+)\) — "
     r"référence datée du (?P<reference>\S+) : (?P<communs>\d+) communs "
     r"\((?P<identiques>\d+) identiques, (?P<modifies>\d+) modifiés\), "
-    r"(?P<disparus>\d+) disparus, (?P<nouveaux>\d+) nouveaux\."
+    r"(?P<disparus>\d+) disparus, (?P<nouveaux>\d+) nouveaux"
+    # Groupe "renommés" optionnel : absent des entrées de journal écrites
+    # avant son introduction (2026-08-12) — sans ce ?, charger_journal()
+    # perdrait les champs structurés (communs/identiques/...) de tout
+    # l'historique existant, pas seulement des nouvelles entrées.
+    r"(?:, (?P<renommes>\d+) renommés)?\."
 )
 
 
@@ -167,10 +200,11 @@ def charger_journal(chemin=LOG_FILE):
     Chaque entrée contient toujours "horodatage" et "texte" (le bloc brut,
     pour affichage détaillé). Si la ligne de résumé a le format attendu
     (RE_RESUME), les champs sont aussi extraits individuellement (communs,
-    identiques, modifies, disparus, nouveaux, export, reference, aggrave) —
-    utilisé par viewer.py pour un affichage en tableau. Une entrée d'échec
-    (serveur SNCF injoignable) n'a pas ces champs : le tableau doit gérer
-    leur absence."""
+    identiques, modifies, disparus, nouveaux, renommes, export, reference,
+    aggrave) — utilisé par viewer.py pour un affichage en tableau. Une
+    entrée d'échec (serveur SNCF injoignable) n'a pas ces champs : le
+    tableau doit gérer leur absence. "renommes" vaut 0 pour les entrées
+    écrites avant son introduction (voir RE_RESUME)."""
     try:
         with open(chemin, encoding="utf-8") as f:
             contenu = f.read()
@@ -205,6 +239,7 @@ def _construire_entree(horodatage, bloc):
             "modifies": int(m["modifies"]),
             "disparus": int(m["disparus"]),
             "nouveaux": int(m["nouveaux"]),
+            "renommes": int(m["renommes"]) if m["renommes"] else 0,
             "aggrave": "Exemples de services" in texte,
         })
     return entree
@@ -240,7 +275,12 @@ def main():
 
     routes_nouvelles, nouvelle_version = routes_depuis_zip(zip_bytes)
     resultat = comparer(routes_depuis_reference(), routes_nouvelles)
-    ecart = resultat["disparus"] + resultat["modifies"] + resultat["nouveaux"]
+    # renommés compte pour 1 (pas 2) dans l'écart : un service juste
+    # renommé (mêmes arrêts/horaires, voir comparer()) reste un signal que
+    # la référence date un peu, mais un signal plus faible qu'un vrai
+    # disparu+nouveau distinct — double-compter gonflerait l'écart pour un
+    # seul changement réel.
+    ecart = resultat["disparus"] + resultat["modifies"] + resultat["nouveaux"] + resultat["renommes"]
 
     etat = charger_json(ETAT_FILE)
     dernier_ecart_signale = etat.get("dernier_ecart_signale", -1)
@@ -259,7 +299,8 @@ def main():
         f"[{horodatage()}] Vérification GTFS (export du jour : {nouvelle_version}) — "
         f"référence datée du {ancien_version} : {resultat['communs']} communs "
         f"({resultat['identiques']} identiques, {resultat['modifies']} modifiés), "
-        f"{resultat['disparus']} disparus, {resultat['nouveaux']} nouveaux."
+        f"{resultat['disparus']} disparus, {resultat['nouveaux']} nouveaux, "
+        f"{resultat['renommes']} renommés."
     )
 
     if ecart <= dernier_ecart_signale:
@@ -272,6 +313,11 @@ def main():
         print("  Exemples de services modifiés :")
         for s in resultat["exemples_modifies"]:
             print(f"    {s}")
+    if resultat["exemples_renommes"]:
+        print("  Exemples de services renommés (mêmes arrêts/horaires, identifiant changé) :")
+        for ancien, nouveau in resultat["exemples_renommes"]:
+            print(f"    {ancien}")
+            print(f"    -> {nouveau}")
     if resultat["exemples_disparus"]:
         print("  Exemples de services disparus :")
         for s in resultat["exemples_disparus"]:

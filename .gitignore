@@ -37,3 +37,5 @@ monitor_ventilo_pi.py
 test_ventilo_pi.sh
 ventilo_regulation.py
 ventilo-regulation.service
+ventilo-icon.svg
+ventilo-icon.png

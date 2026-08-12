@@ -109,15 +109,15 @@ class OngletVerificationGTFSMixin:
         # brut : les chiffres (communs/identiques/modifiés/disparus/nouveaux)
         # se comparent bien plus facilement en colonnes qu'en relisant chaque
         # ligne de résumé — demande explicite de l'utilisateur, 2026-08-03.
-        colonnes = ("date", "reference", "export", "communs", "identiques", "modifies", "disparus", "nouveaux", "statut")
+        colonnes = ("date", "reference", "export", "communs", "identiques", "modifies", "disparus", "nouveaux", "renommes", "statut")
         titres = {
             "date": "Date", "reference": "Référence datée du", "export": "Export SNCF du jour",
             "communs": "Communs", "identiques": "Identiques", "modifies": "Modifiés",
-            "disparus": "Disparus", "nouveaux": "Nouveaux", "statut": "Statut",
+            "disparus": "Disparus", "nouveaux": "Nouveaux", "renommes": "Renommés", "statut": "Statut",
         }
         largeurs = {
             "date": 140, "reference": 130, "export": 130, "communs": 80, "identiques": 80,
-            "modifies": 80, "disparus": 80, "nouveaux": 80, "statut": 160,
+            "modifies": 80, "disparus": 80, "nouveaux": 80, "renommes": 80, "statut": 160,
         }
         self.verification_gtfs_tree = ttk.Treeview(parent, columns=colonnes, show="headings")
         for c in colonnes:
@@ -144,15 +144,23 @@ class OngletVerificationGTFSMixin:
             "modifies": "Parmi les trains communs, ceux dont l'horaire ou la liste d'arrêts a "
                         "changé — le trajet théorique affiché dans l'application peut être "
                         "légèrement faux pour ces trains-là.",
-            "disparus": "Trains présents dans le référentiel mais absents de l'export SNCF du jour "
-                        "— sans impact en soi, sauf s'ils sont en réalité toujours en service "
-                        "sous une autre forme.",
-            "nouveaux": "Trains présents dans l'export SNCF du jour mais absents du référentiel "
-                        "— ces trains-là ne sont actuellement suivis par aucun relevé de "
-                        "l'application. Le chiffre le plus important à surveiller.",
-            "statut": "« ⚠ Aggravation » si l'écart (disparus + modifiés + nouveaux) a augmenté "
-                      "depuis la dernière alerte détaillée, « Stable » sinon, « Échec » si le "
-                      "serveur SNCF était injoignable ce jour-là.",
+            "disparus": "Trains présents dans le référentiel mais absents de l'export SNCF du jour, "
+                        "et pas rattachés à un Renommé (voir cette colonne) — sans impact en soi, "
+                        "sauf s'ils sont en réalité toujours en service sous une autre forme non "
+                        "détectée automatiquement.",
+            "nouveaux": "Trains présents dans l'export SNCF du jour mais absents du référentiel, et "
+                        "pas rattachés à un Renommé (voir cette colonne) — ces trains-là ne sont "
+                        "actuellement suivis par aucun relevé de l'application. Le chiffre le plus "
+                        "important à surveiller.",
+            "renommes": "Trains dont seul l'identifiant technique a changé entre le référentiel et "
+                        "l'export du jour — mêmes gares, mêmes horaires, même train en réalité "
+                        "(ex: un service reclassé par la SNCF sous une autre ligne). Compté à part "
+                        "des Disparus/Nouveaux pour ne pas gonfler artificiellement leur nombre — "
+                        "l'appli continuera néanmoins d'ignorer ce train tant que le référentiel "
+                        "n'est pas régénéré, faute de reconnaître son nouvel identifiant.",
+            "statut": "« ⚠ Aggravation » si l'écart (disparus + modifiés + nouveaux + renommés) a "
+                      "augmenté depuis la dernière alerte détaillée, « Stable » sinon, « Échec » si "
+                      "le serveur SNCF était injoignable ce jour-là.",
         })
 
         self._verification_gtfs_details = {}
@@ -206,7 +214,7 @@ class OngletVerificationGTFSMixin:
                 # Entrée d'échec (serveur SNCF injoignable) : pas de chiffres
                 # à afficher, juste le texte brut en détail.
                 item = self.verification_gtfs_tree.insert(
-                    "", "end", values=(date_affichee, "-", "-", "-", "-", "-", "-", "-", "Échec"),
+                    "", "end", values=(date_affichee, "-", "-", "-", "-", "-", "-", "-", "-", "Échec"),
                     tags=("echec",),
                 )
                 self._verification_gtfs_details[item] = e["texte"]
@@ -216,7 +224,8 @@ class OngletVerificationGTFSMixin:
                 "", "end",
                 values=(
                     date_affichee, _format_date_fr(e["reference"]), _format_date_fr(e["export"]),
-                    e["communs"], e["identiques"], e["modifies"], e["disparus"], e["nouveaux"], statut,
+                    e["communs"], e["identiques"], e["modifies"], e["disparus"], e["nouveaux"],
+                    e["renommes"], statut,
                 ),
                 tags=("aggrave",) if e["aggrave"] else (),
             )
