@@ -90,8 +90,9 @@
                 <label>
                     <input type="checkbox" name="limiter_ligne" value="true" {% if limiter_ligne %}checked{% endif %}
                            onchange="toastLimiterLigne(this.checked)">
-                    Limiter aux gares de la ligne
+                    Limiter aux {{ nb_gares_ligne }} gares de la ligne
                 </label>
+                <span class="icone-info" title="Coché (par défaut) : les gares hors axe Paris ↔ Cherbourg (ex: Rouen, Le Havre, Rennes, Granville, Coutances) sont exclues de toutes les statistiques générales. Décoché : ces gares comptent aussi — un retard survenu uniquement sur une branche éloignée peut alors faire remonter une circulation dans « Circulations perturbées » ou peser dans « Retard cumulé », même sans aucun retard réel sur l'axe Paris-Cherbourg lui-même.">ℹ</span>
             </div>
             <div class="champ champ-case" id="case-limiter-retard">
                 <input type="hidden" name="limiter_retard" value="false">
@@ -100,6 +101,7 @@
                            onchange="toastLimiterRetard(this.checked)">
                     Limiter aux trains avec retard
                 </label>
+                <span class="icone-info" title="Un train reste inclus tant qu'il a eu du retard à un moment de son trajet, même si ses relevés les plus récents sont revenus à 0 min — le tableau n'affichant que les 300 dernières lignes, ce retard peut ne plus être visible dans les lignes affichées.">ℹ</span>
             </div>
         </form>
         <div id="stats" {% if vue == "graphique" %}style="display:none"{% endif %}>
@@ -204,7 +206,7 @@
         // demande explicite de l'utilisateur, 2026-08-07.
         function toastLimiterLigne(coche) {
             afficherToast("info", coche
-                ? "Gares hors ligne masquées (limité aux 11 gares de la ligne)."
+                ? "Gares hors ligne masquées (limité aux {{ nb_gares_ligne }} gares de la ligne)."
                 : "Gares hors ligne incluses : les gares grisées (trains de jonction, "
                   + "ex: vers Rouen, Rennes, Granville...) apparaissent maintenant partout dans l'appli.",
                 8000);

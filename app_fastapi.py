@@ -534,6 +534,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
         "titre_app": TITRE_APP, "vue": vue,
         "gare": gare, "train": train, "sens": sens,
         "limiter_ligne": limiter_ligne, "limiter_retard": limiter_retard,
+        "nb_gares_ligne": len(GARES_LIGNE),
         "erreur": None,
     }
 

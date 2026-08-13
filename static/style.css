@@ -1105,7 +1105,12 @@ tr.retard-moyen td:nth-child(7) {
     color: #f97316;
 }
 
-tr.depart-retard td:nth-child(6),
+/* nth-child(7) seulement (Dép.), pas nth-child(6) (Arr.) contrairement aux
+deux règles ci-dessus : couleur_ligne() (app_fastapi.py) ne renvoie
+"depart-retard" que quand le retard à l'arrivée n'a déjà rien déclenché
+(< SEUIL_RETARD_MOYEN ou inconnu) — colorer aussi Arr. afficherait un "0.0"
+bénin en doré, comme si l'arrivée posait aussi problème. Repéré par
+l'utilisateur, 2026-08-12. */
 tr.depart-retard td:nth-child(7) {
     color: #ccb531;
 }

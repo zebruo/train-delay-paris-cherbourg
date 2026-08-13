@@ -329,10 +329,19 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
         self.limiter_ligne_var = tk.BooleanVar(value=True)
         self.case_limiter_ligne = ttk.Checkbutton(
-            filters, text="Limiter aux gares de la ligne", variable=self.limiter_ligne_var,
+            filters, text=f"Limiter aux {len(GARES_LIGNE)} gares de la ligne", variable=self.limiter_ligne_var,
             command=self._on_toggle_limiter_ligne,
         )
         self.case_limiter_ligne.pack(side="left", padx=15)
+        SimpleTooltip(
+            self.case_limiter_ligne,
+            "Coché (par défaut) : les gares hors de l'axe Paris ↔ Cherbourg (ex: Rouen, Le "
+            "Havre, Rennes, Granville, Coutances) sont exclues de toutes les statistiques "
+            "générales. Décoché : ces gares comptent aussi — un retard survenu uniquement sur "
+            "une branche éloignée peut alors faire remonter une circulation dans « Circulations "
+            "perturbées » ou peser dans « Retard cumulé », même sans aucun retard réel sur "
+            "l'axe Paris-Cherbourg lui-même.",
+        )
         # Remplace la case à cocher (plutôt que de la griser, voir le
         # commentaire équivalent pour label_limiter_retard_ignore un peu plus
         # bas) sur Suivi d'un train, qui affiche toujours le trajet réel
@@ -1411,7 +1420,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
     def _on_toggle_limiter_ligne(self):
         if self.limiter_ligne_var.get():
-            self.status_var.set("Gares hors ligne masquées (limité aux 11 gares de la ligne).")
+            self.status_var.set(f"Gares hors ligne masquées (limité aux {len(GARES_LIGNE)} gares de la ligne).")
         else:
             self.status_var.set(
                 "Gares hors ligne incluses : les gares grisées (trains de jonction, "

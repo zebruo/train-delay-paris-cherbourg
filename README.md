@@ -6,12 +6,18 @@ rapports PDF automatiques et détection des perturbations.
 
 ## Architecture
 
+Migration en cours d'un Raspberry Pi vers une VPS (IONOS) : la VPS collecte
+déjà en parallèle du Pi (voir ci-dessous), le Pi reste la source active
+tant que la transition n'est pas terminée (historique à migrer, appli web
+pas encore déployée sur la VPS).
+
 - **Raspberry Pi** — collecte en continu, sans interface graphique. Cron :
-  - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, écrit `observations.csv`.
+  - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, écrit `observations.csv`. *(la copie déployée sur le Pi reste volontairement sur cette version CSV — voir la note VPS ci-dessous.)*
   - `collect_alertes.py` (toutes les heures) : perturbations/travaux signalés, écrit `alertes.csv`.
   - `verifier_gtfs.py` (03:15) : compare le référentiel local aux horaires théoriques publiés par la SNCF, détecte quand `reference_paris_cherbourg.csv` devient obsolète.
   - `backup_local.sh` (03:10) puis `backup_to_nas.sh` (03:20) : sauvegarde locale puis vers le NAS.
   - Rapports PDF quotidien (03:30), hebdomadaire (03:35 le lundi) et mensuel (03:40 le 1er du mois), envoyés au NAS.
+- **VPS** — même collecte (`collect_realtime.py`, `collect_alertes.py`, `verifier_gtfs.py`), mais `collect_realtime.py` y écrit dans `observations.db` (SQLite) plutôt que `observations.csv` : c'est la version actuelle du dépôt, pensée pour la VPS une fois la migration terminée — à ne pas redéployer sur le Pi tel quel.
 - **PC** — deux interfaces de consultation, au choix, qui partagent le même code (`formatting.py`) et rapatrient les données du Pi par SSH/rsync :
   - `app_fastapi.py` — appli web (FastAPI + htmx + Plotly.js), lecture seule.
   - `viewer.py` (Tkinter) — mêmes fonctionnalités, plus l'onglet "Guide statistiques" et les actions qui écrivent sur le Pi (bouton "Déployer vers le Pi" de l'onglet "Vérification GTFS").
@@ -74,6 +80,6 @@ python3 build_reference.py
 ```bash
 uvicorn app_fastapi:app        # interface web (PC), sur http://127.0.0.1:8000
 python3 viewer.py              # interface desktop Tkinter (PC)
-python3 collect_realtime.py    # collecte (Pi, prévu pour cron)
+python3 collect_realtime.py    # collecte (VPS, prévu pour cron) — écrit observations.db (SQLite)
 python3 generer_rapport.py quotidien|hebdomadaire|mensuel
 ```
