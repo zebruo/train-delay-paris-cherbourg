@@ -6,14 +6,17 @@ vacances scolaires (calendar_data.py), et le nombre d'arrêts restants avant
 le terminus (reference_paris_cherbourg.csv).
 
 À lancer périodiquement (toutes les 5-10 minutes, via une tâche planifiée) :
-chaque appel ajoute une ligne par arrêt observé dans observations.csv.
-Comme un même train n'apparaît dans le flux que dans les ~60 minutes avant son
-passage, il faut accumuler ces appels dans la durée pour couvrir tous les
-trajets de la journée.
+chaque appel ajoute une ligne par arrêt observé dans observations.db (SQLite
+— choisi le 2026-08-13 au moment du passage à la VPS IONOS, plutôt que le
+CSV utilisé jusqu'ici sur le Pi : écritures atomiques, colonnes typées,
+requêtes ciblées sans recharger tout le fichier à chaque lecture — voir
+mémoire du projet). Comme un même train n'apparaît dans le flux que dans les
+~60 minutes avant son passage, il faut accumuler ces appels dans la durée
+pour couvrir tous les trajets de la journée.
 """
 import csv
 import json
-import os
+import sqlite3
 import urllib.parse
 from datetime import datetime, timezone
 
@@ -26,11 +29,38 @@ from perturbations import CANCELED, SKIPPED, detecter_evenements, enregistrer_ev
 
 FEED_URL = "https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-trip-updates"
 WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
-OBSERVATIONS_FILE = "observations.csv"
-FIELDNAMES = ["poll_time", "trip_id", "start_date", "stop_id",
-              "arrival_delay_s", "departure_delay_s",
-              "temperature_c", "precipitation_mm", "wind_speed_kmh", "weather_code",
-              "type_jour", "vacances_scolaires", "arrets_restants"]
+OBSERVATIONS_DB = "observations.db"
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS observations (
+    poll_time TEXT NOT NULL,
+    trip_id TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    stop_id TEXT NOT NULL,
+    arrival_delay_s INTEGER,
+    departure_delay_s INTEGER,
+    temperature_c REAL,
+    precipitation_mm REAL,
+    wind_speed_kmh REAL,
+    weather_code INTEGER,
+    type_jour TEXT,
+    vacances_scolaires INTEGER,
+    arrets_restants INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_observations_trip ON observations(trip_id, start_date);
+CREATE INDEX IF NOT EXISTS idx_observations_poll_time ON observations(poll_time);
+"""
+
+
+def connecter_db():
+    """WAL (Write-Ahead Logging) plutôt que le mode journal par défaut :
+    autorise une lecture concurrente (l'appli web) pendant qu'un insert est
+    en cours, sans que l'une bloque l'autre — pertinent ici puisque la
+    collecte (cron 5 min) et les requêtes de l'appli tournent sur la même
+    machine, contrairement au Pi où seule la collecte écrivait."""
+    connexion = sqlite3.connect(OBSERVATIONS_DB)
+    connexion.execute("PRAGMA journal_mode=WAL")
+    connexion.executescript(SCHEMA_SQL)
+    return connexion
 
 
 def load_reference_data():
@@ -92,7 +122,7 @@ def fetch_weather(latitude, longitude):
             "weather_code": current["weather_code"],
         }
     except Exception:
-        return {"temperature_c": "", "precipitation_mm": "", "wind_speed_kmh": "", "weather_code": ""}
+        return {"temperature_c": None, "precipitation_mm": None, "wind_speed_kmh": None, "weather_code": None}
 
 
 def main():
@@ -146,8 +176,8 @@ def main():
                 "trip_id": trip.trip_id,
                 "start_date": trip.start_date,
                 "stop_id": stu.stop_id,
-                "arrival_delay_s": stu.arrival.delay if stu.HasField("arrival") else "",
-                "departure_delay_s": stu.departure.delay if stu.HasField("departure") else "",
+                "arrival_delay_s": stu.arrival.delay if stu.HasField("arrival") else None,
+                "departure_delay_s": stu.departure.delay if stu.HasField("departure") else None,
             })
 
     # Une requête météo par gare distincte présente dans ce relevé, pas par ligne
@@ -161,11 +191,11 @@ def main():
                 lat, lon = station_coords[gare]
                 weather_cache[gare] = fetch_weather(lat, lon)
             else:
-                weather_cache[gare] = {"temperature_c": "", "precipitation_mm": "", "wind_speed_kmh": "", "weather_code": ""}
+                weather_cache[gare] = {"temperature_c": None, "precipitation_mm": None, "wind_speed_kmh": None, "weather_code": None}
         row.update(weather_cache[gare])
 
         row["type_jour"] = calendrier.type_jour(row["start_date"])
-        row["vacances_scolaires"] = calendrier.en_vacances(row["start_date"])
+        row["vacances_scolaires"] = int(calendrier.en_vacances(row["start_date"]))
 
         cle_trip_id = sans_date_trip_id(row["trip_id"])
         terminus_seq = terminus_par_trajet.get(cle_trip_id)
@@ -173,16 +203,25 @@ def main():
         if terminus_seq is not None and stop_seq is not None:
             row["arrets_restants"] = terminus_seq - stop_seq
         else:
-            row["arrets_restants"] = ""
+            row["arrets_restants"] = None
 
         new_rows.append(row)
 
-    file_exists = os.path.isfile(OBSERVATIONS_FILE)
-    with open(OBSERVATIONS_FILE, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerows(new_rows)
+    connexion = connecter_db()
+    with connexion:
+        connexion.executemany(
+            """INSERT INTO observations (
+                poll_time, trip_id, start_date, stop_id, arrival_delay_s, departure_delay_s,
+                temperature_c, precipitation_mm, wind_speed_kmh, weather_code,
+                type_jour, vacances_scolaires, arrets_restants
+            ) VALUES (
+                :poll_time, :trip_id, :start_date, :stop_id, :arrival_delay_s, :departure_delay_s,
+                :temperature_c, :precipitation_mm, :wind_speed_kmh, :weather_code,
+                :type_jour, :vacances_scolaires, :arrets_restants
+            )""",
+            new_rows,
+        )
+    connexion.close()
 
     print(f"{poll_time} : {len(new_rows)} observations Paris-Cherbourg ajoutées "
           f"(sur {len(feed.entity)} trains dans le flux national, "
