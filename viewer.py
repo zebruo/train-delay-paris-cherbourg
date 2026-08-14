@@ -1675,14 +1675,23 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 self.tree.insert("", "end", tags=("separateur",), values=[""] * len(self.tree["columns"]))
             dernier_groupe = groupe
 
-            retard = row["retard_min"]
+            # retard_arrivee_min, pas retard_min (qui retombe sur
+            # retard_depart_min via fillna quand l'arrivée est vide, le cas
+            # de la toute première gare d'un trajet) : sinon un retard au
+            # départ seul se classait à tort "retard_moyen"/"retard_fort"
+            # (orange/rouge) au lieu de "depart_retard" (doré) — même
+            # logique que couleur_ligne() côté web (app_fastapi.py), dont
+            # le docstring dit d'ailleurs répliquer celle-ci — repéré par
+            # l'utilisateur via un écart de couleur entre les deux apps,
+            # 2026-08-14.
+            retard_arrivee = row["retard_arrivee_min"]
             retard_depart = row["retard_depart_min"]
             tags = []
             if row["gare"] not in GARES_LIGNE:
                 tags.append("hors_ligne")
-            elif pd.notna(retard) and retard >= SEUIL_RETARD_FORT:
+            elif pd.notna(retard_arrivee) and retard_arrivee >= SEUIL_RETARD_FORT:
                 tags.append("retard_fort")
-            elif pd.notna(retard) and retard >= SEUIL_RETARD_MOYEN:
+            elif pd.notna(retard_arrivee) and retard_arrivee >= SEUIL_RETARD_MOYEN:
                 tags.append("retard_moyen")
             elif pd.notna(retard_depart) and retard_depart >= SEUIL_RETARD_MOYEN:
                 tags.append("depart_retard")
