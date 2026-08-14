@@ -4,8 +4,10 @@
 {% else %}
 <div class="zone-graphique">
     <p class="info">
-        Chaque point = retard moyen de tous les relevés à cet instant (toutes gares et trains confondus).
-        Pointillé « moy. » = moyenne de ces points sur la période affichée.
+        Courbe du haut : chaque point = retard moyen de tous les relevés à cet instant (selon les
+        filtres actifs). Courbe du bas : chaque point = % des circulations en retard au même
+        instant. Pointillé « moy. » = moyenne de la courbe sur la période affichée. ★ = point le
+        plus haut de la période — survole-le pour le détail.
     </p>
     <div class="ligne-periode">
         <div class="champ">
@@ -18,7 +20,7 @@
                 {% endfor %}
             </select>
         </div>
-        <p class="info stat-graphique">— soit {{ nb_releves }} relevés</p>
+        <p class="info stat-graphique">soit {{ nb_releves }} relevés</p>
         {% for segment in segments_periode %}
             <p class="info stat-graphique">{{ segment }}</p>
         {% endfor %}

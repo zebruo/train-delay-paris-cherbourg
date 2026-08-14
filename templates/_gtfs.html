@@ -1,9 +1,9 @@
 {% if not erreur %}
 <div class="zone-gtfs">
     <p class="info">
-        Compare quotidiennement (cron sur le Pi, 3h15) la desserte Paris-Cherbourg du GTFS SNCF en
-        ligne à reference_paris_cherbourg.csv — n'alerte en détail qu'en cas d'aggravation depuis
-        la dernière alerte.
+        Vérifie chaque jour si les horaires que l'application utilise correspondent toujours à ceux
+        publiés par la SNCF (trains ajoutés, supprimés ou modifiés) — un résumé détaillé ne
+        s'affiche que si la situation s'aggrave par rapport à la dernière fois.
     </p>
     <div class="champ champ-case" id="filtres-gtfs">
         <input type="hidden" name="gtfs_aggravations" value="false">
@@ -49,9 +49,11 @@
                             <td>
                                 <details>
                                     <summary>{{ ligne.statut }}</summary>
-                                    <pre class="gtfs-detail">{{ ligne.detail | safe }}</pre>
                                 </details>
                             </td>
+                        </tr>
+                        <tr class="gtfs-ligne-detail">
+                            <td colspan="10"><pre class="gtfs-detail">{{ ligne.detail | safe }}</pre></td>
                         </tr>
                     {% endfor %}
                 </tbody>

@@ -1027,6 +1027,30 @@ tr.gtfs-aggrave {
     color: var(--texte-attenue);
 }
 
+/* Le détail d'une entrée GTFS (potentiellement de longues listes de
+trip_id) vit dans sa propre ligne pleine largeur plutôt que dans la
+colonne "Statut" elle-même (~14% du tableau, illisible pour ce genre de
+contenu, repéré par l'utilisateur 2026-08-14) — cachée par défaut, révélée
+seulement quand le <details> juste au-dessus est ouvert. :has() plutôt que
+du JS : évite d'avoir à synchroniser un état séparé, cohérent avec le
+choix déjà fait d'utiliser <details>/<summary> natifs pour cet onglet. */
+/* .zone-scroll tbody tr { display: table; ... } (plus haut, nécessaire au
+défilement séparé thead/tbody) a une spécificité plus forte qu'un simple
+.gtfs-ligne-detail { display: none } — d'où le préfixe .zone-scroll tbody
+ici, sinon la ligne de détail resterait visible même fermée. */
+.zone-scroll tbody tr.gtfs-ligne-detail {
+    display: none;
+}
+
+.zone-scroll tbody tr:has(details[open]) + tr.gtfs-ligne-detail {
+    display: table;
+}
+
+.gtfs-ligne-detail td {
+    padding: 0.5rem 0.75rem;
+    background: var(--fond-secondaire);
+}
+
 /* Surlignage façon surligneur des lignes-titres "Exemples de services
 ...", posé côté backend (_surligner_exemples_gtfs, app_fastapi.py) —
 demande explicite de l'utilisateur, 2026-08-10. */
