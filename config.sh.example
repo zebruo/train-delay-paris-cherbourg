@@ -2,3 +2,5 @@
 # propres valeurs (non versionné, voir .gitignore).
 NAS_HOST="utilisateur@ip_du_nas"
 SSH_KEY_NAS="$HOME/.ssh/id_ed25519_nas"
+VPS_HOST="utilisateur@ip_de_la_vps"
+SSH_KEY_VPS="$HOME/.ssh/id_ed25519_vps"

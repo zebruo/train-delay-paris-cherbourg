@@ -325,28 +325,35 @@
     </section>
 
     <section class="aide-section">
-        <h4>« Régénérer » et « Déployer vers le Pi » <span class="aide-sous-titre">(mettre à jour la référence)</span></h4>
+        <h4>« Régénérer » et « Déployer vers la VPS » <span class="aide-sous-titre">(mettre à jour la référence — application desktop uniquement, absent de cette version web)</span></h4>
         <p>
-            Deux boutons séparés, en deux étapes volontairement distinctes. « Régénérer »
+            Deux boutons séparés, en deux étapes volontairement distinctes, disponibles
+            uniquement dans l'application desktop (Tkinter) — cette version web reste
+            volontairement en lecture seule tant qu'il n'y a pas d'authentification. « Régénérer »
             télécharge l'horaire SNCF du jour et reconstruit la référence — sur ce PC uniquement,
-            sans rien changer côté Pi. « Déployer vers le Pi » envoie ensuite cette nouvelle
-            référence là où elle compte vraiment : le Raspberry Pi, qui collecte les données en continu.
+            sans rien changer côté VPS. « Déployer vers la VPS » envoie ensuite cette nouvelle
+            référence là où elle compte vraiment : la VPS, qui collecte les données en continu et
+            héberge cette même application web.
         </p>
         <div class="aide-exemple">
             Avant l'envoi, une confirmation rappelle les deux versions en jeu :<br>
-            « Référentiel actuellement sur le Pi : 2026-07-19<br>
+            « Référentiel actuellement sur la VPS : 2026-07-19<br>
             &nbsp;&nbsp;Référentiel local à déployer : 2026-08-04 »
         </div>
         <p class="aide-utilite">
             Utile pour : mettre à jour la référence sans ligne de commande, tout en gardant la
-            main à chaque étape — rien ne part vers le Pi sans un clic de confirmation explicite.
+            main à chaque étape — rien ne part vers la VPS sans un clic de confirmation explicite.
         </p>
         <p class="aide-pourquoi">
             Séparer « Régénérer » (local, sans conséquence) de « Déployer » (touche la collecte
-            en cours) évite qu'une régénération machinale ne modifie sans le vouloir ce qui
-            tourne réellement sur le Pi. Une fois déployée, la vérification est aussitôt relancée
-            là-bas : sans ça, le seuil d'alerte du Pi resterait basé sur l'ancienne référence
-            jusqu'au prochain passage automatique (3h15).
+            et cette appli web, toutes deux en production sur la VPS) évite qu'une régénération
+            machinale ne modifie sans le vouloir ce qui tourne réellement. Une fois déployée, la
+            vérification GTFS est aussitôt relancée là-bas — sans ça, le seuil d'alerte resterait
+            basé sur l'ancienne référence jusqu'au prochain passage automatique (3h15) — et le
+            service web est redémarré automatiquement pour qu'il recharge la nouvelle référence
+            tout de suite : sans ce redémarrage, des champs comme « Sens »/« Heure théo. »
+            resteraient silencieusement basés sur l'ancienne version pour toute circulation ayant
+            changé.
         </p>
     </section>
 

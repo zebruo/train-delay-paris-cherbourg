@@ -1,17 +1,23 @@
 """
 Génère un rapport PDF (quotidien, hebdomadaire ou mensuel) résumant l'état de
 la ligne Paris-Cherbourg sur la période écoulée, à partir de
-observations.csv et alertes.csv — mêmes calculs que la barre du haut / la
+observations.db et alertes.csv — mêmes calculs que la barre du haut / la
 frise / "Suivi d'un train" de viewer.py, mais sans dépendance à Tkinter
 (utilisable sans interface graphique).
 
 Usage : python generer_rapport.py quotidien|hebdomadaire|mensuel
 
-Tourne désormais sur le Pi 4 (aarch64, matplotlib a un paquet précompilé sur
-cette architecture — contrairement à l'ancien Pi ARM32 évoqué en mémoire du
+Tourne sur le Pi 4 (aarch64, matplotlib a un paquet précompilé sur cette
+architecture — contrairement à l'ancien Pi ARM32 évoqué en mémoire du
 projet, 2026-07-24, où ce n'était pas le cas), via executer_rapport_pi.sh,
-planifié par cron sur le Pi. executer_rapport.sh (Planificateur de tâches
-Windows) reste disponible pour un lancement ponctuel depuis le PC.
+planifié par cron sur le Pi. observations.db/alertes.csv sont rapatriés
+depuis la VPS par ce même script juste avant l'appel à ce fichier (la VPS
+est la seule source de collecte depuis le 2026-08-14, le Pi ne collecte
+plus lui-même — voir mémoire du projet) — pas par ce module, qui reste
+volontairement seulement responsable de la génération, pas du
+rapatriement. executer_rapport.sh (Planificateur de tâches Windows) reste
+disponible pour un lancement ponctuel depuis le PC, sur sa propre copie
+locale (rapatriée par viewer.py).
 
 Écrit dans rapports/<periode>/NNNN_rapport_<periode>_JJ-MM-AAAA.pdf (un
 fichier par génération, numéroté, jamais écrasé — historique conservé comme
@@ -21,6 +27,7 @@ fonctionne que depuis le PC.
 """
 import json
 import os
+import sqlite3
 import sys
 
 import pandas as pd
@@ -38,7 +45,7 @@ from formatting import (
     format_heure_avec_arret, load_calendrier, load_reference,
 )
 
-OBSERVATIONS_FILE = "observations.csv"
+OBSERVATIONS_DB = "observations.db"
 ALERTES_FILE = "alertes.csv"
 RAPPORTS_DIR = "rapports"
 COMPTEUR_FILE = f"{RAPPORTS_DIR}/.compteur.json"
@@ -279,7 +286,11 @@ def charger_donnees():
     stop_names = build_stop_names(ref)
     variantes = build_trip_data(ref)
     calendrier = load_calendrier()
-    df = pd.read_csv(OBSERVATIONS_FILE)
+    connexion = sqlite3.connect(OBSERVATIONS_DB)
+    try:
+        df = pd.read_sql_query("SELECT * FROM observations ORDER BY poll_time", connexion)
+    finally:
+        connexion.close()
     df["gare"] = df["stop_id"].map(stop_names).fillna(df["stop_id"])
     df["train"] = df["trip_id"].str.split(":").str[0]
     df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
