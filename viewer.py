@@ -1,12 +1,16 @@
 """
-Interface graphique pour suivre les données collectées sur le Raspberry Pi
-(observations.csv) sans avoir à se connecter en SSH.
+Interface graphique pour suivre les données collectées sur la VPS
+(observations.db, SQLite — Pi jusqu'au 2026-08-13, remplacé depuis par la
+VPS qui héberge la collecte, voir mémoire du projet) sans avoir à se
+connecter en SSH.
 
-Le bouton "Rafraîchir" rapatrie le fichier le plus récent depuis le Pi
-(via scp) puis met à jour le tableau, les statistiques et le graphique.
+Le bouton "Rafraîchir" rapatrie le fichier le plus récent depuis la VPS
+(via rsync) puis met à jour le tableau, les statistiques et le graphique.
 """
 import math
+import os
 import re
+import sqlite3
 import subprocess
 import tkinter as tk
 from datetime import datetime
@@ -56,20 +60,26 @@ from formatting import (
     trajet_sens,
 )
 from tooltips import SimpleTooltip, SurvolArtistes, TreeviewHeaderTooltips
-from pi_status import recuperer_etat_pi
+from vps_status import recuperer_etat_vps
 from perturbations import charger_alertes, charger_evenements, PERTURBATIONS_FILE
 from verifier_gtfs import LOG_FILE as GTFS_LOG_FILE
 from onglet_verification_gtfs import OngletVerificationGTFSMixin
-from config import PI_HOST
+from config import VPS_HOST
 
 matplotlib.rcParams["font.size"] = 9  # même taille que le tableau
 
-PI_OBSERVATIONS_PATH = "~/train-delay-paris-cherbourg/observations.csv"
-LOCAL_OBSERVATIONS = "observations.csv"
-PI_ALERTES_PATH = "~/train-delay-paris-cherbourg/alertes.csv"
+# observations.db (SQLite) plutôt que observations.csv, et VPS plutôt que Pi
+# depuis le 2026-08-13 (la VPS remplace le Pi comme source des données) — le
+# voyant d'état dans la barre du haut a suivi le même mouvement le
+# 2026-08-14 : il affichait la santé matérielle du Pi (via pi_status.py,
+# resté disponible en outil autonome), il affiche maintenant celle de la
+# VPS (voir vps_status.py) — PI_HOST n'est donc plus importé du tout ici.
+VPS_OBSERVATIONS_DB_PATH = "~/train-delay-paris-cherbourg/observations.db"
+LOCAL_OBSERVATIONS_DB = "observations.db"
+VPS_ALERTES_PATH = "~/train-delay-paris-cherbourg/alertes.csv"
 LOCAL_ALERTES = "alertes.csv"
-PI_PERTURBATIONS_PATH = "~/train-delay-paris-cherbourg/perturbations_detectees.csv"
-PI_GTFS_LOG_PATH = f"~/train-delay-paris-cherbourg/{GTFS_LOG_FILE}"
+VPS_PERTURBATIONS_PATH = "~/train-delay-paris-cherbourg/perturbations_detectees.csv"
+VPS_GTFS_LOG_PATH = f"~/train-delay-paris-cherbourg/{GTFS_LOG_FILE}"
 ICON_FILE = "train-logo.png"
 
 AUTO_REFRESH_MS = 5 * 60 * 1000  # 5 minutes, au même rythme que la collecte sur le Pi
@@ -101,7 +111,12 @@ GARES_LIGNE_ORDRE = (
 
 
 class App(tk.Tk, OngletVerificationGTFSMixin):
-    LARGEUR_STATS_PERIODE = 1100  # px — voir _empaqueter_segments
+    # px — voir _empaqueter_segments. Relevé à 1450 (était 1100) en même
+    # temps que la police de cette ligne passée à 8pt (était 9, 7pt essayé
+    # d'abord mais jugé trop petit) — mesuré sur des segments réels :
+    # ~1535px à 9pt, ~1363px à 8pt (tient dans 1450px, marge d'environ
+    # 90px) — demande explicite de l'utilisateur, 2026-08-14.
+    LARGEUR_STATS_PERIODE = 1450
 
     def __init__(self):
         super().__init__()
@@ -200,7 +215,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         top = ttk.Frame(self)
         top.pack(fill="x", padx=10, pady=10)
 
-        self.refresh_button = ttk.Button(top, text="Rafraîchir depuis le Raspberry Pi", command=self.refresh)
+        self.refresh_button = ttk.Button(top, text="Rafraîchir depuis la VPS", command=self.refresh)
         self.refresh_button.pack(side="left")
 
         # Espace disque/température, pas la fraîcheur des données (déjà
@@ -215,51 +230,69 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # (repéré par l'utilisateur, 2026-07-31) — un cercle dessiné donne un
         # contrôle exact sur les deux.
         fond = ttk.Style().lookup("TFrame", "background")
-        self.canvas_etat_pi = tk.Canvas(top, width=14, height=16, highlightthickness=0, background=fond)
-        self._point_etat_pi = self.canvas_etat_pi.create_oval(1, 2, 13, 14, fill="#888888", outline="")
-        self.canvas_etat_pi.pack(side="left", padx=(15, 4))
-        self.etat_pi_var = tk.StringVar(value="Pi 4 : état inconnu (pas encore interrogé)")
-        self.label_etat_pi = ttk.Label(top, textvariable=self.etat_pi_var, foreground="#888", font=("", 9))
-        self.label_etat_pi.pack(side="left")
-        # Dernière température CPU connue, pour afficher une tendance
+        self.canvas_etat_vps = tk.Canvas(top, width=14, height=16, highlightthickness=0, background=fond)
+        self._point_etat_vps = self.canvas_etat_vps.create_oval(1, 2, 13, 14, fill="#888888", outline="")
+        self.canvas_etat_vps.pack(side="left", padx=(15, 4))
+        self.etat_vps_var = tk.StringVar(value="VPS : état inconnu (pas encore interrogée)")
+        self.label_etat_vps = ttk.Label(top, textvariable=self.etat_vps_var, foreground="#888", font=("", 9))
+        self.label_etat_vps.pack(side="left")
+        # Dernier taux de mémoire utilisée connu, pour afficher une tendance
         # (→/↗/↘) au rafraîchissement suivant — None tant qu'on n'a pas
-        # encore de valeur à comparer (premier rafraîchissement).
-        self._dernier_cpu_temp = None
+        # encore de valeur à comparer (premier rafraîchissement). Mémoire
+        # plutôt que température CPU (utilisée ici avant le 2026-08-14, du
+        # temps où ce voyant suivait le Pi, voir pi_status.py) : la VPS n'a
+        # pas de capteur thermique exposé, et c'est justement la mémoire qui
+        # a causé l'incident du 2026-08-13 (mémoire du projet) — la
+        # grandeur la plus utile à surveiller ici.
+        self._dernier_mem_pct = None
 
         self.auto_refresh_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
-            top, text="Rafraîchissement automatique (5 min)",
+            top, text="↻ auto (5 min)",
             variable=self.auto_refresh_var, command=self._toggle_auto_refresh,
         ).pack(side="left", padx=15)
 
         self.summary_var = tk.StringVar(value="Aucune donnée chargée.")
         ttk.Label(top, textvariable=self.summary_var).pack(side="left", padx=15)
 
-    def _rafraichir_etat_pi(self):
-        etat = recuperer_etat_pi(PI_HOST)
+    def _rafraichir_etat_vps(self):
+        etat = recuperer_etat_vps(VPS_HOST)
         if etat is None:
-            self.etat_pi_var.set("Pi 4 : injoignable")
-            self.label_etat_pi.configure(foreground="#ef4444")
-            self.canvas_etat_pi.itemconfigure(self._point_etat_pi, fill="#ef4444")
+            self.etat_vps_var.set("VPS : injoignable")
+            self.label_etat_vps.configure(foreground="#ef4444")
+            self.canvas_etat_vps.itemconfigure(self._point_etat_vps, fill="#ef4444")
+        elif not etat["service_actif"]:
+            # Joignable par SSH mais train-delay.service arrêté : distinct
+            # d'une VPS injoignable (même couleur d'alerte, message différent)
+            # — c'est justement le genre de panne partielle qu'un simple
+            # ping/SSH ne détecterait pas, alors que le site public est bel
+            # et bien indisponible pour les visiteurs.
+            self.etat_vps_var.set(
+                f"VPS : en ligne mais train-delay arrêté !  ·  disque "
+                f"{etat['disque_libre_pct']} % libre ({etat['disque_libre_texte']})"
+            )
+            self.label_etat_vps.configure(foreground="#ef4444")
+            self.canvas_etat_vps.itemconfigure(self._point_etat_vps, fill="#ef4444")
         else:
-            cpu_temp = etat["cpu_temp"]
-            SEUIL_TENDANCE = 1  # °C — en dessous, on considère la température stable
-            if self._dernier_cpu_temp is None:
+            mem_pct = etat["mem_utilisee_pct"]
+            SEUIL_TENDANCE = 3  # points de % — en dessous, on considère la mémoire stable
+            if self._dernier_mem_pct is None:
                 fleche = ""
-            elif cpu_temp - self._dernier_cpu_temp > SEUIL_TENDANCE:
+            elif mem_pct - self._dernier_mem_pct > SEUIL_TENDANCE:
                 fleche = "↗ "
-            elif self._dernier_cpu_temp - cpu_temp > SEUIL_TENDANCE:
+            elif self._dernier_mem_pct - mem_pct > SEUIL_TENDANCE:
                 fleche = "↘ "
             else:
                 fleche = "→ "
-            self._dernier_cpu_temp = cpu_temp
+            self._dernier_mem_pct = mem_pct
 
-            self.etat_pi_var.set(
-                f"Pi 4 : en ligne  ·  disque {etat['disque_libre_pct']} % libre "
-                f"({etat['disque_libre_texte']})  ·  CPU {fleche}{cpu_temp:.0f} °C"
+            self.etat_vps_var.set(
+                f"VPS : en ligne  ·  disque {etat['disque_libre_pct']} % libre "
+                f"({etat['disque_libre_texte']})  ·  RAM {fleche}{mem_pct:.0f} % "
+                f"({etat['mem_utilisee_mo']}/{etat['mem_totale_mo']} Mo)"
             )
-            self.label_etat_pi.configure(foreground="#1a7d3c")
-            self.canvas_etat_pi.itemconfigure(self._point_etat_pi, fill="#1a7d3c")
+            self.label_etat_vps.configure(foreground="#1a7d3c")
+            self.canvas_etat_vps.itemconfigure(self._point_etat_vps, fill="#1a7d3c")
 
     def _build_stats(self):
         stats = ttk.Frame(self)
@@ -556,8 +589,10 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
         ttk.Label(
             top,
-            text="Chaque point = retard moyen de tous les relevés à cet instant (toutes gares et trains confondus).\n"
-                 "Pointillé « moy. » = moyenne de ces points sur la période affichée.\n",
+            text="Courbe du haut : chaque point = retard moyen de tous les relevés à cet instant (selon les\n"
+                 "filtres actifs). Courbe du bas : chaque point = % des circulations en retard au même\n"
+                 "instant. Pointillé « moy. » = moyenne de la courbe sur la période affichée. ★ = point le\n"
+                 "plus haut de la période — survole-le pour le détail.\n",
             foreground="#555", justify="left", font=("", 9),
         ).pack(side="left", padx=10)
 
@@ -568,7 +603,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # dernières 24h" par exemple (voir mémoire du projet, 2026-07-24).
         # Police utilisée pour mesurer la largeur réelle des segments dans
         # _empaqueter_segments — même taille que le texte affiché.
-        self._police_stats_periode = tkfont.Font(font=("", 9, "bold"))
+        self._police_stats_periode = tkfont.Font(font=("", 8, "bold"))
         # Widget Text plutôt qu'un ttk.Label : un Label ne peut afficher
         # qu'une seule couleur, alors qu'on veut le premier segment
         # ("circulations perturbées") dans la couleur accent de la stat
@@ -583,7 +618,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # l'historique" après plusieurs semaines de collecte).
         fond = ttk.Style().lookup("TFrame", "background")
         self.texte_stats_periode = tk.Text(
-            parent, font=("", 9, "bold"), height=1, wrap="none",
+            parent, font=("", 8, "bold"), height=1, wrap="none",
             relief="flat", borderwidth=0, highlightthickness=0,
             background=fond, cursor="arrow", takefocus=0, padx=0, pady=0,
         )
@@ -969,85 +1004,105 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
     # --- Données ---
     @staticmethod
-    def _rsync_depuis_pi(chemin_distant, fichier_local):
+    def _rsync_depuis_vps(chemin_distant, fichier_local):
         # rsync plutôt que scp : ces fichiers ne grandissent que par ajout en
         # fin de fichier (jamais modifiés au milieu), donc rsync ne
         # retransfère que les nouvelles lignes plutôt que le fichier entier à
         # chaque rafraîchissement (même mécanisme déjà utilisé pour la
-        # synchro Pi -> NAS, backup_to_nas.sh).
+        # synchro Pi -> NAS, backup_to_nas.sh). observations.db (SQLite) se
+        # comporte différemment (pas un simple append, voir
+        # collect_realtime.py) mais reste rsync-safe : ce script ferme sa
+        # connexion à chaque exécution (checkpoint WAL automatique), donc le
+        # fichier .db lu ici est toujours dans un état stable entre deux
+        # cycles de collecte.
         subprocess.run(
-            ["rsync", "-az", f"{PI_HOST}:{chemin_distant}", fichier_local],
+            ["rsync", "-az", f"{VPS_HOST}:{chemin_distant}", fichier_local],
             check=True, capture_output=True, timeout=60,
         )
 
     def refresh(self, manuel=True):
-        self.status_var.set("Récupération des données depuis le Raspberry Pi...")
+        self.status_var.set("Récupération des données depuis la VPS...")
         self.update_idletasks()
         try:
-            self._rsync_depuis_pi(PI_OBSERVATIONS_PATH, LOCAL_OBSERVATIONS)
+            self._rsync_depuis_vps(VPS_OBSERVATIONS_DB_PATH, LOCAL_OBSERVATIONS_DB)
         except Exception as exc:
-            # En automatique (toutes les 5 min), un souci passager du Pi ne doit
-            # pas interrompre l'utilisateur avec une fenêtre à chaque fois — on
-            # se contente de la barre de statut. La fenêtre reste affichée pour
-            # un clic manuel, où l'utilisateur attend un vrai retour.
+            # En automatique (toutes les 5 min), un souci passager de la VPS ne
+            # doit pas interrompre l'utilisateur avec une fenêtre à chaque fois —
+            # on se contente de la barre de statut. La fenêtre reste affichée
+            # pour un clic manuel, où l'utilisateur attend un vrai retour.
             if manuel:
                 messagebox.showerror("Erreur", f"Impossible de récupérer les données :\n{exc}")
             heure = datetime.now(PARIS_TZ).strftime("%H:%M:%S")
             self.status_var.set(f"Échec de la récupération à {heure} — nouvelle tentative dans 5 min.")
             # Interrogé même si le rsync a échoué : c'est justement le cas où
-            # savoir si le Pi est en ligne (et dans quel état) aide le plus à
-            # comprendre l'échec (Pi éteint/injoignable vs autre souci réseau).
-            self._rafraichir_etat_pi()
+            # savoir si la VPS est en ligne (et dans quel état) aide le plus à
+            # comprendre l'échec — ex: SSH répond mais train-delay.service est
+            # arrêté, ou disque/mémoire pleins.
+            self._rafraichir_etat_vps()
             return
 
         try:
-            # Best-effort : contrairement à observations.csv, l'absence
-            # d'alertes.csv (ex: pas encore déployé sur le Pi, ou collecte pas
+            # Best-effort : contrairement à observations.db, l'absence
+            # d'alertes.csv (ex: pas encore déployé sur la VPS, ou collecte pas
             # encore passée) ne doit jamais faire échouer tout le
             # rafraîchissement — ces alertes ne sont qu'un complément.
-            self._rsync_depuis_pi(PI_ALERTES_PATH, LOCAL_ALERTES)
+            self._rsync_depuis_vps(VPS_ALERTES_PATH, LOCAL_ALERTES)
         except Exception:
             pass
 
         try:
-            # Même logique best-effort : peut ne pas encore exister sur le Pi
+            # Même logique best-effort : peut ne pas encore exister sur la VPS
             # si aucun arrêt supprimé/trajet annulé n'a jamais été détecté
             # (voir perturbations.py — enregistrer_evenements() ne crée le
             # fichier qu'au premier événement réel).
-            self._rsync_depuis_pi(PI_PERTURBATIONS_PATH, PERTURBATIONS_FILE)
+            self._rsync_depuis_vps(VPS_PERTURBATIONS_PATH, PERTURBATIONS_FILE)
         except Exception:
             pass
 
         try:
-            # Même logique best-effort : verifier_gtfs.py tourne sur le Pi
+            # Même logique best-effort : verifier_gtfs.py tourne sur la VPS
             # (cron 3h15, ou déclenché manuellement depuis l'onglet
             # "Vérification GTFS") — ce rapatriement garde l'onglet à jour
             # même sans clic sur "Lancer la vérification maintenant".
-            self._rsync_depuis_pi(PI_GTFS_LOG_PATH, GTFS_LOG_FILE)
+            self._rsync_depuis_vps(VPS_GTFS_LOG_PATH, GTFS_LOG_FILE)
         except Exception:
             pass
 
-        self._rafraichir_etat_pi()
+        self._rafraichir_etat_vps()
         self.load_local_data()
         self.status_var.set("Données à jour.")
 
     def load_local_data(self):
-        try:
-            df = pd.read_csv(LOCAL_OBSERVATIONS)
-        except FileNotFoundError:
+        # os.path.isfile AVANT de se connecter : sqlite3.connect() crée
+        # silencieusement un fichier vide s'il n'existe pas, contrairement à
+        # pd.read_csv qui levait FileNotFoundError — sans cette vérification,
+        # une première ouverture avant tout rafraîchissement créerait un
+        # observations.db vide par erreur plutôt que d'afficher le message
+        # "Cliquez sur Rafraîchir" ci-dessous.
+        if not os.path.isfile(LOCAL_OBSERVATIONS_DB):
             self.summary_var.set("Aucune donnée locale. Cliquez sur Rafraîchir.")
             return
-        except (pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError) as exc:
-            # observations.csv corrompu (ex: écriture interrompue sur le Pi) —
+        connexion = sqlite3.connect(LOCAL_OBSERVATIONS_DB)
+        try:
+            df = pd.read_sql_query("SELECT * FROM observations ORDER BY poll_time", connexion)
+        except (sqlite3.DatabaseError, pd.errors.DatabaseError) as exc:
+            # observations.db corrompu (ex: écriture interrompue sur la VPS) —
             # ne doit pas planter toute l'application, un nouveau rafraîchissement
-            # depuis le Pi suffit en général à récupérer une copie saine.
+            # depuis la VPS suffit en général à récupérer une copie saine.
             self.summary_var.set(
-                f"observations.csv semble corrompu ({type(exc).__name__}) — "
-                "cliquez sur Rafraîchir pour récupérer une copie saine depuis le Pi."
+                f"observations.db semble corrompu ({type(exc).__name__}) — "
+                "cliquez sur Rafraîchir pour récupérer une copie saine depuis la VPS."
             )
             return
+        finally:
+            connexion.close()
 
         df["gare"] = df["stop_id"].map(self.stop_names).fillna(df["stop_id"])
+        # trip_id doit encore être en object/str ici, pas category (conversion
+        # plus bas) : .str.split() sur un CategoricalIndex/une Series category
+        # ne renvoie pas de vraies listes mais leur représentation texte (bug
+        # rencontré dans formatting.calculer_stats_bloc, corrigé le 2026-08-14)
+        # — ce .str.split()-ci reste sûr tant que cet ordre n'est pas inversé.
         df["train"] = df["trip_id"].str.split(":").str[0]
         df["sens"] = df["trip_id"].map(lambda t: trajet_sens(t, self.variantes))
 
@@ -1076,6 +1131,18 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
         df["retard_depart_min"] = (df["departure_delay_s"] / 60).round(1)
         df["retard_min"] = df["retard_arrivee_min"].fillna(df["retard_depart_min"])
+
+        # category plutôt que object (chaîne Python "normale") pour les
+        # colonnes à faible cardinalité — même optimisation que
+        # app_fastapi.preparer_donnees (VPS), ajoutée le même jour après
+        # l'incident mémoire là-bas : ~20 gares/quelques centaines de trains
+        # répétés sur des centaines de milliers de lignes coûtent bien moins
+        # cher stockés une fois chacun + un code entier par ligne. Vérifié
+        # avant d'ajouter start_date à la liste : .astype("category") trie
+        # ses catégories par valeur par défaut, donc le tri existant plus
+        # bas (sort_values(["retard_max", "start_date"])) reste correct.
+        for colonne in ("gare", "train", "sens", "type_jour", "trip_id", "stop_id", "heure_theorique", "start_date"):
+            df[colonne] = df[colonne].astype("category")
 
         self.df = df
 
@@ -1829,7 +1896,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             # que _render_stats, voir calculer_stats_bloc.
             stats_periode = calculer_stats_bloc(plot_df)
 
-            self.nb_releves_periode_var.set(f"— soit {len(plot_df)} relevés")
+            self.nb_releves_periode_var.set(f"soit {len(plot_df)} relevés")
             segments_periode = [
                 f"{stats_periode['en_retard']}/{stats_periode['total']} circulations perturbées "
                 f"({100 * stats_periode['en_retard'] / stats_periode['total']:.0f} %)",
@@ -2097,7 +2164,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             # régénéré depuis que cette circulation a été observée — un train
             # ancien dont le motif d'horaire n'est plus publié par la SNCF
             # disparaît alors de trajet_gares, même si ses relevés bruts
-            # restent dans observations.csv. Message explicite plutôt qu'un
+            # restent dans observations.db. Message explicite plutôt qu'un
             # graphique vide avec le texte départ/arrivée resté périmé de la
             # sélection précédente — repéré par l'utilisateur, 2026-08-04.
             self.depart_arrivee_var.set(

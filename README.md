@@ -1,27 +1,27 @@
 # train-delay-paris-cherbourg
 
 Suivi en temps réel des retards sur la ligne SNCF Paris ↔ Cherbourg : collecte
-GTFS-RT sur Raspberry Pi, interface web (FastAPI + htmx) et desktop (Tkinter),
-rapports PDF automatiques et détection des perturbations.
+GTFS-RT sur une VPS, interface web (FastAPI + htmx, en ligne sur
+[paris-cherbourg.generalbol.fr](https://paris-cherbourg.generalbol.fr)) et
+desktop (Tkinter), rapports PDF automatiques et détection des perturbations.
 
 ## Architecture
 
-Migration en cours d'un Raspberry Pi vers une VPS (IONOS) : la VPS collecte
-déjà en parallèle du Pi (voir ci-dessous), le Pi reste la source active
-tant que la transition n'est pas terminée (historique à migrer, appli web
-pas encore déployée sur la VPS).
+Migration d'un Raspberry Pi vers une VPS (IONOS) : la VPS est désormais la
+source active (collecte + appli web en production). Le Pi continue de
+tourner en parallèle pour l'instant, en filet de sécurité le temps de
+confirmer que tout est stable, avant son retrait définitif.
 
-- **Raspberry Pi** — collecte en continu, sans interface graphique. Cron :
-  - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, écrit `observations.csv`. *(la copie déployée sur le Pi reste volontairement sur cette version CSV — voir la note VPS ci-dessous.)*
+- **VPS** — collecte en continu et héberge l'appli web en production. Cron :
+  - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, écrit dans `observations.db` (SQLite, écritures atomiques, colonnes typées).
   - `collect_alertes.py` (toutes les heures) : perturbations/travaux signalés, écrit `alertes.csv`.
   - `verifier_gtfs.py` (03:15) : compare le référentiel local aux horaires théoriques publiés par la SNCF, détecte quand `reference_paris_cherbourg.csv` devient obsolète.
+  - `app_fastapi.py` tourne en continu (`systemd`, `train-delay.service`) derrière nginx + HTTPS (Let's Encrypt), lit directement `observations.db` — pas de rapatriement réseau, la collecte et l'appli sont sur la même machine.
+- **Raspberry Pi** — mêmes crons de collecte, encore en CSV (`observations.csv`) — copie du dépôt volontairement pas migrée vers SQLite tant qu'il tourne en parallèle. Sert aussi, pour l'instant, aux rapports PDF et aux sauvegardes NAS (voir plus bas) — pas encore repointés vers la VPS.
   - `backup_local.sh` (03:10) puis `backup_to_nas.sh` (03:20) : sauvegarde locale puis vers le NAS.
   - Rapports PDF quotidien (03:30), hebdomadaire (03:35 le lundi) et mensuel (03:40 le 1er du mois), envoyés au NAS.
-- **VPS** — même collecte (`collect_realtime.py`, `collect_alertes.py`, `verifier_gtfs.py`), mais `collect_realtime.py` y écrit dans `observations.db` (SQLite) plutôt que `observations.csv` : c'est la version actuelle du dépôt, pensée pour la VPS une fois la migration terminée — à ne pas redéployer sur le Pi tel quel.
-- **PC** — deux interfaces de consultation, au choix, qui partagent le même code (`formatting.py`) et rapatrient les données du Pi par SSH/rsync :
-  - `app_fastapi.py` — appli web (FastAPI + htmx + Plotly.js), lecture seule.
-  - `viewer.py` (Tkinter) — mêmes fonctionnalités, plus l'onglet "Guide statistiques" et les actions qui écrivent sur le Pi (bouton "Déployer vers le Pi" de l'onglet "Vérification GTFS").
-- **NAS** — destination des sauvegardes et des rapports PDF.
+- **PC** — `viewer.py` (Tkinter) : rapatrie `observations.db` depuis la VPS par rsync (bouton "Rafraîchir depuis la VPS"), même fonctionnalités que l'appli web plus l'onglet "Guide statistiques" et les actions qui écrivent sur la VPS (boutons de l'onglet "Vérification GTFS"). `app_fastapi.py` peut aussi tourner en local sur le PC (utile pour tester une modification avant de la déployer, ou en secours hors-ligne) — il lit alors la copie locale d'`observations.db`, elle aussi rapatriée par `viewer.py`, sans se rafraîchir tout seul.
+- **NAS** — destination des sauvegardes et des rapports PDF (toujours générés depuis le Pi pour l'instant).
 
 ## Fonctionnalités
 
@@ -36,7 +36,7 @@ Communes aux deux interfaces :
 Propre à `viewer.py` :
 
 - **Guide statistiques** — explication de chaque statistique et code couleur (le même contenu alimente aussi `guide_statistiques.pdf`, via `generer_guide_statistiques.py`).
-- Boutons "Lancer la vérification maintenant", "Régénérer" et "Déployer vers le Pi" sur l'onglet "Vérification GTFS" — absents de la version web, qui reste volontairement en lecture seule tant qu'il n'y a pas d'authentification.
+- Boutons "Lancer la vérification maintenant", "Régénérer" et "Déployer vers la VPS" sur l'onglet "Vérification GTFS" — absents de la version web, qui reste volontairement en lecture seule tant qu'il n'y a pas d'authentification. "Déployer vers la VPS" envoie le référentiel régénéré (+ `gtfs/stops.txt`) et redémarre le service à distance pour qu'il en tienne compte immédiatement.
 
 Les rapports PDF (`generer_rapport.py`) et le référentiel des trajets
 (`build_reference.py`, à partir de l'export GTFS statique national SNCF)
@@ -63,8 +63,8 @@ cp config.example.py config.py
 cp config.sh.example config.sh
 ```
 
-Puis renseigner `PI_HOST`, `NAS_HOST`, `CHEMIN_DISTANT_PI` et
-`SSH_KEY_NAS` avec tes propres valeurs.
+Puis renseigner `PI_HOST`, `VPS_HOST`, `NAS_HOST`, `CHEMIN_DISTANT_PI`,
+`CHEMIN_DISTANT_VPS` et `SSH_KEY_NAS` avec tes propres valeurs.
 
 ### Référentiel initial
 
@@ -78,8 +78,8 @@ python3 build_reference.py
 ## Utilisation
 
 ```bash
-uvicorn app_fastapi:app        # interface web (PC), sur http://127.0.0.1:8000
+uvicorn app_fastapi:app        # interface web (VPS en production ; ou PC, en local/test) — http://127.0.0.1:8000
 python3 viewer.py              # interface desktop Tkinter (PC)
-python3 collect_realtime.py    # collecte (VPS, prévu pour cron) — écrit observations.db (SQLite)
+python3 collect_realtime.py    # collecte (VPS, cron) — écrit observations.db (SQLite)
 python3 generer_rapport.py quotidien|hebdomadaire|mensuel
 ```

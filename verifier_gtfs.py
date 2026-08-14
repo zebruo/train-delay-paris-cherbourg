@@ -47,8 +47,8 @@ import zipfile
 from datetime import datetime
 
 from build_reference import GARES_LIGNE, GTFS_URL
-from config import CHEMIN_DISTANT_PI
-from formatting import sans_date_trip_id
+from config import CHEMIN_DISTANT_VPS
+from formatting import PARIS_TZ, sans_date_trip_id
 
 META_FILE = "reference_paris_cherbourg.meta.json"
 ETAT_FILE = "verification_gtfs_etat.json"
@@ -57,7 +57,16 @@ LOG_FILE = "verification_gtfs.log"
 
 
 def horodatage():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # datetime.now(PARIS_TZ) plutôt que datetime.now() (naïf) : ce dernier
+    # dépend du fuseau système de la machine qui exécute le cron — correct
+    # tant que ça tournait sur le Pi (Europe/Paris), mais silencieusement
+    # décalé de 2h (été) depuis le passage à la VPS (Etc/UTC, vérifié) —
+    # repéré par l'utilisateur dans l'onglet "Vérification GTFS", 2026-08-14.
+    # Les entrées déjà écrites par le Pi restent correctes ; celles déjà
+    # écrites par la VPS avant ce correctif restent décalées dans le fichier
+    # existant (non retouchées rétroactivement, ambigu de départager les
+    # deux sans le savoir déjà).
+    return datetime.now(PARIS_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def charger_json(chemin):
@@ -245,17 +254,19 @@ def _construire_entree(horodatage, bloc):
     return entree
 
 
-def lancer_a_distance(pi_host, chemin_distant=CHEMIN_DISTANT_PI, timeout=30):
-    """Exécute verifier_gtfs.py sur le Pi par SSH (même commande que le cron
-    quotidien, y compris l'ajout au log distant) — pour le bouton "Lancer la
-    vérification maintenant" de viewer.py. Le Pi reste la seule source de
-    vérité pour verification_gtfs.log (comme pour observations.csv) :
-    viewer.py doit re-rapatrier le fichier par rsync après cet appel plutôt
-    que d'écrire dans sa propre copie locale. Retourne True/False."""
+def lancer_a_distance(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=30):
+    """Exécute verifier_gtfs.py sur le serveur distant par SSH (même
+    commande que le cron quotidien, y compris l'ajout au log distant) —
+    pour le bouton "Lancer la vérification maintenant" de viewer.py. Ce
+    serveur reste la seule source de vérité pour verification_gtfs.log
+    (comme pour observations.db) : viewer.py doit re-rapatrier le fichier
+    par rsync après cet appel plutôt que d'écrire dans sa propre copie
+    locale. hote générique (pas "pi_host") : appelée avec VPS_HOST depuis
+    le 2026-08-13 (la VPS remplace le Pi). Retourne True/False."""
     commande = f"cd {chemin_distant} && .venv/bin/python verifier_gtfs.py >> {LOG_FILE} 2>&1"
     try:
         subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", pi_host, commande],
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, commande],
             capture_output=True, timeout=timeout, check=True,
         )
         return True

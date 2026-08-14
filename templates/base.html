@@ -41,12 +41,6 @@
         </div>
         <h1>{{ titre_app }}</h1>
         <div id="controles">
-            <button type="button" id="bouton-rafraichir"
-                    hx-get="/rafraichir" hx-target="#zone-contenu" hx-include="#filtres"
-                    hx-trigger="click, every 300s [document.getElementById('auto-refresh').checked]"
-                    hx-on::before-request="afficherToast('info', 'Rafraîchissement lancé', 0)">
-                Rafraîchir depuis le Raspberry Pi
-            </button>
             <label class="controle-case">
                 <input type="checkbox" id="auto-refresh" checked>
                 Rafraîchissement automatique (5 min)
@@ -54,6 +48,15 @@
             <a href="/">Réinitialiser</a>
             <span id="resume-collecte" class="info">{{ resume_collecte or "" }}</span>
         </div>
+        <!-- Élément invisible dédié au polling automatique — la collecte
+        tourne sur cette même machine (plus de bouton "Rafraîchir depuis le
+        Raspberry Pi"/route /rafraichir, retirés le 2026-08-13 : rien à
+        rapatrier depuis un serveur distant), donc l'auto-refresh se
+        contente de recharger la vue actuelle pour afficher les données
+        déjà à jour localement. -->
+        <div id="auto-refresh-trigger" hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+             hx-trigger="every 300s [document.getElementById('auto-refresh').checked]"
+             style="display:none"></div>
         {% include "_dialogue_aide.html" %}
         <form id="filtres" hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change" hx-include="#periode">
             <input type="hidden" id="vue-active" name="vue" value="{{ vue }}">

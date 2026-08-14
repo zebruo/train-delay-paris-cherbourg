@@ -5,9 +5,12 @@ de contrôle total sur le HTML/CSS/JS que la piste précédente cherchait à
 Graphique (celui-ci en Plotly.js, un vrai graphique interactif — pas une
 image statique) — voir mémoire du projet.
 
-À lancer depuis le dossier du projet, là où se trouve observations.csv
-(généré par collect_realtime.py, ou rapatrié depuis le Pi via le bouton
-Rafraîchir — voir /rafraichir).
+À lancer sur la VPS, dans le dossier du projet, là où se trouve
+observations.db (SQLite, écrit en continu par collect_realtime.py — voir
+ce fichier, correctif du 2026-08-13). Contrairement à une version
+antérieure, cette appli ne rapatrie plus rien depuis un Raspberry Pi
+distant (bouton "Rafraîchir"/route /rafraichir, retirés) : elle tourne sur
+la même machine que la collecte, qui écrit déjà localement.
 
     uvicorn app_fastapi:app --reload
 """
@@ -15,7 +18,8 @@ import html
 import json
 import math
 import os
-import subprocess
+import re
+import sqlite3
 import textwrap
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -26,7 +30,6 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from config import PI_HOST
 from formatting import (
     PARIS_TZ,
     build_stop_names,
@@ -53,24 +56,18 @@ from formatting import (
 from perturbations import charger_alertes, charger_evenements
 from verifier_gtfs import charger_journal
 
-LOCAL_OBSERVATIONS = "observations.csv"
+OBSERVATIONS_DB = "observations.db"
 
-# Chemins distants/locaux des fichiers rapatriés par le bouton Rafraîchir
-# (voir /rafraichir) — mêmes valeurs que viewer.py:65-70. Les CHEMINS
-# restent des copies locales volontaires (comme GARES_LIGNE plus bas) —
-# seules charger_alertes/charger_evenements sont importées de
-# perturbations.py ci-dessus (onglet Travaux/Alertes), pas ces constantes ;
-# ce module tire google.transit au chargement (utilisé par sa seule
-# fonction d'écriture, detecter_evenements, jamais appelée ici), coût déjà
-# accepté par la collecte (collect_realtime.py) donc pas un nouveau poids
-# pour ce fichier.
-PI_OBSERVATIONS_PATH = "~/train-delay-paris-cherbourg/observations.csv"
-PI_ALERTES_PATH = "~/train-delay-paris-cherbourg/alertes.csv"
+# Fichiers locaux écrits directement par la collecte tournant sur cette même
+# machine (collect_alertes.py, perturbations.py, verifier_gtfs.py) — plus de
+# distinction chemin distant/local depuis le retrait du bouton Rafraîchir
+# (2026-08-13, voir docstring du module) : ce module tire google.transit au
+# chargement (utilisé par la seule fonction d'écriture de perturbations.py,
+# detecter_evenements, jamais appelée ici), coût déjà accepté par la
+# collecte donc pas un nouveau poids pour ce fichier.
 LOCAL_ALERTES = "alertes.csv"
-PI_PERTURBATIONS_PATH = "~/train-delay-paris-cherbourg/perturbations_detectees.csv"
 PERTURBATIONS_FILE = "perturbations_detectees.csv"
 GTFS_LOG_FILE = "verification_gtfs.log"
-PI_GTFS_LOG_PATH = f"~/train-delay-paris-cherbourg/{GTFS_LOG_FILE}"
 
 SEUIL_RETARD_FORT = 10  # minutes
 SEUIL_RETARD_MOYEN = 5  # minutes
@@ -124,9 +121,8 @@ def json_pour_script(valeur):
     """json.dumps() qui échappe aussi "</" — une chaîne contenant
     "</script>" (ex: un nom de gare hypothétique) ne doit pas fermer
     prématurément la balise <script> dans laquelle ce JSON est injecté
-    (_graphique.html/_jour_heure.html/_train.html, ou le toast de
-    /rafraichir). Centralise un motif qui était répété à l'identique à
-    4 endroits (audit du 2026-08-10)."""
+    (_graphique.html/_jour_heure.html/_train.html). Centralise un motif qui
+    était répété à l'identique à plusieurs endroits (audit du 2026-08-10)."""
     return json.dumps(valeur).replace("</", "<\\/")
 
 
@@ -163,42 +159,91 @@ templates = Jinja2Templates(directory="templates")
 
 
 # Cache mémoire du référentiel préparé (df + colonnes dérivées), invalidé
-# sur la date de modification du fichier — voir charger_observations.
-_cache_observations = {"mtime": None, "df": None}
+# sur MAX(poll_time) — voir charger_observations.
+_cache_observations = {"dernier_poll": None, "df": None}
 
 
 def charger_observations():
-    """observations.csv est réécrit en continu par collect_realtime.py
-    (toutes les ~5 min) : on veut refléter des données fraîches, mais pas
-    payer le coût de la relecture + préparation complète (~10 s sur
-    plusieurs centaines de milliers de lignes, dont un .apply() ligne à
-    ligne pour heure_theorique) à CHAQUE requête, y compris un simple
-    changement d'onglet qui ne change rien aux données elles-mêmes (repéré
-    par l'utilisateur, 2026-08-05 : bascule Tableau/Graphique très lente
-    comparée à viewer.py, qui garde ses données déjà chargées en mémoire
-    entre deux clics sur "Rafraîchir"). Cache invalidé sur la date de
-    modification du fichier plutôt qu'un délai fixe : aussi frais qu'un
-    rechargement systématique, mais gratuit tant que collect_realtime.py
-    n'a pas réécrit le fichier depuis le dernier appel. Même gestion
-    d'erreur que load_local_data (viewer.py) : un fichier absent/corrompu
-    ne doit pas planter la requête, renvoyé comme message d'erreur affiché
-    proprement au lieu d'une 500."""
-    try:
-        mtime = os.path.getmtime(LOCAL_OBSERVATIONS)
-    except FileNotFoundError:
-        return None, f"Aucune donnée locale ({LOCAL_OBSERVATIONS} introuvable)."
+    """observations.db (SQLite) est réécrit en continu par
+    collect_realtime.py (toutes les ~5 min) : on veut refléter des données
+    fraîches, mais pas payer le coût de la relecture + préparation complète
+    à CHAQUE requête, y compris un simple changement d'onglet qui ne
+    change rien aux données elles-mêmes (repéré par l'utilisateur,
+    2026-08-05, à l'époque du CSV — le raisonnement reste identique).
+    Cache invalidé via MAX(poll_time) (requête bon marché, poll_time déjà
+    indexé) plutôt qu'un mtime sur le fichier .db (en mode WAL, le fichier
+    .db principal ne change pas forcément de date de modification à chaque
+    écriture tant qu'aucun checkpoint WAL n'a eu lieu) — PRAGMA data_version
+    essayé en premier (documenté comme fait exactement pour ce cas d'usage),
+    mais rejeté après un test empirique en conditions réelles, 2026-08-13 :
+    sa valeur ne bougeait pas d'une connexion à l'autre malgré un vrai
+    insert commité entre-temps par une connexion tierce (cron
+    collect_realtime.py) — bug utilisateur réel provoqué par ça (page
+    figée sur d'anciennes données malgré des rafraîchissements répétés),
+    diagnostiqué en isolant le problème avant de changer d'approche plutôt
+    que de deviner.
 
-    if _cache_observations["mtime"] != mtime:
-        try:
-            df = pd.read_csv(LOCAL_OBSERVATIONS, low_memory=False)
-        except (pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError) as exc:
-            return None, f"{LOCAL_OBSERVATIONS} semble corrompu ({type(exc).__name__})."
-        df = preparer_donnees(
-            df, reference_donnees["stop_names"], reference_donnees["variantes"],
-            reference_donnees["calendrier"],
-        )
-        _cache_observations["mtime"] = mtime
-        _cache_observations["df"] = df
+    Rechargement INCRÉMENTAL (seulement les lignes dont poll_time est
+    postérieur au dernier chargement, concaténées au cache existant) plutôt
+    que tout relire + tout repasser par preparer_donnees() (notamment son
+    .apply() ligne à ligne coûteux pour heure_theorique) à chaque nouvelle
+    collecte — repéré le jour même de l'import de l'historique du Pi
+    (889k lignes) : l'ancienne version, correcte à la petite échelle
+    d'avant l'import, rechargeait et retraitait la table ENTIÈRE toutes les
+    ~5 min dès qu'un seul nouveau relevé arrivait, jusqu'à ~1,6 Go de RAM
+    par rechargement — a fait planter la VPS entière (mémoire saturée,
+    plus aucune réponse réseau, redémarrage matériel nécessaire depuis le
+    panneau IONOS). Voir mémoire du projet, 2026-08-13.
+
+    Même gestion d'erreur que load_local_data (viewer.py) : un fichier
+    absent/corrompu ne doit pas planter la requête, renvoyé comme message
+    d'erreur affiché proprement au lieu d'une 500."""
+    if not os.path.isfile(OBSERVATIONS_DB):
+        return None, f"Aucune donnée locale ({OBSERVATIONS_DB} introuvable)."
+
+    # sqlite3.connect() crée silencieusement un fichier vide s'il n'existe
+    # pas — d'où la vérification os.path.isfile ci-dessus, faite AVANT de
+    # se connecter, pour ne jamais créer par erreur un observations.db vide
+    # juste en le lisant.
+    connexion = sqlite3.connect(OBSERVATIONS_DB)
+    try:
+        dernier_poll = connexion.execute("SELECT MAX(poll_time) FROM observations").fetchone()[0]
+
+        if _cache_observations["dernier_poll"] != dernier_poll:
+            try:
+                # ORDER BY poll_time (pas rowid) : le reste du code (ex:
+                # resume_collecte, plus bas) suppose df["poll_time"].iloc[0]/
+                # iloc[-1] égal au premier/dernier relevé chronologique, comme
+                # le garantissait l'ordre d'ajout du CSV — rowid le
+                # garantirait aussi pour un simple append-only, mais plus une
+                # fois un historique importé après coup (voir mémoire du
+                # projet, migration Pi -> VPS 2026-08-13 : rowid ne
+                # correspondait alors plus à l'ordre chronologique réel).
+                # Déjà indexé (idx_observations_poll_time, collect_realtime.py).
+                if _cache_observations["df"] is None:
+                    nouvelles = pd.read_sql_query(
+                        "SELECT * FROM observations ORDER BY poll_time", connexion,
+                    )
+                else:
+                    nouvelles = pd.read_sql_query(
+                        "SELECT * FROM observations WHERE poll_time > ? ORDER BY poll_time",
+                        connexion, params=(_cache_observations["dernier_poll"],),
+                    )
+            except (sqlite3.DatabaseError, pd.errors.DatabaseError) as exc:
+                return None, f"{OBSERVATIONS_DB} semble corrompu ({type(exc).__name__})."
+            nouvelles = preparer_donnees(
+                nouvelles, reference_donnees["stop_names"], reference_donnees["variantes"],
+                reference_donnees["calendrier"],
+            )
+            if _cache_observations["df"] is None:
+                _cache_observations["df"] = nouvelles
+            else:
+                _cache_observations["df"] = pd.concat(
+                    [_cache_observations["df"], nouvelles], ignore_index=True,
+                )
+            _cache_observations["dernier_poll"] = dernier_poll
+    finally:
+        connexion.close()
 
     # Copie : les appelants filtrent/dérivent à partir de ce df (filtrer_df,
     # construire_lignes_tableau...) — une copie évite tout risque qu'une
@@ -209,6 +254,11 @@ def charger_observations():
 
 def preparer_donnees(df, stop_names, variantes, calendrier):
     df["gare"] = df["stop_id"].map(stop_names).fillna(df["stop_id"])
+    # trip_id doit encore être en object/str ici, pas category (conversion
+    # plus bas) : .str.split() sur un CategoricalIndex/une Series category
+    # ne renvoie pas de vraies listes mais leur représentation texte (bug
+    # rencontré dans formatting.calculer_stats_bloc, corrigé le 2026-08-14)
+    # — ce .str.split()-ci reste sûr tant que cet ordre n'est pas inversé.
     df["train"] = df["trip_id"].str.split(":").str[0]
     df["sens"] = df["trip_id"].map(lambda t: trajet_sens(t, variantes))
 
@@ -237,6 +287,22 @@ def preparer_donnees(df, stop_names, variantes, calendrier):
     df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
     df["retard_depart_min"] = (df["departure_delay_s"] / 60).round(1)
     df["retard_min"] = df["retard_arrivee_min"].fillna(df["retard_depart_min"])
+
+    # category plutôt que object (chaîne Python "normale") pour les colonnes
+    # à faible cardinalité : quelques dizaines/milliers de valeurs distinctes
+    # répétées des centaines de milliers de fois (ex: ~20 gares, quelques
+    # centaines de trains) — category ne stocke chaque valeur unique qu'une
+    # fois + un petit code entier par ligne, au lieu d'un objet chaîne par
+    # ligne. Ajouté le 2026-08-13 après un vrai incident : garder tout
+    # l'historique en mémoire (df["gare"]/["train"]/... en object) faisait
+    # tourner l'appli à ~1,6 Go de RAM sur la VPS (889k lignes) — voir
+    # mémoire du projet. Vérifié avant déploiement qu'aucun tri
+    # (sort_values) ne porte directement sur ces colonnes ailleurs dans le
+    # fichier (seul un sorted() sur une liste déjà convertie en Python pur
+    # via .tolist() les utilise, insensible à l'ordre des catégories).
+    for colonne in ("gare", "train", "sens", "type_jour", "trip_id", "stop_id", "heure_theorique", "start_date"):
+        df[colonne] = df[colonne].astype("category")
+
     return df
 
 
@@ -962,6 +1028,35 @@ TITRES_EXEMPLES_GTFS = (
 )
 
 
+def _reformater_horodatage_detail(texte, export=None, reference=None):
+    """Reformate en JJ/MM/AAAA les 3 dates ISO du bloc brut d'une entrée
+    verifier_gtfs.py (e["texte"]) : le préfixe "[AAAA-MM-JJ HH:MM:SS]", et
+    (pour une entrée réussie, absentes sur un "Échec") "export du jour :
+    AAAA-MM-JJ" et "référence datée du AAAA-MM-JJ" dans la phrase elle-même
+    — repéré par l'utilisateur en 2 temps (2026-08-14), le préfixe d'abord,
+    puis ces deux-là oubliées au premier passage. export/reference passés
+    par l'appelant plutôt que re-régexés ici : déjà extraits et validés par
+    charger_journal() (RE_RESUME), une substitution de chaîne exacte sur
+    ces valeurs connues est plus sûre qu'une regex générique sur tout le
+    bloc (qui pourrait aussi, en théorie, croiser une date dans un exemple
+    de service listé plus bas). Cohérent avec le reste de l'appli (colonne
+    Date, Référence datée du, Export SNCF du jour, déjà dans ce format) —
+    verification_gtfs.log lui-même reste en ISO (format stable attendu par
+    charger_journal(), voir son regex de découpage des blocs)."""
+    texte = re.sub(
+        r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]",
+        lambda m: f"[{_format_date_gtfs(m.group(1), avec_heure=True)}]",
+        texte,
+    )
+    if export:
+        texte = texte.replace(f"export du jour : {export}", f"export du jour : {_format_date_gtfs(export)}")
+    if reference:
+        texte = texte.replace(
+            f"référence datée du {reference}", f"référence datée du {_format_date_gtfs(reference)}",
+        )
+    return texte
+
+
 def _surligner_exemples_gtfs(texte):
     """Entoure d'un <span> les lignes-titres "Exemples de services ..." du
     bloc brut d'une entrée verifier_gtfs.py, pour les distinguer visuellement
@@ -1001,7 +1096,7 @@ def calculer_contexte_gtfs(request):
                 "date": date_affichee, "reference": "-", "export": "-",
                 "communs": "-", "identiques": "-", "modifies": "-",
                 "disparus": "-", "nouveaux": "-", "renommes": "-", "statut": "Échec",
-                "css": "gtfs-echec", "detail": _surligner_exemples_gtfs(e["texte"]),
+                "css": "gtfs-echec", "detail": _surligner_exemples_gtfs(_reformater_horodatage_detail(e["texte"])),
             })
             continue
         lignes.append({
@@ -1013,7 +1108,9 @@ def calculer_contexte_gtfs(request):
             "nouveaux": e["nouveaux"], "renommes": e["renommes"],
             "statut": "⚠ Aggravation" if e["aggrave"] else "Stable",
             "css": "gtfs-aggrave" if e["aggrave"] else "",
-            "detail": _surligner_exemples_gtfs(e["texte"]),
+            "detail": _surligner_exemples_gtfs(
+                _reformater_horodatage_detail(e["texte"], export=e["export"], reference=e["reference"]),
+            ),
         })
 
     if lignes:
@@ -1322,49 +1419,3 @@ def contenu(request: Request, gare: str = "Toutes", train: str = "Tous", sens: s
     return templates.TemplateResponse(request, "_contenu_reponse.html", contexte)
 
 
-def _rsync_depuis_pi(chemin_distant, fichier_local):
-    """Reprise telle quelle de viewer.py:953-963. rsync plutôt que scp : ces
-    fichiers ne grandissent que par ajout en fin de fichier (jamais modifiés
-    au milieu), donc rsync ne retransfère que les nouvelles lignes plutôt
-    que le fichier entier à chaque rafraîchissement."""
-    subprocess.run(
-        ["rsync", "-az", f"{PI_HOST}:{chemin_distant}", fichier_local],
-        check=True, capture_output=True, timeout=60,
-    )
-
-
-@app.get("/rafraichir", response_class=HTMLResponse)
-def rafraichir(request: Request, gare: str = "Toutes", train: str = "Tous", sens: str = "Tous"):
-    """Porte refresh() (viewer.py:965-1014). observations.csv est
-    obligatoire : sur échec, les 3 fichiers annexes ne sont même pas
-    tentés (même flux que viewer.py — un Pi injoignable pour le premier
-    rsync le sera probablement aussi pour les suivants). Une fois
-    observations.csv rapatrié, sa date de modification change, donc
-    charger_observations() (cache par mtime, voir plus haut) recharge
-    naturellement les données fraîches sans code de cache en plus ici."""
-    try:
-        _rsync_depuis_pi(PI_OBSERVATIONS_PATH, LOCAL_OBSERVATIONS)
-    except Exception as exc:
-        heure = datetime.now(PARIS_TZ).strftime("%H:%M:%S")
-        message_statut = f"Échec de la récupération à {heure} : {exc}"
-        message_statut_type = "erreur"
-    else:
-        for chemin_distant, fichier_local in (
-            (PI_ALERTES_PATH, LOCAL_ALERTES),
-            (PI_PERTURBATIONS_PATH, PERTURBATIONS_FILE),
-            (PI_GTFS_LOG_PATH, GTFS_LOG_FILE),
-        ):
-            try:
-                _rsync_depuis_pi(chemin_distant, fichier_local)
-            except Exception:
-                pass
-        message_statut = "Données à jour."
-        message_statut_type = "succes"
-
-    contexte = construire_contexte(request, gare, train, sens)
-    contexte["message_statut_type"] = message_statut_type
-    # Injecté dans un <script>afficherToast(...)</script> (_contenu_reponse.
-    # html) : échappé ici en JSON, pas via un filtre Jinja "tojson" (n'existe
-    # pas dans Jinja2 nu, seulement chez Flask).
-    contexte["message_statut_json"] = json_pour_script(message_statut)
-    return templates.TemplateResponse(request, "_contenu_reponse.html", contexte)

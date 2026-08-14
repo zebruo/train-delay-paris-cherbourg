@@ -13,7 +13,7 @@ import subprocess
 import urllib.request
 import zipfile
 
-from config import CHEMIN_DISTANT_PI
+from config import CHEMIN_DISTANT_VPS
 
 # Codes gare des 11 gares de la ligne. Un trajet est retenu s'il en dessert
 # au moins 2 — capture aussi bien les liaisons de bout en bout (Paris-
@@ -187,16 +187,19 @@ def telecharger_et_regenerer():
     main()
 
 
-def lire_feed_version_distante(pi_host, chemin_distant=CHEMIN_DISTANT_PI, timeout=10):
-    """Lit par SSH le feed_version actuellement déployé sur le Pi (son
-    META_FILE) — pour comparer avant un déploiement (voir bouton "Déployer
-    vers le Pi" dans onglet_verification_gtfs.py). Retourne None si le Pi
-    est injoignable, ou si le fichier n'existe pas encore là-bas (premier
-    déploiement)."""
+def lire_feed_version_distante(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=10):
+    """Lit par SSH le feed_version actuellement déployé sur le serveur
+    distant (son META_FILE) — pour comparer avant un déploiement (voir
+    bouton "Déployer vers la VPS" dans onglet_verification_gtfs.py).
+    Retourne None si le serveur est injoignable, ou si le fichier n'existe
+    pas encore là-bas (premier déploiement). hote générique (pas
+    "pi_host") : appelée avec VPS_HOST depuis le 2026-08-13 (la VPS
+    remplace le Pi), le paramètre lui-même n'a jamais eu de logique
+    spécifique au Pi."""
     commande = f"cat {chemin_distant}/{META_FILE} 2>/dev/null"
     try:
         resultat = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", pi_host, commande],
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, commande],
             capture_output=True, text=True, timeout=timeout,
         )
         return json.loads(resultat.stdout).get("feed_version")
@@ -204,15 +207,62 @@ def lire_feed_version_distante(pi_host, chemin_distant=CHEMIN_DISTANT_PI, timeou
         return None
 
 
-def deployer_vers_pi(pi_host, chemin_distant=CHEMIN_DISTANT_PI, timeout=30):
-    """Envoie REFERENCE_FILE + CALENDRIER_FILE + META_FILE vers le Pi par
-    rsync — pour le bouton "Déployer vers le Pi" de viewer.py. Ne relance
-    pas verifier_gtfs.py là-bas ni ne touche à autre chose : ça reste à la
-    charge de l'appelant (voir onglet_verification_gtfs.py), pour garder
-    cette fonction simple et testable isolément. Retourne True/False."""
+def deployer_vers_serveur(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=30):
+    """Envoie REFERENCE_FILE + CALENDRIER_FILE + META_FILE + gtfs/stops.txt
+    vers le serveur distant par rsync — pour le bouton "Déployer vers la
+    VPS" de viewer.py (nommée deployer_vers_pi jusqu'au 2026-08-13,
+    renommée en même temps que le bouton pour éviter un nom trompeur
+    maintenant que c'est la VPS la cible, pas le Pi). gtfs/stops.txt ajouté
+    le 2026-08-14 : ce fichier complémentaire (résolution des codes
+    "StopArea:OCE..." que le flux temps réel rapporte parfois, voir
+    formatting.build_stop_names) avait été oublié lors du portage initial
+    vers la VPS — son absence ne faisait planter rien (repli silencieux),
+    juste ~367 relevés sur 4 gares restés bloqués avec leur code technique
+    brut, invisibles pour le filtre "gares de la ligne", sans erreur visible
+    pendant tout le temps où la VPS a tourné sans lui. D'où son inclusion
+    systématique désormais, pour ne pas revivre le même trou silencieux à
+    la prochaine régénération. Ne relance pas verifier_gtfs.py là-bas ni ne
+    touche à autre chose : ça reste à la charge de l'appelant (voir
+    onglet_verification_gtfs.py), pour garder cette fonction simple et
+    testable isolément. Retourne True/False."""
     try:
         subprocess.run(
-            ["rsync", "-az", REFERENCE_FILE, CALENDRIER_FILE, META_FILE, f"{pi_host}:{chemin_distant}/"],
+            ["rsync", "-az", REFERENCE_FILE, CALENDRIER_FILE, META_FILE, f"{hote}:{chemin_distant}/"],
+            check=True, capture_output=True, timeout=timeout,
+        )
+        # mkdir -p d'abord : rsync ne crée pas le dossier distant gtfs/ tout
+        # seul si l'arborescence n'existe pas encore là-bas (ex: premier
+        # déploiement vers un serveur tout neuf).
+        subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, f"mkdir -p {chemin_distant}/{GTFS_DIR}"],
+            check=True, capture_output=True, timeout=timeout,
+        )
+        subprocess.run(
+            ["rsync", "-az", f"{GTFS_DIR}/stops.txt", f"{hote}:{chemin_distant}/{GTFS_DIR}/stops.txt"],
+            check=True, capture_output=True, timeout=timeout,
+        )
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def redemarrer_service_vps(hote, service="train-delay", timeout=15):
+    """Redémarre le service systemd du site (app_fastapi.py) sur la VPS —
+    appelée après deployer_vers_serveur() par le bouton "Déployer vers la
+    VPS" (voir onglet_verification_gtfs.py). Nécessaire car
+    reference_donnees (référentiel + calendrier) n'est chargé par
+    app_fastapi.py qu'une seule fois au démarrage (lifespan()), jamais
+    relu tout seul — sans ce redémarrage, un nouveau référentiel déployé
+    sur disque reste invisible pour le service déjà en cours, qui continue
+    de calculer "Sens"/"Heure théo." (dérivés de reference_donnees) avec
+    l'ancienne version pour toute circulation dont le trip_id a changé
+    (renommage, etc.) — bug réel rencontré et corrigé le 2026-08-14,
+    resté silencieux (aucune erreur, juste ces deux colonnes vides) le
+    temps de le repérer. sudo passwordless déjà en place sur ce compte
+    (voir mémoire du projet). Retourne True/False."""
+    try:
+        subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, f"sudo systemctl restart {service}"],
             check=True, capture_output=True, timeout=timeout,
         )
         return True

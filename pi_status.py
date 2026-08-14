@@ -1,8 +1,11 @@
 """
 Récupère un état de santé sommaire du Raspberry Pi (espace disque restant,
 température CPU) par SSH — aucune dépendance à Tkinter, testable seul en
-ligne de commande, importé par viewer.py pour l'afficher dans la barre du
-haut.
+ligne de commande. Outil autonome depuis le 2026-08-14 : n'est plus importé
+par viewer.py, dont le voyant d'état de la barre du haut affiche désormais
+celui de la VPS (voir vps_status.py) plutôt que celui du Pi — reste utile
+pour un diagnostic manuel du Pi (température/ventilo, voir mémoire du
+projet).
 """
 import re
 import subprocess

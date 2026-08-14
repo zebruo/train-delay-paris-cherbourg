@@ -196,8 +196,12 @@ def cle_circulation(df):
     trip_id peut être réutilisé pour plusieurs circulations réelles (ex: le
     même service un jour puis un autre) — s'en tenir au trip_id seul
     mélangerait leurs relevés (voir _update_trajet_list). Utilisé pour
-    restreindre/grouper par circulation plutôt que par trip_id seul."""
-    return df["trip_id"] + "|" + df["start_date"].astype(str)
+    restreindre/grouper par circulation plutôt que par trip_id seul.
+    astype(str) sur les deux colonnes (pas seulement start_date) : trip_id
+    peut être de type category (voir app_fastapi.preparer_donnees, VPS,
+    2026-08-13) — l'opérateur + n'est pas défini entre Categorical et str,
+    contrairement à un Series object normal."""
+    return df["trip_id"].astype(str) + "|" + df["start_date"].astype(str)
 
 
 def derniers_par_passage_avec_date(df):
@@ -268,7 +272,20 @@ def calculer_stats_bloc(df):
     # ponctuelle depuis corrigée (ex: 50 min révisés ensuite à 20) resterait
     # affichée comme "le" retard max, alors que la réalité est très
     # différente — repéré par l'utilisateur, 2026-08-03.
-    train_par_passage = derniers.index.get_level_values("trip_id").str.split(":").str[0]
+    # .astype(str) avant .str.split() : trip_id peut être de type category
+    # (voir app_fastapi.preparer_donnees/viewer.py load_local_data) — sur un
+    # CategoricalIndex, .str.split(":") ne renvoie pas de vraies listes mais
+    # la représentation texte de la liste (ex: "['A', 'B']" au lieu de
+    # ['A', 'B']), donc .str[0] ne récupère que le caractère "[" — bug réel
+    # rencontré (affichait "train [ → X min"), reproduit indépendamment de
+    # la version de pandas (3.0.3 et 3.0.5 testées), corrigé le 2026-08-14.
+    # Masqué en pratique sur la VPS avant ce correctif : le cache incrémental
+    # de app_fastapi.charger_observations() finit par dégrader trip_id de
+    # category à str après assez de cycles de pd.concat (vérifié : 50 concats
+    # suffisent), ce qui évite le bug par accident sans le corriger — un
+    # simple redémarrage du service (rechargement à froid, donc de nouveau
+    # category) le fait réapparaître, comme ça a été le cas ce jour-là.
+    train_par_passage = derniers.index.get_level_values("trip_id").astype(str).str.split(":").str[0]
     maximums_par_train = derniers.groupby(train_par_passage).max()
     if maximums_par_train.empty or maximums_par_train.max() <= 0:
         retard_max_texte = "aucun retard significatif"
