@@ -110,7 +110,7 @@
                 <span class="icone-info" title="Un train reste inclus tant qu'il a eu du retard à un moment de son trajet, même si ses relevés les plus récents sont revenus à 0 min — le tableau n'affichant que les 300 dernières lignes, ce retard peut ne plus être visible dans les lignes affichées.">ℹ</span>
             </div>
         </form>
-        <div id="stats" {% if vue == "graphique" %}style="display:none"{% endif %}>
+        <div id="stats" {% if vue in ("graphique", "train") %}style="display:none"{% endif %}>
             {% include "_stats.html" %}
         </div>
         <nav id="onglets">
@@ -226,6 +226,31 @@
                   + "apparaissent de nouveau dans le tableau et les stats.",
                 8000);
         }
+
+        // Toast "en cours" pour les 2 requêtes htmx lentes (~15s) de
+        // l'appli : le bouton "Calculer les statistiques globales"
+        // (_stats.html) et la période "tout l'historique" du Graphique
+        // (_graphique.html, charger_observations_completes côté serveur) —
+        // toutes deux chargent l'historique complet à la demande, contre un
+        // chemin habituellement quasi instantané (fenêtre glissante en
+        // cache). Durée fixe (25s, comme toastLimiterLigne/Retard, 8s)
+        // plutôt que masqué sur htmx:afterRequest/afterSettle : ces deux
+        // éléments vivent À L'INTÉRIEUR de la zone que leur propre requête
+        // remplace (#stats/#zone-contenu), et testé en pratique (Playwright,
+        // instrumentation directe des événements htmx) qu'aucun des deux
+        // événements ne se déclenche de façon fiable dans ce cas précis —
+        // htmx:beforeRequest, lui, reste fiable (se déclenche avant tout
+        // remplacement), donc utilisé seulement pour l'affichage. 25s de
+        // marge au-delà du temps réel observé (12-24s selon la charge)
+        // plutôt que 15s pile, pour ne jamais disparaître avant la fin.
+        document.body.addEventListener("htmx:beforeRequest", (e) => {
+            const elt = e.detail.elt;
+            if (elt.classList.contains("bouton-stats-globales")) {
+                afficherToast("info", "Calcul des statistiques globales en cours (~15 secondes)...", 25000);
+            } else if (elt.id === "periode" && elt.value === "tout l'historique") {
+                afficherToast("info", "Chargement de tout l'historique en cours (~15 secondes)...", 25000);
+            }
+        });
 
         function activerOnglet(bouton, nom) {
             document.getElementById("vue-active").value = nom;

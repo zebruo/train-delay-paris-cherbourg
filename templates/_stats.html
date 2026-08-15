@@ -1,5 +1,13 @@
 {% if erreur %}
     <p class="info">{{ erreur }}</p>
+{% elif not stats_calculees %}
+    <button type="button" class="bouton-stats-globales" hx-get="/stats_globales" hx-include="#filtres"
+            hx-vals='{"vue":"{{ vue }}"}' hx-target="#stats" hx-swap="innerHTML">
+        Calculer les statistiques globales (depuis le {{ debut_collecte_str }})
+    </button>
+    {% if erreur_stats_globales %}
+        <p class="info">{{ erreur_stats_globales }}</p>
+    {% endif %}
 {% elif stats is none %}
     <p class="info">Aucun relevé avec retard exploitable pour l'instant.</p>
 {% else %}

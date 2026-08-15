@@ -1,5 +1,5 @@
 {% include "_vue_dispatch.html" %}
-<div id="stats" hx-swap-oob="true" {% if vue == "graphique" %}style="display:none"{% endif %}>
+<div id="stats" hx-swap-oob="true" {% if vue in ("graphique", "train") %}style="display:none"{% endif %}>
     {% include "_stats.html" %}
 </div>
 {% if message_statut_json is defined %}

@@ -604,6 +604,26 @@ de l'utilisateur, 2026-08-14. */
     font-weight: 600;
 }
 
+/* Bouton "Calculer les statistiques globales" (_stats.html) : remplace la
+barre de stats tant que le cache complet séparé n'a jamais été activé
+(~12s au premier clic, voir calculer_stats_globales/mémoire du projet,
+2026-08-15) — un bouton plutôt qu'un calcul automatique, pour ne payer ce
+coût que sur demande explicite. */
+.bouton-stats-globales {
+    padding: 0.4rem 0.9rem;
+    margin: 0.3rem 0;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--accent);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.bouton-stats-globales:hover {
+    background: var(--accent);
+    color: var(--fond);
+}
+
 .pastille {
     /* display:flex + align-items:center sur .stat-valeur (ci-dessus)
     plutôt que vertical-align:middle : ce dernier aligne sur le milieu de
