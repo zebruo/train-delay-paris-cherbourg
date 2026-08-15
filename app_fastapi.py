@@ -45,12 +45,14 @@ from formatting import (
     format_gare,
     format_heure_avec_arret,
     format_min_sans_zero,
+    format_numero_train,
     format_poll_time,
     format_retard,
     format_valeur,
     load_calendrier,
     load_reference,
     sans_date_trip_id,
+    titre_dynamique_jour_heure,
     trajet_sens,
 )
 from perturbations import charger_alertes, charger_evenements
@@ -633,6 +635,14 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
         f"{date_debut_collecte}) — "
         f"dernier relevé : {format_poll_time(df['poll_time'].iloc[-1])}"
     )
+    contexte["tooltip_resume_collecte"] = (
+        "Compte tous les relevés correspondant aux filtres actifs (Gare/Train/Sens/"
+        "Limiter...), y compris ceux sans aucune valeur de retard connue (arrivée et "
+        "départ tous deux vides) — visibles dans le Tableau avec « – » sur les colonnes "
+        "Arr. et Dép., mais qui ne peuvent pas contribuer à une moyenne. C'est pourquoi ce "
+        "nombre est légèrement supérieur à celui utilisé par « Retard moyen / relevé »/"
+        "« Gare la + touchée » ci-dessous, qui excluent ces cas."
+    )
 
     df_stats = df_filtre.dropna(subset=["retard_min"])
     stats = calculer_stats_bloc(df_stats) if not df_stats.empty else None
@@ -693,9 +703,19 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     else:
         tooltip_moyen = tooltip_pire_gare = tooltip_cumule = ""
 
+    tooltip_retard_max = (
+        "Le plus grand retard observé, avec le train concerné. Peut provenir d'une "
+        "circulation ancienne dont l'horaire théorique a changé depuis (la SNCF republie "
+        "régulièrement des ajustements) — dans ce cas, l'onglet « Suivi d'un train » "
+        "affichera « trajet théorique introuvable », mais le retard lui-même reste bien "
+        "réel et compté."
+    )
+
     contexte.update({
         "gare_options": options_gare(df),
-        "train_options": ["Tous"] + sorted(df["train"].dropna().unique().tolist()),
+        "train_options": [("Tous", "Tous")] + [
+            (t, format_numero_train(t)) for t in sorted(df["train"].dropna().unique().tolist())
+        ],
         "sens_options": ["Tous"] + sorted(v for v in df["sens"].dropna().unique() if v),
         "stats_ratio": stats_ratio,
         "pct_perturbe": pct_perturbe,
@@ -705,6 +725,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
         "tooltip_moyen": tooltip_moyen,
         "tooltip_pire_gare": tooltip_pire_gare,
         "tooltip_cumule": tooltip_cumule,
+        "tooltip_retard_max": tooltip_retard_max,
     })
     return contexte, df, df_avant_retard, df_filtre, alertes_df, alertes_actif
 
@@ -838,7 +859,7 @@ def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens):
     if _gare_est_filtree(gare):
         elements_filtres.append(f"Gare {gare}")
     if train and train != "Tous":
-        elements_filtres.append(f"Train {train}")
+        elements_filtres.append(f"Train {format_numero_train(train)}")
     if sens and sens != "Tous":
         elements_filtres.append(sens)
     suffixe_filtres = f" — {' · '.join(elements_filtres)}" if elements_filtres else ""
@@ -964,6 +985,26 @@ def calculer_contexte_jour_heure(df_avant_retard):
         "type_jour": _construire_barre(stats_type_jour, "moyenne", ordre_type_jour, " min", False),
         "vacances": _construire_barre(stats_vacances, "moyenne", ordre_vacances, " min", False),
     }
+    # Titres dynamiques (label + valeur de la catégorie au maximum) pour les
+    # 4 graphiques à catégories multiples (jour/heure) — pas pour
+    # type_jour/vacances, qui n'ont que 2 barres chacun, où un "max" n'a pas
+    # de valeur explicative (demande explicite de l'utilisateur, 2026-08-15).
+    donnees["jour_moyenne"]["titre"] = titre_dynamique_jour_heure(
+        "Retard moyen par jour", stats_jour, "moyenne", jours_ordre, str.lower,
+        lambda v: f"{v:.1f} min", SEUIL_FIABLE,
+    )
+    donnees["jour_pct"]["titre"] = titre_dynamique_jour_heure(
+        "% en retard par jour", stats_jour, "pct", jours_ordre, str.lower,
+        lambda v: f"{v:.0f} %", SEUIL_FIABLE,
+    )
+    donnees["heure_moyenne"]["titre"] = titre_dynamique_jour_heure(
+        "Retard moyen par heure", stats_heure, "moyenne", labels_heure, lambda l: f"à {l}",
+        lambda v: f"{v:.1f} min", SEUIL_FIABLE,
+    )
+    donnees["heure_pct"]["titre"] = titre_dynamique_jour_heure(
+        "% en retard par heure", stats_heure, "pct", labels_heure, lambda l: f"à {l}",
+        lambda v: f"{v:.1f} %".replace(".", ","), SEUIL_FIABLE,
+    )
     return {
         "jour_heure_vide": False,
         "donnees_json": json_pour_script(donnees),
@@ -998,9 +1039,21 @@ def calculer_contexte_travaux(alertes_df, alertes_actif):
     lignes_evenements = []
     for _, ligne in evenements_df.sort_values("poll_time", ascending=False).iterrows():
         date_str = _format_start_date(ligne["start_date"])
-        evenement = "Trajet annulé (entier)" if ligne["type"] == "trajet_annule" else f"Arrêt supprimé : {ligne['gare']}"
+        if ligne["type"] == "trajet_annule":
+            # Un trajet annulé n'a pas de gare renseignée (voir
+            # perturbations.detecter_evenements : un trip.schedule_relationship
+            # = CANCELED ne liste aucun arrêt un par un dans le flux) — la
+            # liaison (origine → destination) est dérivée du référentiel via
+            # trajet_sens plutôt que d'un reparsing manuel du trip_id, comme
+            # pour la colonne "Sens" du Tableau. Vide si le trajet théorique
+            # n'est plus dans le référentiel actuel (repli silencieux déjà
+            # géré par trajet_sens lui-même).
+            sens = trajet_sens(ligne["trip_id"], reference_donnees["variantes"])
+            evenement = f"Trajet annulé (entier) : {sens}" if sens else "Trajet annulé (entier)"
+        else:
+            evenement = f"Arrêt supprimé : {ligne['gare']}"
         lignes_evenements.append({
-            "train": ligne["train"], "date": date_str, "evenement": evenement,
+            "train": format_numero_train(ligne["train"]), "date": date_str, "evenement": evenement,
             "detecte": format_poll_time(ligne["poll_time"].isoformat()),
         })
 
@@ -1026,6 +1079,14 @@ TITRES_EXEMPLES_GTFS = (
     "Exemples de services disparus :",
     "Exemples de services nouveaux :",
 )
+
+# Version non ancrée de formatting.RE_NUMERO_TRAIN : ici le numéro apparaît
+# au début d'un trip_id complet (ex: "OCESN13100F1187_F:TER:FR:Line::..."),
+# pas seul comme le champ "train" que RE_NUMERO_TRAIN attend en entrée
+# entière — met juste le numéro en gras, garde le reste de l'identifiant
+# intact (utile pour du diagnostic GTFS), plutôt que de le raccourcir comme
+# format_numero_train (jugé redondant ici par l'utilisateur, 2026-08-15).
+RE_NUMERO_TRAIN_INLINE = re.compile(r"OCESN(\d+)([A-Z]1187_[A-Z])")
 
 
 def _reformater_horodatage_detail(texte, export=None, reference=None):
@@ -1067,7 +1128,7 @@ def _surligner_exemples_gtfs(texte):
     balisage."""
     lignes_html = []
     for ligne in texte.splitlines():
-        echappee = html.escape(ligne)
+        echappee = RE_NUMERO_TRAIN_INLINE.sub(r"OCESN<b>\1</b>\2", html.escape(ligne))
         if ligne.strip() in TITRES_EXEMPLES_GTFS:
             lignes_html.append(f'<span class="gtfs-exemple-titre">{echappee}</span>')
         else:
@@ -1193,7 +1254,7 @@ def construire_options_trajet(df_pour_trajets, df_complet, filtre_jour_retard):
     for _, row in ordre.iterrows():
         trip_id, start_date = row["trip_id"], row["start_date"]
         date_str = _format_start_date(start_date)
-        label = f"{row['train']} du {date_str} (retard max {row['retard_max']:.0f} min)"
+        label = f"{format_numero_train(row['train'])} du {date_str} (retard max {row['retard_max']:.0f} min)"
         options.append((f"{trip_id}|{start_date}", label))
     return options
 
@@ -1358,7 +1419,7 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
         "vue": vue_train,
         "labels": labels,
         "hors_ligne": hors_ligne,
-        "titre": f"Évolution du retard gare par gare — {dict(options_trajet).get(trajet_choisi, '')}",
+        "titre": f"Évolution du retard gare par gare — train {dict(options_trajet).get(trajet_choisi, '')}",
         **donnees_vue,
     }
     contexte["donnees_json"] = json_pour_script(donnees)
@@ -1383,6 +1444,7 @@ def construire_lignes_tableau(df_filtre):
     groupes = list(zip(recent["train"], recent["poll_time"]))
 
     recent["poll_time"] = recent["poll_time"].map(format_poll_time)
+    recent["train"] = recent["train"].map(format_numero_train)
     recent["gare"] = recent["gare"].map(format_gare)
     recent["retard_arrivee_min"] = recent["retard_arrivee_min"].map(format_retard)
     recent["retard_depart_min"] = recent["retard_depart_min"].map(format_retard)

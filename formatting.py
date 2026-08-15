@@ -53,6 +53,25 @@ def format_gare(nom):
     return nom.replace("Saint-", "St-") if isinstance(nom, str) else nom
 
 
+RE_NUMERO_TRAIN = re.compile(r"^OCESN(\d+)[A-Z]1187_[A-Z]$")
+
+
+def format_numero_train(train):
+    """Numéro de train nu (ex: "OCESN852332F1187_F" -> "852332"), le même
+    identifiant que celui affiché sur les horaires SNCF officiels (voir
+    capture partagée par l'utilisateur, 2026-08-14) — le "train" tel que
+    dérivé de trip_id ailleurs dans le projet (df["train"] =
+    trip_id.str.split(":").str[0]) est correct pour filtrer/regrouper mais
+    peu lisible tel quel. Motif vérifié sur les 289 trains distincts
+    présents dans observations.db à cette date, sans exception (couvre
+    aussi bien les trains "normaux" ...F1187_F que les bus de substitution
+    ...R1187_R, ex: "OCESN446872R1187_R" -> "446872"). Renvoie la chaîne
+    telle quelle si elle ne correspond pas à ce motif (un futur format SNCF
+    inconnu ne doit pas produire un numéro vide ou tronqué)."""
+    m = RE_NUMERO_TRAIN.match(train) if isinstance(train, str) else None
+    return m.group(1) if m else train
+
+
 def format_gare_frise(nom):
     """Nom de gare pour la frise : abrégé comme format_gare(), puis en
     majuscules sans accents (ex: 'Paris St-Lazare' -> 'PARIS ST-LAZARE',
@@ -204,6 +223,24 @@ def cle_circulation(df):
     return df["trip_id"].astype(str) + "|" + df["start_date"].astype(str)
 
 
+def titre_dynamique_jour_heure(base, stats, colonne_valeur, labels, formater_label, formater_valeur, seuil_fiable):
+    """Titre dynamique "{base} — max : {label} ({valeur})" pour les 4
+    graphiques concernés de l'onglet "Par jour / heure" (retard moyen/%
+    en retard, jour et heure) — ignore les catégories peu fiables (moins de
+    seuil_fiable relevés), mêmes hachures grisées que les barres elles-mêmes,
+    pour ne pas mettre en avant une catégorie non représentative. Reste sur
+    le titre statique `base` si aucune catégorie n'est fiable."""
+    candidats = [
+        (label, valeur)
+        for label, valeur, n in zip(labels, stats[colonne_valeur], stats["n"])
+        if pd.notna(valeur) and n >= seuil_fiable
+    ]
+    if not candidats:
+        return base
+    label, valeur = max(candidats, key=lambda c: c[1])
+    return f"{base} — max : {formater_label(label)} ({formater_valeur(valeur)})"
+
+
 def derniers_par_passage_avec_date(df):
     """Comme derniers_par_passage (voir plus bas), mais conserve aussi
     poll_time (date du dernier relevé de ce passage) — utilisé par
@@ -263,9 +300,20 @@ def calculer_stats_bloc(df):
     if moyennes_par_gare.empty or moyennes_par_gare.max() <= 0:
         pire_gare_texte = "aucun retard significatif"
     else:
-        pire_gare_texte = (
-            f"{moyennes_par_gare.idxmax()} → moy {format_min_sans_zero(moyennes_par_gare.max())} min"
-        )
+        # Même correctif que "Retard max" ci-dessous (idxmax() choisirait
+        # arbitrairement la première gare par ordre alphabétique en cas
+        # d'égalité) — une égalité exacte entre moyennes (valeur continue)
+        # est plus rare qu'un retard max souvent rond, mais reste possible
+        # (peu de relevés sur une gare, ou gares au comportement identique).
+        valeur_max = moyennes_par_gare.max()
+        gares_a_egalite = moyennes_par_gare[moyennes_par_gare == valeur_max].index.tolist()
+        noms = gares_a_egalite[:3]
+        texte_valeur = f"moy {format_min_sans_zero(valeur_max)} min"
+        if len(gares_a_egalite) == 1:
+            pire_gare_texte = f"{noms[0]} → {texte_valeur}"
+        else:
+            suffixe = f" (+{len(gares_a_egalite) - 3} autres)" if len(gares_a_egalite) > 3 else ""
+            pire_gare_texte = f"{', '.join(noms)}{suffixe} → {texte_valeur}"
 
     # Basé sur la dernière valeur connue par passage (derniers ci-dessus),
     # pas le maximum brut sur tous les relevés : sinon une prédiction
@@ -290,7 +338,23 @@ def calculer_stats_bloc(df):
     if maximums_par_train.empty or maximums_par_train.max() <= 0:
         retard_max_texte = "aucun retard significatif"
     else:
-        retard_max_texte = f"train {maximums_par_train.idxmax()} → {maximums_par_train.max():.0f} min"
+        # idxmax() ne renverrait que le premier train dans l'ordre
+        # alphabétique de son trip_id en cas d'égalité (souvent le cas, les
+        # retards étant fréquemment des valeurs rondes) — arbitraire du
+        # point de vue de l'utilisateur, donc on liste tous les trains à
+        # égalité plutôt qu'un seul (demande explicite, 2026-08-15).
+        # Plafond à 3 (comme les "exemples" de verifier_gtfs.py) pour éviter
+        # une liste interminable dans le cas rare où beaucoup de trains
+        # partageraient exactement le même maximum.
+        valeur_max = maximums_par_train.max()
+        trains_a_egalite = maximums_par_train[maximums_par_train == valeur_max].index.tolist()
+        noms = [format_numero_train(t) for t in trains_a_egalite[:3]]
+        if len(trains_a_egalite) == 1:
+            prefixe = f"train {noms[0]}"
+        else:
+            suffixe = f" (+{len(trains_a_egalite) - 3} autres)" if len(trains_a_egalite) > 3 else ""
+            prefixe = f"trains {', '.join(noms)}{suffixe}"
+        retard_max_texte = f"{prefixe} → {valeur_max:.0f} min"
 
     return dict(
         total=total, en_retard=en_retard,

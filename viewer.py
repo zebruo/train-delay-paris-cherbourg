@@ -50,6 +50,7 @@ from formatting import (
     format_gare_frise,
     format_heure_avec_arret,
     format_min_sans_zero,
+    format_numero_train,
     format_poll_time,
     format_retard,
     format_valeur,
@@ -57,6 +58,7 @@ from formatting import (
     load_calendrier,
     load_reference,
     sans_date_trip_id,
+    titre_dynamique_jour_heure,
     trajet_sens,
 )
 from tooltips import SimpleTooltip, SurvolArtistes, TreeviewHeaderTooltips
@@ -253,7 +255,17 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         ).pack(side="left", padx=15)
 
         self.summary_var = tk.StringVar(value="Aucune donnée chargée.")
-        ttk.Label(top, textvariable=self.summary_var).pack(side="left", padx=15)
+        self.label_summary = ttk.Label(top, textvariable=self.summary_var)
+        self.label_summary.pack(side="left", padx=15)
+        SimpleTooltip(
+            self.label_summary,
+            "Compte tous les relevés correspondant aux filtres actifs (Gare/Train/Sens/"
+            "Limiter...), y compris ceux sans aucune valeur de retard connue (arrivée et "
+            "départ tous deux vides) — visibles dans le Tableau avec « – » sur les colonnes "
+            "Arr. et Dép., mais qui ne peuvent pas contribuer à une moyenne. C'est pourquoi "
+            "ce nombre est légèrement supérieur à celui utilisé par « Retard moyen / "
+            "relevé »/« Gare la + touchée » ci-dessous, qui excluent ces cas.",
+        )
 
     def _rafraichir_etat_vps(self):
         etat = recuperer_etat_vps(VPS_HOST)
@@ -330,6 +342,14 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
 
         self.label_max = ttk.Label(stats, textvariable=self.stat_max_var, font=("", 9, "bold"))
         self.label_max.pack(side="left", padx=15, pady=(0, 5))
+        SimpleTooltip(
+            self.label_max,
+            "Le plus grand retard observé, avec le train concerné. Peut provenir d'une "
+            "circulation ancienne dont l'horaire théorique a changé depuis (la SNCF republie "
+            "régulièrement des ajustements) — dans ce cas, l'onglet « Suivi d'un train » "
+            "affichera « trajet théorique introuvable », mais le retard lui-même reste bien "
+            "réel et compté.",
+        )
 
         self.label_pire_gare = ttk.Label(stats, textvariable=self.stat_pire_gare_var, font=("", 9, "bold"))
         self.label_pire_gare.pack(side="left", padx=15, pady=(0, 5))
@@ -767,12 +787,22 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         for _, ligne in self.evenements.sort_values("poll_time", ascending=False).iterrows():
             date_str = datetime.strptime(str(ligne["start_date"]), "%Y%m%d").strftime("%d/%m/%Y")
             if ligne["type"] == "trajet_annule":
-                evenement = "Trajet annulé (entier)"
+                # Un trajet annulé n'a pas de gare renseignée (voir
+                # perturbations.detecter_evenements) — la liaison est dérivée
+                # du référentiel via trajet_sens, comme pour la colonne
+                # "Sens" du Tableau, plutôt qu'un reparsing manuel du
+                # trip_id. Vide si le trajet théorique n'est plus dans le
+                # référentiel actuel (repli déjà géré par trajet_sens).
+                sens = trajet_sens(ligne["trip_id"], self.variantes)
+                evenement = f"Trajet annulé (entier) : {sens}" if sens else "Trajet annulé (entier)"
             else:
                 evenement = f"Arrêt supprimé : {ligne['gare']}"
             self.evenements_tree.insert(
                 "", "end",
-                values=(ligne["train"], date_str, evenement, format_poll_time(ligne["poll_time"].isoformat())),
+                values=(
+                    format_numero_train(ligne["train"]), date_str, evenement,
+                    format_poll_time(ligne["poll_time"].isoformat()),
+                ),
             )
 
     def _build_guide_tab(self, parent):
@@ -1234,7 +1264,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         for _, row in ordre.iterrows():
             trip_id, start_date = row["trip_id"], row["start_date"]
             date_str = datetime.strptime(str(start_date), "%Y%m%d").strftime("%d/%m/%Y")
-            label = f"{row['train']} du {date_str} (retard max {row['retard_max']:.0f} min)"
+            label = f"{format_numero_train(row['train'])} du {date_str} (retard max {row['retard_max']:.0f} min)"
             self.trajet_labels[label] = (trip_id, start_date)
         options = list(self.trajet_labels.keys())
         self.select_trajet_combo["values"] = options
@@ -1697,7 +1727,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 tags.append("depart_retard")
             self.tree.insert("", "end", tags=tuple(tags), values=(
                 format_poll_time(row["poll_time"]),
-                row["train"],
+                format_numero_train(row["train"]),
                 row["sens"],
                 format_gare(row["gare"]),
                 row.get("heure_theorique", ""),
@@ -1938,7 +1968,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             if gare and gare != "Toutes" and not gare.startswith("—"):
                 elements_filtres.append(f"Gare {gare}")
             if train and train != "Tous":
-                elements_filtres.append(f"Train {train}")
+                elements_filtres.append(f"Train {format_numero_train(train)}")
             if sens and sens != "Tous":
                 elements_filtres.append(sens)
             suffixe_filtres = f" — {' · '.join(elements_filtres)}" if elements_filtres else ""
@@ -2080,27 +2110,47 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             plot_df["start_date"], format="%Y%m%d"
         ).dt.dayofweek.map(dict(enumerate(jours_ordre)))
         stats_jour = self._stats_par_categorie(plot_df, "jour_semaine", jours_ordre)
+        # Titres dynamiques (catégorie au maximum) — voir titre_dynamique_jour_heure
+        # (formatting.py) et le graphique.js équivalent côté web ; pas pour
+        # type_jour/vacances plus bas, qui n'ont que 2 barres chacun.
+        titre_jour_moyenne = titre_dynamique_jour_heure(
+            "Retard moyen par jour", stats_jour, "moyenne", jours_ordre, str.lower,
+            lambda v: f"{v:.1f} min", self.SEUIL_FIABLE,
+        )
+        titre_jour_pct = titre_dynamique_jour_heure(
+            "% en retard par jour", stats_jour, "pct", jours_ordre, str.lower,
+            lambda v: f"{v:.0f} %", self.SEUIL_FIABLE,
+        )
         self._tracer_barres_fiabilite(
             self.jour_ax, stats_jour, [j[:3] for j in jours_ordre], "moyenne",
-            "#4a7fb5", "Retard moyen (min)", "Retard moyen par jour de semaine", unite=" min",
+            "#4a7fb5", "Retard moyen (min)", titre_jour_moyenne, unite=" min",
             afficher_moyenne=True,
         )
         self._tracer_barres_fiabilite(
             self.jour_pct_ax, stats_jour, [j[:3] for j in jours_ordre], "pct",
-            "#c2410c", "% trains en retard", "% en retard par jour de semaine", unite=" %",
+            "#c2410c", "% trains en retard", titre_jour_pct, unite=" %",
             afficher_moyenne=True,
         )
 
         plot_df["heure"] = pd.to_datetime(plot_df["poll_time"]).dt.tz_convert(PARIS_TZ).dt.hour
         stats_heure = self._stats_par_categorie(plot_df, "heure", list(range(24)))
+        labels_heure = [f"{h}h" for h in range(24)]
+        titre_heure_moyenne = titre_dynamique_jour_heure(
+            "Retard moyen par heure", stats_heure, "moyenne", labels_heure, lambda l: f"à {l}",
+            lambda v: f"{v:.1f} min", self.SEUIL_FIABLE,
+        )
+        titre_heure_pct = titre_dynamique_jour_heure(
+            "% en retard par heure", stats_heure, "pct", labels_heure, lambda l: f"à {l}",
+            lambda v: f"{v:.1f} %".replace(".", ","), self.SEUIL_FIABLE,
+        )
         self._tracer_barres_fiabilite(
             self.heure_ax, stats_heure, [str(h) for h in range(24)], "moyenne",
-            "#5ba58c", "Retard moyen (min)", "Retard moyen par heure", unite=" min",
+            "#5ba58c", "Retard moyen (min)", titre_heure_moyenne, unite=" min",
             afficher_moyenne=True,
         )
         self._tracer_barres_fiabilite(
             self.heure_pct_ax, stats_heure, [str(h) for h in range(24)], "pct",
-            "#c2410c", "% trains en retard", "% en retard par heure", xlabel="Heure (locale)", unite=" %",
+            "#c2410c", "% trains en retard", titre_heure_pct, xlabel="Heure (locale)", unite=" %",
             afficher_moyenne=True,
         )
 
@@ -2246,7 +2296,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             if gare not in GARES_LIGNE:
                 tick.set_color("#999999")
         self.train_ax.set_ylabel("Retard (min)")
-        self.train_ax.set_title(f"Évolution du retard gare par gare — {selection}")
+        self.train_ax.set_title(f"Évolution du retard gare par gare — train {selection}")
         # En arrière-plan (zorder) et en pointillés : à 0 min de retard, une
         # ligne de référence pleine et au premier plan masquerait les courbes.
         self.train_ax.axhline(0, color="gray", linewidth=0.8, linestyle=(0, (4, 3)), zorder=1)

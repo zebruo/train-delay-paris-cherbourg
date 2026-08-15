@@ -346,10 +346,10 @@ class OngletVerificationGTFSMixin:
         if not messagebox.askyesno(
             "Déployer vers la VPS",
             f"{comparaison}\n\nEnvoyer reference_paris_cherbourg.csv, "
-            f"reference_paris_cherbourg.meta.json et gtfs/stops.txt vers la VPS, puis redémarrer "
-            f"le site (nécessaire pour qu'il prenne en compte le nouveau référentiel) ? La "
-            f"collecte en cours (cron toutes les 5 min) utilisera ce nouveau référentiel dès son "
-            f"prochain passage, redémarrage ou non.",
+            f"reference_paris_cherbourg.meta.json et gtfs/stops.txt vers la VPS (service "
+            f"auto-redémarré pour qu'il prenne en compte le nouveau référentiel). À noter: la collecte "
+            f"en cours relit la référence sur le disque à chaque exécution, quel que soit "
+            f"l'état du redémarrage.",
         ):
             self.status_var.set("Déploiement annulé.")
             return

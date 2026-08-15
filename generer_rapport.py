@@ -42,7 +42,7 @@ from matplotlib.ticker import AutoMinorLocator
 from formatting import (
     PARIS_TZ, build_stop_names, build_trip_data, choisir_variante, cle_circulation,
     derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel, format_gare,
-    format_heure_avec_arret, load_calendrier, load_reference,
+    format_heure_avec_arret, format_numero_train, load_calendrier, load_reference,
 )
 
 OBSERVATIONS_DB = "observations.db"
@@ -797,7 +797,8 @@ def generer(nom_periode, maintenant=None):
 
                 date_str = pd.to_datetime(str(start_date), format="%Y%m%d").strftime("%d/%m/%Y")
                 ax_g.set_title(
-                    f"{ligne['train']} ({ligne['sens']}) — {date_str} — max {ligne['retard_max']:.0f} min",
+                    f"train {format_numero_train(ligne['train'])} ({ligne['sens']}) — {date_str} — "
+                    f"max {ligne['retard_max']:.0f} min",
                     fontsize=8, fontweight="bold", loc="center",
                 )
                 ax_g.set_ylabel("min", fontsize=7)
