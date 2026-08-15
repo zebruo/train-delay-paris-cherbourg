@@ -24,7 +24,7 @@ import urllib.request
 from google.transit import gtfs_realtime_pb2
 
 from calendar_data import Calendrier
-from formatting import sans_date_trip_id
+from formatting import PARIS_TZ, build_trip_data, load_reference, sans_date_trip_id, trajet_sens
 from perturbations import CANCELED, SKIPPED, detecter_evenements, enregistrer_evenements
 
 FEED_URL = "https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-trip-updates"
@@ -44,11 +44,28 @@ CREATE TABLE IF NOT EXISTS observations (
     weather_code INTEGER,
     type_jour TEXT,
     vacances_scolaires INTEGER,
-    arrets_restants INTEGER
+    arrets_restants INTEGER,
+    gare TEXT,
+    sens TEXT,
+    heure_locale INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_observations_trip ON observations(trip_id, start_date);
 CREATE INDEX IF NOT EXISTS idx_observations_poll_time ON observations(poll_time);
 """
+# gare/sens/heure_locale : ajoutées le 2026-08-15 pour permettre des
+# agrégations SQL (onglet "Par jour/heure", Graphique "tout l'historique")
+# sans devoir garder tout l'historique en mémoire côté app_fastapi.py (voir
+# mémoire du projet — 1 Go de RAM pour 932k lignes, sans limite). Calculées
+# une fois ici, à l'écriture (mêmes fonctions que preparer_donnees,
+# app_fastapi.py, pour rester identiques à l'existant), plutôt qu'à chaque
+# lecture. ALTER TABLE ci-dessous : une base déployée avant ce changement
+# n'a pas encore ces colonnes — CREATE TABLE IF NOT EXISTS ne les ajoute
+# pas à une table déjà existante, contrairement à une base neuve.
+ALTER_TABLE_SQL = {
+    "gare": "ALTER TABLE observations ADD COLUMN gare TEXT",
+    "sens": "ALTER TABLE observations ADD COLUMN sens TEXT",
+    "heure_locale": "ALTER TABLE observations ADD COLUMN heure_locale INTEGER",
+}
 
 
 def connecter_db():
@@ -60,6 +77,10 @@ def connecter_db():
     connexion = sqlite3.connect(OBSERVATIONS_DB)
     connexion.execute("PRAGMA journal_mode=WAL")
     connexion.executescript(SCHEMA_SQL)
+    colonnes_existantes = {row[1] for row in connexion.execute("PRAGMA table_info(observations)")}
+    for colonne, sql in ALTER_TABLE_SQL.items():
+        if colonne not in colonnes_existantes:
+            connexion.execute(sql)
     return connexion
 
 
@@ -127,10 +148,18 @@ def fetch_weather(latitude, longitude):
 
 def main():
     known_trip_ids, stop_names, stop_sequences, terminus_par_trajet = load_reference_data()
+    # Lecture indépendante du même fichier via pandas (formatting.py) plutôt
+    # que de dupliquer la logique origine/destination de trajet_sens ici :
+    # un train par cron (pas par ligne), coût négligeable, et garantit un
+    # résultat identique à preparer_donnees() (app_fastapi.py), qui utilise
+    # exactement les mêmes fonctions.
+    variantes = build_trip_data(load_reference())
     station_coords = load_station_coords()
     calendrier = Calendrier()
     feed = fetch_feed()
-    poll_time = datetime.now(timezone.utc).isoformat()
+    maintenant = datetime.now(timezone.utc)
+    poll_time = maintenant.isoformat()
+    heure_locale = maintenant.astimezone(PARIS_TZ).hour
 
     # Arrêts supprimés / trajets annulés (voir perturbations.py) : détectés
     # sur le même feed déjà récupéré ci-dessus, pas un appel réseau
@@ -196,6 +225,13 @@ def main():
 
         row["type_jour"] = calendrier.type_jour(row["start_date"])
         row["vacances_scolaires"] = int(calendrier.en_vacances(row["start_date"]))
+        # gare : repli sur le stop_id brut si non résolu, comme
+        # preparer_donnees() (app_fastapi.py, .fillna(df["stop_id"])) — pas
+        # de NULL en base pour un stop_id inconnu (ex: StopArea:OCE... non
+        # couvert par gtfs/stops.txt).
+        row["gare"] = gare if gare is not None else row["stop_id"]
+        row["sens"] = trajet_sens(row["trip_id"], variantes)
+        row["heure_locale"] = heure_locale
 
         cle_trip_id = sans_date_trip_id(row["trip_id"])
         terminus_seq = terminus_par_trajet.get(cle_trip_id)
@@ -213,11 +249,11 @@ def main():
             """INSERT INTO observations (
                 poll_time, trip_id, start_date, stop_id, arrival_delay_s, departure_delay_s,
                 temperature_c, precipitation_mm, wind_speed_kmh, weather_code,
-                type_jour, vacances_scolaires, arrets_restants
+                type_jour, vacances_scolaires, arrets_restants, gare, sens, heure_locale
             ) VALUES (
                 :poll_time, :trip_id, :start_date, :stop_id, :arrival_delay_s, :departure_delay_s,
                 :temperature_c, :precipitation_mm, :wind_speed_kmh, :weather_code,
-                :type_jour, :vacances_scolaires, :arrets_restants
+                :type_jour, :vacances_scolaires, :arrets_restants, :gare, :sens, :heure_locale
             )""",
             new_rows,
         )
