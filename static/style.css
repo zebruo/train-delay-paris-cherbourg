@@ -545,6 +545,15 @@ dialog#dialogue-aide .aide-theme {
     min-width: 10rem;
 }
 
+/* #train plus étroit que le min-width générique ci-dessus : ses options
+sont maintenant de courts numéros (voir format_numero_train, "852332" au
+lieu de "OCESN852332F1187_F") depuis le 2026-08-14, le 10rem hérité de
+Gare/Sens (dont les valeurs restent longues, ex: "Évreux Normandie") est
+devenu trop large pour son propre contenu. */
+#train {
+    min-width: 5.5rem;
+}
+
 .champ-case {
     flex-direction: row;
     align-items: center;
@@ -561,10 +570,26 @@ dialog#dialogue-aide .aide-theme {
 #stats {
     display: flex;
     flex-wrap: wrap;
-    gap: 2rem;
+    gap: 1.5rem;
     padding-bottom: 0.2rem;
     justify-content: space-around;
     background: var(--fond-secondaire);
+}
+
+/* Fin trait de séparation entre chaque stat — absent sur la première (pas
+de bordure "flottante" avant "Circulations perturbées"). Limite acceptée :
+:first-child ne vise que la toute première stat du DOM, pas le premier
+élément de chaque ligne si #stats passe sur plusieurs lignes (flex-wrap,
+petits écrans) — une bordure isolée peut alors apparaître en début de
+ligne suivante, jugé mineur/rare pour s'en soucier ici. Demande explicite
+de l'utilisateur, 2026-08-14. */
+.stat {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--bordure);
+}
+.stat:first-child {
+    padding-left: 0;
+    border-left: none;
 }
 
 .stat-label {
@@ -935,6 +960,7 @@ rapport au texte autour, pour ressortir un peu sans être criarde. */
 .travaux-intro {
     font-weight: 600;
     margin: 0.25rem 0 0;
+    font-size: 1rem;
 }
 
 .zone-travaux .travaux-source {
@@ -946,6 +972,7 @@ rapport au texte autour, pour ressortir un peu sans être criarde. */
     color: #c2410c;
     font-weight: 600;
     margin: 0 0 0.5rem;
+    font-size: 0.9rem;
 }
 
 tr.alerte-active {
@@ -1027,6 +1054,15 @@ tr.gtfs-aggrave {
     color: var(--texte-attenue);
 }
 
+/* Le gras du <b> seul (numéro de train, voir RE_NUMERO_TRAIN_INLINE,
+app_fastapi.py) reste peu visible sur cette police monospace générique
+(Consolas/Menlo absentes sous Linux) combinée au gris déjà estompé de
+.gtfs-detail — couleur de texte normale en plus du gras pour que le numéro
+ressorte vraiment (repéré par l'utilisateur, 2026-08-15). */
+.gtfs-detail b {
+    color: var(--texte);
+}
+
 /* Le détail d'une entrée GTFS (potentiellement de longues listes de
 trip_id) vit dans sa propre ligne pleine largeur plutôt que dans la
 colonne "Statut" elle-même (~14% du tableau, illisible pour ce genre de
@@ -1059,7 +1095,7 @@ demande explicite de l'utilisateur, 2026-08-10. */
     border-radius: 2px;
     padding: 0 2px;
     font-weight: 600;
-    color: var(--texte);
+    color: var(--texte-attenue);
 }
 
 table {
@@ -1092,10 +1128,10 @@ distincts (voir .zone-scroll plus haut) — table-layout:fixed sans largeur
 explicite répartirait les colonnes de chaque <tr> indépendamment les unes
 des autres. Proportions reprises des largeurs naturelles observées
 précédemment (contenu le plus large en premier). */
-th:nth-child(1), td:nth-child(1) { width: 11%; }
-th:nth-child(2), td:nth-child(2) { width: 12%; }
-th:nth-child(3), td:nth-child(3) { width: 10%; }
-th:nth-child(4), td:nth-child(4) { width: 11%; }
+th:nth-child(1), td:nth-child(1) { width: 13%; }
+th:nth-child(2), td:nth-child(2) { width: 7%; }
+th:nth-child(3), td:nth-child(3) { width: 11%; }
+th:nth-child(4), td:nth-child(4) { width: 13%; }
 th:nth-child(5), td:nth-child(5) { width: 8%; }
 th:nth-child(6), td:nth-child(6) { width: 6%; }
 th:nth-child(7), td:nth-child(7) { width: 6%; }

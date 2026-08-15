@@ -38,8 +38,8 @@ function texteBarre(barre, unite) {
 }
 
 const CONFIG_JOUR_HEURE = {
-    jour_moyenne: { titre: "Retard moyen par jour de semaine", ylabel: "Retard (min)", couleur: "#4a7fb5" },
-    jour_pct: { titre: "% en retard par jour de semaine", ylabel: "% trains en retard", couleur: "#c2410c" },
+    jour_moyenne: { titre: "Retard moyen par jour", ylabel: "Retard (min)", couleur: "#4a7fb5" },
+    jour_pct: { titre: "% en retard par jour", ylabel: "% trains en retard", couleur: "#c2410c" },
     heure_moyenne: { titre: "Retard moyen par heure", ylabel: "Retard (min)", couleur: "#5ba58c" },
     heure_pct: {
         titre: "% en retard par heure", ylabel: "% trains en retard", couleur: "#c2410c",
@@ -78,7 +78,12 @@ function dessinerBarre(cle, donnees) {
 
     const labels = barres.map((b) => b.label);
     const layout = {
-        title: { text: config.titre, font: { size: 11 } },
+        // donnees.titre : titre dynamique calculé côté serveur (catégorie au
+        // maximum, ex: "Retard moyen par jour — max : mardi (2.5 min)") pour
+        // jour_moyenne/jour_pct/heure_moyenne/heure_pct — absent pour
+        // type_jour/vacances (2 barres seulement, pas de "max" utile), on
+        // retombe alors sur le titre statique de CONFIG_JOUR_HEURE.
+        title: { text: donnees.titre || config.titre, font: { size: 11 } },
         xaxis: {
             showline: true, linecolor: bordure,
             // Plotly masque une partie des étiquettes par défaut sur un axe

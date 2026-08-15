@@ -7,12 +7,15 @@
     <link rel="icon" type="image/svg+xml" href="/static/train-logo.svg">
     <script>
         // Appliqué avant le CSS/premier rendu, pour éviter un flash du
-        // mauvais thème au chargement — sans préférence enregistrée
-        // (première visite), on ne touche à rien : la règle @media
-        // (prefers-color-scheme) de style.css reste seule aux commandes.
+        // mauvais thème au chargement. Sans préférence enregistrée (première
+        // visite), thème sombre par défaut plutôt que de suivre la
+        // préférence système (@media prefers-color-scheme de style.css) —
+        // demande explicite de l'utilisateur, 2026-08-15. Un choix explicite
+        // (bascule manuelle, mémorisée ci-dessous par basculerTheme) reste
+        // toujours prioritaire.
         (function () {
-            var theme = localStorage.getItem("theme");
-            if (theme) document.documentElement.dataset.theme = theme;
+            var theme = localStorage.getItem("theme") || "dark";
+            document.documentElement.dataset.theme = theme;
         })();
     </script>
     <link rel="stylesheet" href="/static/style.css">
@@ -46,7 +49,7 @@
                 Rafraîchissement automatique (5 min)
             </label>
             <a href="/">Réinitialiser</a>
-            <span id="resume-collecte" class="info">{{ resume_collecte or "" }}</span>
+            <span id="resume-collecte" class="info">{{ resume_collecte or "" }} {% if resume_collecte %}<span class="icone-info" title="{{ tooltip_resume_collecte }}">ℹ</span>{% endif %}</span>
         </div>
         <!-- Élément invisible dédié au polling automatique — la collecte
         tourne sur cette même machine (plus de bouton "Rafraîchir depuis le
@@ -75,8 +78,8 @@
             <div class="champ">
                 <label for="train">Train</label>
                 <select id="train" name="train">
-                    {% for option in train_options %}
-                        <option value="{{ option }}" {% if option == train %}selected{% endif %}>{{ option }}</option>
+                    {% for valeur, label in train_options %}
+                        <option value="{{ valeur }}" {% if valeur == train %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>

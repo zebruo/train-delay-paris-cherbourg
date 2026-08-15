@@ -6,7 +6,7 @@
     <script>afficherToast("{{ message_statut_type }}", {{ message_statut_json | safe }}, 4000);</script>
 {% endif %}
 {% if resume_collecte is defined %}
-    <span id="resume-collecte" hx-swap-oob="true" class="info">{{ resume_collecte }}</span>
+    <span id="resume-collecte" hx-swap-oob="true" class="info">{{ resume_collecte }} <span class="icone-info" title="{{ tooltip_resume_collecte }}">ℹ</span></span>
 {% endif %}
 {% if libelle_travaux is defined %}
     <span id="badge-travaux" hx-swap-oob="true">{{ libelle_travaux }}</span>
