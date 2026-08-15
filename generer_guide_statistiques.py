@@ -318,7 +318,7 @@ GUIDE_PAGES = [
                 titre="Retard max",
                 definition="Le plus grand retard observé sur la période, avec le train concerné.",
                 exemple_lignes=[
-                    "→ Affiché : « Retard max : train OCESN1234F1187_F → 45 min »",
+                    "→ Affiché : « Retard max : train 1234 → 45 min »",
                     "Ce train a connu le pire retard de la période, 45 minutes, quelque",
                     "part sur son trajet.",
                 ],
@@ -583,31 +583,33 @@ GUIDE_PAGES = [
         titre_page="4. L'onglet « Vérification GTFS » (suite)",
         blocs=[
             dict(
-                titre="« Régénérer » et « Déployer vers le Pi »",
-                sous_titre="(mettre à jour la référence)",
+                titre="« Régénérer » et « Déployer vers la VPS »",
+                sous_titre="(mettre à jour la référence — application desktop uniquement)",
                 definition=(
                     "Deux boutons séparés, en deux étapes volontairement distinctes.\n"
                     "« Régénérer » télécharge l'horaire SNCF du jour et reconstruit la\n"
-                    "référence — sur ce PC uniquement, sans rien changer côté Pi. « Déployer\n"
-                    "vers le Pi » envoie ensuite cette nouvelle référence là où elle compte\n"
-                    "vraiment : le Raspberry Pi, qui collecte les données en continu."
+                    "référence — sur ce PC uniquement, sans rien changer côté VPS. « Déployer\n"
+                    "vers la VPS » envoie ensuite cette nouvelle référence là où elle compte\n"
+                    "vraiment : la VPS, qui collecte les données en continu et héberge le site."
                 ),
                 exemple_lignes=[
                     "Avant l'envoi, une confirmation rappelle les deux versions en jeu :",
-                    "« Référentiel actuellement sur le Pi : 2026-07-19",
+                    "« Référentiel actuellement sur la VPS : 2026-07-19",
                     "  Référentiel local à déployer : 2026-08-04 »",
                 ],
                 utilite=(
                     "mettre à jour la référence sans ligne de commande, tout en gardant la main "
-                    "à chaque étape — rien ne part vers le Pi sans un clic de confirmation "
+                    "à chaque étape — rien ne part vers la VPS sans un clic de confirmation "
                     "explicite."
                 ),
                 pourquoi=(
                     "Séparer « Régénérer » (local, sans conséquence) de « Déployer » (touche la "
-                    "collecte en cours) évite qu'une régénération machinale ne modifie sans le "
-                    "vouloir ce qui tourne réellement sur le Pi. Une fois déployée, la vérification "
-                    "est aussitôt relancée là-bas : sans ça, le seuil d'alerte du Pi resterait basé "
-                    "sur l'ancienne référence jusqu'au prochain passage automatique (3h15)."
+                    "collecte et le site, tous deux en production sur la VPS) évite qu'une "
+                    "régénération machinale ne modifie sans le vouloir ce qui tourne réellement. "
+                    "Une fois déployée, la vérification est aussitôt relancée là-bas et le service "
+                    "web redémarré automatiquement : sans ça, le seuil d'alerte resterait basé sur "
+                    "l'ancienne référence jusqu'au prochain passage automatique (3h15), et des "
+                    "champs comme « Sens »/« Heure théo. » resteraient basés sur l'ancienne version."
                 ),
             ),
         ],

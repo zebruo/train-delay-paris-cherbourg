@@ -3,7 +3,7 @@
 # plutôt que le PC/WSL : la version PC passe par powershell.exe et un
 # partage UNC Windows, indisponibles ici. Utilise rsync/SSH avec la clé
 # dédiée du Pi vers le NAS (~/.ssh/id_ed25519_nas), même mécanisme déjà en
-# place pour backup_to_nas.sh.
+# place pour sauvegarder_observations_nas.sh.
 set -euo pipefail
 cd "$(dirname "$0")"
 source config.sh

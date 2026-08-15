@@ -30,8 +30,11 @@ remplacement silencieux d'une donnée utilisée dans tout le projet
 (collect_realtime.py, viewer.py, generer_rapport.py).
 
 Usage : python verifier_gtfs.py >> verification_gtfs.log 2>&1
-Prévu pour un cron quotidien sur le Pi, avant backup_to_nas.sh (qui remonte
-ensuite verification_gtfs.log vers le NAS). charger_journal() et
+Cron quotidien sur la VPS (3h15, heure de Paris depuis le passage du
+fuseau système à Europe/Paris) — verification_gtfs.log n'est plus remonté
+vers le NAS (backup_local.sh/backup_to_nas.sh, qui faisaient ça à l'époque
+du Pi collecteur, retirés le 2026-08-14) ; viewer.py le rapatrie
+directement depuis la VPS (bouton "Rafraîchir"). charger_journal() et
 lancer_a_distance() sont aussi importés par viewer.py (onglet "Vérification
 GTFS") : ce module fait office d'annexe backend pour cet onglet, comme
 perturbations.py pour Travaux/Alertes — l'UI Tkinter elle-même reste dans

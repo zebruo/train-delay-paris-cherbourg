@@ -1,10 +1,17 @@
 """
-Génère un schéma (PNG) de l'architecture du projet : les 3 machines
-impliquées (Raspberry Pi, PC/WSL, NAS), les sources externes, et les
+Génère un schéma (PNG) de l'architecture du projet : les 4 machines
+impliquées (VPS, Raspberry Pi, PC/WSL, NAS), les sources externes, et les
 scripts/fichiers de données de ce dossier avec leurs relations réelles
 (imports, lecture/écriture de fichiers, déclenchement cron/planificateur) —
 à mettre à jour à la main si l'architecture change (nouveau script, nouveau
 fichier de données, nouvelle machine...).
+
+Réécrit le 2026-08-16 pour la bascule VPS (2026-08-13/14) : la VPS est
+maintenant la seule collectrice (observations.db/alertes.csv/
+verification_gtfs.log) et héberge le site web public ; le Pi ne fait plus
+que relayer (rapports PDF + sauvegarde de la base vers le NAS, la VPS ne
+pouvant pas atteindre le NAS, adresse privée) ; le PC/WSL reste l'interface
+de suivi (viewer.py) et le point de préparation/déploiement du référentiel.
 
 Usage : python generer_organigramme.py
 Écrit : organigramme_application.png (racine du projet, écrasé à chaque
@@ -16,8 +23,10 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 from matplotlib.lines import Line2D
 
-COULEUR_PI = "#e0f2e9"
-COULEUR_PI_BORD = "#2f855a"
+COULEUR_VPS = "#e0f2e9"
+COULEUR_VPS_BORD = "#2f855a"
+COULEUR_PI = "#e6f7f5"
+COULEUR_PI_BORD = "#0f9488"
 COULEUR_PC = "#e0edf7"
 COULEUR_PC_BORD = "#2c6ea5"
 COULEUR_NAS = "#f3e8ff"
@@ -26,12 +35,13 @@ COULEUR_EXT = "#fdf1e0"
 COULEUR_EXT_BORD = "#c2410c"
 COULEUR_DONNEE = "#f5f5f5"
 COULEUR_DONNEE_BORD = "#555555"
+COULEUR_DONNEE_FIGEE = "#e8e8e8"
 COULEUR_MANUEL = "#fff8e0"
 COULEUR_MANUEL_BORD = "#b7791f"
 
 
 def generer():
-    fig, ax = plt.subplots(figsize=(24, 18))
+    fig, ax = plt.subplots(figsize=(26, 18))
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
     ax.axis("off")
@@ -93,176 +103,180 @@ def generer():
     ax.text(50, 97.3, "train-delay-paris-cherbourg — Organigramme de l'application", ha="center",
             fontsize=17, fontweight="bold")
     ax.text(50, 94.5,
-            "Suivi des retards SNCF sur l'axe Paris ↔ Cherbourg — collecte continue, interface de suivi, rapports PDF",
+            "Suivi des retards SNCF sur l'axe Paris ↔ Cherbourg — collecte continue sur VPS, "
+            "site web public, interface de suivi, rapports PDF",
             ha="center", fontsize=10.5, color="#555555")
 
     # ---------- Zones (fond) ----------
     boite("zone_ext", 1, 79, 98, 10, "", COULEUR_EXT, COULEUR_EXT_BORD, style="round,pad=0.1")
     ax.text(2.5, 87, "Sources externes", fontsize=10, fontweight="bold", color=COULEUR_EXT_BORD, va="center")
 
-    boite("zone_pi", 1, 3, 35, 74, "", COULEUR_PI, COULEUR_PI_BORD, style="round,pad=0.1")
-    ax.text(2.5, 75, "Raspberry Pi — collecte continue (cron)", fontsize=10.5, fontweight="bold",
+    boite("zone_vps", 1, 3, 38, 74, "", COULEUR_VPS, COULEUR_VPS_BORD, style="round,pad=0.1")
+    ax.text(2.5, 75, "VPS (IONOS) — collecte continue + site web public", fontsize=10.5, fontweight="bold",
+            color=COULEUR_VPS_BORD, va="center")
+
+    boite("zone_pi", 41, 3, 20, 74, "", COULEUR_PI, COULEUR_PI_BORD, style="round,pad=0.1")
+    ax.text(42.5, 75, "Raspberry Pi — relais rapports + sauvegarde", fontsize=9.5, fontweight="bold",
             color=COULEUR_PI_BORD, va="center")
 
-    boite("zone_pc", 38, 3, 40, 74, "", COULEUR_PC, COULEUR_PC_BORD, style="round,pad=0.1")
-    ax.text(39.5, 75, "PC / WSL — interface de suivi + rapports", fontsize=10.5, fontweight="bold",
+    boite("zone_pc", 63, 3, 20, 74, "", COULEUR_PC, COULEUR_PC_BORD, style="round,pad=0.1")
+    ax.text(64.5, 75, "PC / WSL — suivi + référentiel", fontsize=9.5, fontweight="bold",
             color=COULEUR_PC_BORD, va="center")
 
-    boite("zone_nas", 80, 3, 19, 74, "", COULEUR_NAS, COULEUR_NAS_BORD, style="round,pad=0.1")
-    ax.text(81.5, 75, "NAS — sauvegarde", fontsize=10.5, fontweight="bold", color=COULEUR_NAS_BORD, va="center")
+    boite("zone_nas", 85, 3, 14, 74, "", COULEUR_NAS, COULEUR_NAS_BORD, style="round,pad=0.1")
+    ax.text(86, 75, "NAS", fontsize=10.5, fontweight="bold", color=COULEUR_NAS_BORD, va="center")
 
     # ---------- Sources externes ----------
-    # Groupées au-dessus de la zone qui les consomme : évite les longues
-    # diagonales traversant les autres boîtes.
     boite("gtfs_rt", 2.5, 80, 8, 6.5, "Flux GTFS-RT\nSNCF (retards\ntemps réel)", COULEUR_EXT, COULEUR_EXT_BORD, fontsize=7.3)
     boite("meteo", 11, 80, 8, 6.5, "API\nOpen-Meteo\n(météo)", COULEUR_EXT, COULEUR_EXT_BORD, fontsize=7.3)
     boite("vacances_api", 19.5, 80, 8, 6.5, "Calendrier\nscolaire /\njours fériés", COULEUR_EXT, COULEUR_EXT_BORD, fontsize=7.3)
-    boite("alertes_flux", 28, 80, 7, 6.5, "Flux alertes\nSNCF", COULEUR_EXT, COULEUR_EXT_BORD, fontsize=7.3)
-    boite("gtfs_static", 48, 80, 22, 6.5, "GTFS statique SNCF\n(horaires théoriques, dossier gtfs/)", COULEUR_EXT, COULEUR_EXT_BORD, fontsize=8)
+    boite("alertes_flux", 28, 80, 8, 6.5, "Flux alertes\nSNCF", COULEUR_EXT, COULEUR_EXT_BORD, fontsize=7.3)
+    boite("gtfs_static", 45, 80, 20, 6.5, "GTFS statique SNCF\n(horaires théoriques)", COULEUR_EXT, COULEUR_EXT_BORD, fontsize=8)
+    boite("visiteurs", 68, 80, 15, 6.5, "Visiteurs du site\n(navigateur web)", COULEUR_EXT, COULEUR_EXT_BORD, fontsize=8)
+
+    # ================= VPS =================
+    boite("ref_csv_vps", 2.5, 63, 10, 8, "reference_\nparis_\ncherbourg.csv\n(déployé\ndepuis le PC)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=6.5)
+    boite("calendar_data_vps", 2.5, 53, 10, 8, "calendar_\ndata.py\n(module)", "#ffffff", COULEUR_VPS_BORD, fontsize=7)
+
+    boite("collect_realtime", 14, 58, 11, 13, "collect_\nrealtime.py\n(cron\n5 min)", COULEUR_VPS, COULEUR_VPS_BORD, fontsize=7.4, fontweight="bold")
+    boite("observations_db", 27, 60, 10, 9, "observations.db\n(SQLite,\nWAL)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7)
+
+    boite("collect_alertes", 14, 44, 11, 11, "collect_\nalertes.py\n(cron\nhoraire)", COULEUR_VPS, COULEUR_VPS_BORD, fontsize=7.4, fontweight="bold")
+    boite("alertes_csv_vps", 27, 46, 10, 7, "alertes.csv", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7)
+
+    boite("verifier_gtfs", 14, 30, 11, 11, "verifier_\ngtfs.py\n(cron\n3h15)", COULEUR_VPS, COULEUR_VPS_BORD, fontsize=7.4, fontweight="bold")
+    boite("verif_log", 27, 32, 10, 7, "verification_\ngtfs.log", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7)
+
+    boite("app_fastapi", 2.5, 5, 34.5, 21, "app_fastapi.py\n(service systemd train-delay,\nderrière nginx + HTTPS)\nsite web public : Tableau, Graphique,\nSuivi d'un train, Par jour/heure,\nTravaux/Alertes, Vérification GTFS",
+          COULEUR_VPS, COULEUR_VPS_BORD, fontsize=8.3, fontweight="bold")
 
     # ================= RASPBERRY PI =================
-    # Pipeline temps réel : entrées à gauche, script au centre, sortie à droite.
-    boite("ref_csv_pi", 2.5, 62, 9.5, 8, "reference_\nparis_\ncherbourg.csv", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=6.8)
-    boite("calendar_data", 2.5, 52, 9.5, 8, "calendar_\ndata.py\n(module)", "#ffffff", COULEUR_PI_BORD, fontsize=7)
-    boite("cal_cache", 2.5, 42, 9.5, 7, "calendar_\ncache.json", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=6.8)
+    boite("executer_rapport_pi", 42, 55, 18, 14, "executer_rapport_pi.sh\n(cron 3h30/3h35 lundi/\n3h40 le 1er du mois)\nrapatrie observations.db +\nalertes.csv depuis la VPS",
+          COULEUR_PI, COULEUR_PI_BORD, fontsize=7.6, fontweight="bold")
+    boite("generer_rapport_pi", 42, 42, 18, 10, "generer_rapport.py\n(quotidien/hebdo/mensuel)", COULEUR_PI, COULEUR_PI_BORD, fontsize=7.8)
+    boite("rapports_pi", 42, 33, 18, 6, "rapports/quotidien/*.pdf\netc. (copie locale Pi)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=6.8)
+    boite("envoyer_nas_pi", 42, 27, 18, 4, "envoyer_rapport_nas_pi.sh", COULEUR_MANUEL, COULEUR_MANUEL_BORD, fontsize=7.2)
 
-    boite("collect_realtime", 13.5, 55, 9.5, 15, "collect_\nrealtime.py\n(cron\ntoutes les\n5 min)", COULEUR_PI, COULEUR_PI_BORD, fontsize=7.6, fontweight="bold")
-
-    boite("observations_csv", 24.5, 58, 8, 9, "observations.csv\n(ajouté en\ncontinu)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=6.8)
-
-    # Pipeline alertes, même schéma, ligne du dessous.
-    boite("collect_alertes", 13.5, 39, 9.5, 12, "collect_\nalertes.py\n(cron)", COULEUR_PI, COULEUR_PI_BORD, fontsize=7.6, fontweight="bold")
-    boite("alertes_csv", 24.5, 41, 8, 8, "alertes.csv\n(ajouté en\ncontinu)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=6.8)
-
-    # Sauvegardes (bas de la zone), reçoivent les deux fichiers ci-dessus.
-    boite("backup_scripts", 2.5, 21, 30, 8, "backup_local.sh  +  backup_to_nas.sh\n(cron quotidien / horaire)", "#ffffff", COULEUR_PI_BORD, fontsize=8)
-    boite("backups_pi", 2.5, 8, 30, 8, "backups/ (copies datées locales,\nrotation 14 jours)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=8)
+    boite("sauvegarder_obs_nas", 42, 12, 18, 12, "sauvegarder_observations_\nnas.sh\n(cron 3h45, quotidien)\nrapatrie sa propre copie\nd'observations.db depuis\nla VPS, rotation 14 jours",
+          COULEUR_PI, COULEUR_PI_BORD, fontsize=7.2, fontweight="bold")
 
     # ================= PC / WSL =================
-    # Colonne gauche (x39-56) : préparation référentiel + guide + rapport.
-    # Colonne droite (x59-76) : jumelles (données / manuel).
-    boite("build_reference", 39.5, 65, 17, 7, "build_reference.py\n(manuel, ponctuel)", COULEUR_MANUEL, COULEUR_MANUEL_BORD, fontsize=8)
-    boite("fetch_data", 58.5, 65, 17, 7, "fetch_data.py\n(manuel, ponctuel)", COULEUR_MANUEL, COULEUR_MANUEL_BORD, fontsize=8)
+    boite("build_reference", 64, 65, 18, 9, "build_reference.py\n(manuel, ponctuel)\nRégénérer / Déployer vers la VPS\n(boutons \"Vérification GTFS\")", COULEUR_MANUEL, COULEUR_MANUEL_BORD, fontsize=7.3)
+    boite("ref_csv_pc", 64, 55, 18, 7, "reference_paris_cherbourg.csv\n(copie locale PC)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7.3)
 
-    boite("ref_csv_pc", 39.5, 56, 17, 6.5, "reference_paris_cherbourg.csv", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7.6)
-    boite("csv_lignes", 58.5, 56, 17, 6.5, "intercites_paris_cherbourg.csv\nter_normandie.csv\n(lus aussi par analyze.py)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=6.8)
+    boite("formatting", 64, 45, 18, 7, "formatting.py\n(module partagé : formatage,\ncalculs communs)", "#ffffff", COULEUR_PC_BORD, fontsize=7.3)
 
-    boite("formatting", 39.5, 47, 17, 6.5, "formatting.py\n(module partagé : formatage,\ncalculs communs)", "#ffffff", COULEUR_PC_BORD, fontsize=7.3)
-    boite("tooltips", 58.5, 47, 17, 6.5, "tooltips.py\n(module : bulles d'aide)", "#ffffff", COULEUR_PC_BORD, fontsize=8)
+    boite("viewer", 64, 28, 18, 14, "viewer.py\nInterface de suivi (Tkinter)\nrapatrie observations.db\ndepuis la VPS (bouton\n\"Rafraîchir depuis la VPS\")",
+          COULEUR_PC, COULEUR_PC_BORD, fontsize=8.3, fontweight="bold")
 
-    boite("viewer", 39.5, 34, 36, 10.5, "viewer.py\nInterface de suivi (Tkinter)\nrapatrie observations.csv / alertes.csv\ndepuis le Pi (rsync, bouton \"Rafraîchir\")",
-          COULEUR_PC, COULEUR_PC_BORD, fontsize=9, fontweight="bold")
-
-    boite("guide_py", 39.5, 24, 17, 7, "generer_guide_\nstatistiques.py\n(régénérable depuis l'onglet\n\"Guide statistiques\")", COULEUR_PC, COULEUR_PC_BORD, fontsize=7.3)
-    boite("guide_pdf", 58.5, 25.5, 17, 4.5, "guide_statistiques.pdf", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=8)
-
-    boite("obs_local_pc", 39.5, 15, 17, 6, "observations.csv\nalertes.csv (copie locale PC)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7.6)
-    boite("executer_rapport", 58.5, 15, 17, 6, "executer_rapport.sh\n(Planificateur de tâches\nWindows)", COULEUR_MANUEL, COULEUR_MANUEL_BORD, fontsize=7.6)
-
-    boite("generer_rapport", 39.5, 6, 17, 6.5, "generer_rapport.py\n(quotidien / hebdomadaire)", COULEUR_PC, COULEUR_PC_BORD, fontsize=8, fontweight="bold")
-    boite("rapports_pdf", 58.5, 6, 17, 6.5, "rapports/quotidien/*.pdf\nrapports/hebdomadaire/*.pdf", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7.6)
-
-    boite("envoyer_nas", 39.5, 3.5, 36, 1.8, "envoyer_rapport_nas.sh", COULEUR_MANUEL, COULEUR_MANUEL_BORD, fontsize=7.5)
+    boite("guide_py", 64, 15, 18, 9, "generer_guide_statistiques.py\n(régénérable depuis l'onglet\n\"Guide statistiques\")", COULEUR_PC, COULEUR_PC_BORD, fontsize=7.3)
+    boite("guide_pdf", 64, 6, 18, 6, "guide_statistiques.pdf", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7.6)
 
     # ================= NAS =================
-    boite("nas_obs", 81.5, 55, 16, 9, "observations.csv\nalertes.csv\n(sauvegarde horaire +\ndatée 14 jours)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7.6)
-    boite("nas_rapports", 81.5, 40, 16, 9, "rapports/quotidien/*.pdf\nrapports/hebdomadaire/*.pdf", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7.6)
+    boite("nas_obs_db", 86, 55, 12, 12, "observations_db/\n(sauvegardes datées,\nrotation 14 jours)", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7)
+    boite("nas_rapports", 86, 40, 12, 10, "rapports/\nquotidien/hebdo/mensuel", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7.3)
+    boite("nas_csv_fige", 86, 26, 12, 9, "observations.csv\n(archive figée,\nfin de collecte Pi,\n14/08/2026)", COULEUR_DONNEE_FIGEE, COULEUR_DONNEE_BORD, fontsize=6.8)
 
     # ================= FLECHES =================
-    # --- Sources -> Pi ---
-    fleche(bord("gtfs_rt", "bas"), bord("collect_realtime", "haut"), rad=-0.15)
-    fleche(bord("meteo", "bas"), bord("collect_realtime", "haut"), rad=-0.05)
-    fleche(bord("vacances_api", "bas"), bord("collect_realtime", "haut"), rad=0.1)
-    fleche(bord("alertes_flux", "bas"), bord("collect_alertes", "haut"), rad=0.05)
-    fleche(bord("gtfs_static", "bas"), bord("build_reference", "haut"), rad=0.0)
+    # --- Sources -> VPS ---
+    fleche(bord("gtfs_rt", "bas"), bord("collect_realtime", "haut"), rad=-0.1)
+    fleche(bord("meteo", "bas"), bord("collect_realtime", "haut"), rad=0.0)
+    fleche(bord("vacances_api", "bas"), bord("collect_realtime", "haut"), rad=0.15)
+    fleche(bord("alertes_flux", "bas"), bord("collect_alertes", "haut"), rad=0.1)
+    fleche_coude([bord("gtfs_static", "gauche"), (48, 76), (19, 76), bord("verifier_gtfs", "droite")],
+                 texte="build_reference/verifier_gtfs", texte_pos=(35, 77.5), fontsize=6.6)
+    fleche(bord("visiteurs", "bas"), bord("app_fastapi", "droite"), rad=-0.25, couleur=COULEUR_VPS_BORD)
+    ax.text(bord("visiteurs", "bas")[0] + 2, bord("visiteurs", "bas")[1] - 2, "HTTPS", ha="left", va="center",
+            fontsize=7, color=COULEUR_VPS_BORD, style="italic")
 
-    # --- Pi : pipeline temps réel (entrées gauche -> script -> sortie droite) ---
-    fleche(bord("ref_csv_pi", "droite"), bord("collect_realtime", "gauche"), rad=0.15)
-    fleche(bord("calendar_data", "droite"), bord("collect_realtime", "gauche"), rad=-0.12, texte="type_jour / vacances", decal_texte=(4, -2.5), fontsize=6.3)
-    fleche(bord("calendar_data", "bas"), bord("cal_cache", "haut"))
-    fleche(bord("collect_realtime", "droite"), bord("observations_csv", "gauche"))
+    # --- VPS : pipeline temps réel ---
+    fleche(bord("ref_csv_vps", "droite"), bord("collect_realtime", "gauche"), rad=0.1)
+    fleche(bord("calendar_data_vps", "droite"), bord("collect_realtime", "gauche"), rad=-0.1, texte="type_jour / vacances", decal_texte=(4, -2.5), fontsize=6.3)
+    fleche(bord("collect_realtime", "droite"), bord("observations_db", "gauche"))
 
-    # --- Pi : pipeline alertes --- (coude par la marge de gauche : un tracé
-    # courbe direct passait en plein sur la boîte collect_realtime.py au-dessus)
+    # --- VPS : pipeline alertes ---
+    fleche(bord("collect_alertes", "droite"), bord("alertes_csv_vps", "gauche"))
+
+    # --- VPS : vérification GTFS ---
+    fleche(bord("ref_csv_vps", "bas"), bord("verifier_gtfs", "haut"), rad=-0.1, texte="référence à jour ?", fontsize=6.3)
+    fleche(bord("verifier_gtfs", "droite"), bord("verif_log", "gauche"))
+
+    # --- VPS : données -> service web ---
+    fleche(bord("observations_db", "bas"), bord("app_fastapi", "haut"), rad=0.1)
+    fleche(bord("alertes_csv_vps", "bas"), bord("app_fastapi", "haut"), rad=0.0)
+    fleche(bord("verif_log", "bas"), bord("app_fastapi", "haut"), rad=-0.15)
+
+    # --- VPS -> Pi (rsync, 2 chemins distincts) ---
     fleche_coude(
-        [bord("ref_csv_pi", "bas"), (7.25, 53), bord("collect_alertes", "haut")],
-        texte="reference_...csv (partagé)", texte_pos=(10.5, 54), fontsize=6.3,
+        [bord("observations_db", "droite"), (39.5, 64), bord("executer_rapport_pi", "gauche")],
+        texte="rsync (cron Pi)", texte_pos=(40, 66.5), fontsize=6.8, couleur=COULEUR_PI_BORD,
     )
-    fleche(bord("collect_alertes", "droite"), bord("alertes_csv", "gauche"))
-
-    # --- Pi : sauvegardes ---
-    fleche(bord("observations_csv", "bas"), bord("backup_scripts", "haut"), rad=0.15)
-    fleche(bord("alertes_csv", "bas"), bord("backup_scripts", "haut"), rad=-0.1)
-    fleche(bord("backup_scripts", "bas"), bord("backups_pi", "haut"), texte="backup_local.sh")
-
-    # --- Pi -> NAS (sauvegarde horaire), corridor du haut ---
     fleche_coude(
-        [bord("backup_scripts", "droite"), (36, 25), (36, 92), (89.5, 92), (89.5, 64)],
-        texte="backup_to_nas.sh — copie horaire", texte_pos=(63, 93), fontsize=8, couleur=COULEUR_NAS_BORD,
+        [bord("app_fastapi", "droite"), (39.5, 18), bord("sauvegarder_obs_nas", "gauche")],
+        texte="rsync (cron Pi, observations.db)", texte_pos=(40, 20.5), fontsize=6.5, couleur=COULEUR_PI_BORD,
     )
+    ax.text(51, 71, "la VPS ne peut pas atteindre le NAS\ndirectement (IP privée) — le Pi relaie",
+            ha="center", fontsize=6.8, color="#888888", style="italic")
 
-    # --- Pi -> PC (rsync à la demande) : un seul trajet, les deux fichiers
-    # partent du même point de sortie de la zone Pi plutôt que deux tracés
-    # séparés qui se croisaient visuellement dans l'espace étroit entre les
-    # deux zones.
-    point_sortie_pi = (36, 52)
-    fleche_coude([bord("observations_csv", "droite"), point_sortie_pi], couleur=COULEUR_PC_BORD, arrowhead=False)
-    fleche_coude([bord("alertes_csv", "droite"), point_sortie_pi], couleur=COULEUR_PC_BORD, arrowhead=False)
+    # --- VPS -> PC (rsync à la demande, viewer.py) ---
     fleche_coude(
-        [point_sortie_pi, (37.5, 45), bord("viewer", "gauche")],
-        texte="rsync (bouton \"Rafraîchir\")", texte_pos=(37, 50), fontsize=7.3, couleur=COULEUR_PC_BORD,
+        [bord("app_fastapi", "haut"), (19.25, 27), (60, 27), (60, 35), bord("viewer", "gauche")],
+        texte="rsync (bouton \"Rafraîchir depuis la VPS\")", texte_pos=(50, 24.5), fontsize=7, couleur=COULEUR_PC_BORD,
     )
 
-    # --- PC : préparation référentiel (manuel) ---
+    # --- Pi : rapport planifié ---
+    fleche(bord("executer_rapport_pi", "bas"), bord("generer_rapport_pi", "haut"))
+    fleche(bord("generer_rapport_pi", "bas"), bord("rapports_pi", "haut"))
+    fleche(bord("rapports_pi", "bas"), bord("envoyer_nas_pi", "haut"))
+
+    # --- Pi -> NAS ---
+    fleche_coude(
+        [bord("envoyer_nas_pi", "droite"), (83, 29), bord("nas_rapports", "gauche")],
+        texte="envoyer_rapport_nas_pi.sh", texte_pos=(83, 33), fontsize=7, couleur=COULEUR_NAS_BORD,
+    )
+    fleche_coude(
+        [bord("sauvegarder_obs_nas", "droite"), (83, 60), bord("nas_obs_db", "gauche")],
+        texte="rsync", texte_pos=(83, 62.5), fontsize=7, couleur=COULEUR_NAS_BORD,
+    )
+
+    # --- PC : préparation/déploiement référentiel ---
     fleche(bord("build_reference", "bas"), bord("ref_csv_pc", "haut"))
-    fleche(bord("fetch_data", "bas"), bord("csv_lignes", "haut"))
-    ax.text(48, 53.3, "copié manuellement sur le Pi après génération", ha="center", fontsize=6.6,
-            color="#888888", style="italic")
+    fleche_coude(
+        [bord("ref_csv_pc", "gauche"), (58, 58.5), (19, 58.5), bord("ref_csv_vps", "droite")],
+        texte="bouton \"Déployer vers la VPS\" (rsync + redémarrage du service)",
+        texte_pos=(40, 60.5), fontsize=6.8, couleur=COULEUR_VPS_BORD,
+    )
 
     # --- PC : modules partagés -> viewer ---
     fleche(bord("ref_csv_pc", "bas"), bord("formatting", "haut"), texte="load_reference()", fontsize=6.8)
-    fleche(bord("formatting", "bas"), bord("viewer", "haut"), rad=0.08)
-    fleche(bord("tooltips", "bas"), bord("viewer", "haut"), rad=-0.08)
+    fleche(bord("formatting", "bas"), bord("viewer", "haut"))
 
     # --- viewer <-> guide ---
-    fleche(bord("viewer", "bas"), bord("guide_py", "haut"), rad=0.1, texte="import direct + bouton \"Régénérer\"", fontsize=6.8)
-    fleche(bord("guide_py", "droite"), bord("guide_pdf", "gauche"))
+    fleche(bord("viewer", "bas"), bord("guide_py", "haut"), texte="import direct + bouton \"Régénérer\"", fontsize=6.8)
+    fleche(bord("guide_py", "bas"), bord("guide_pdf", "haut"))
 
-    # --- viewer <-> observations locales PC ---
-    fleche(bord("obs_local_pc", "haut"), bord("viewer", "bas"), rad=-0.1, texte="lecture locale", fontsize=6.8)
-
-    # --- rapport planifié ---
-    fleche(bord("executer_rapport", "gauche"), bord("generer_rapport", "droite"), rad=0.12)
-    fleche(bord("obs_local_pc", "bas"), bord("generer_rapport", "haut"), rad=0.1)
-    fleche(bord("formatting", "gauche"), (37, 50), rad=0)
-    fleche_coude([(37, 50), (37, 9.3), bord("generer_rapport", "gauche")], couleur=COULEUR_PC_BORD)
-    fleche(bord("generer_rapport", "droite"), bord("rapports_pdf", "gauche"))
-    fleche(bord("rapports_pdf", "bas"), bord("envoyer_nas", "haut"), rad=0.08)
-    fleche(bord("executer_rapport", "bas"), bord("envoyer_nas", "haut"), rad=-0.15)
-
-    # --- PC -> NAS (envoi rapport) ---
-    fleche_coude(
-        [bord("envoyer_nas", "droite"), (78.5, 4.4), (78.5, 44.5), bord("nas_rapports", "gauche")],
-        texte="envoyer_rapport_nas.sh", texte_pos=(78.5, 22), fontsize=7.3, couleur=COULEUR_NAS_BORD,
-    )
-
-    ax.text(89.5, 51.5, "même sous-dossier\nquotidien/hebdomadaire\nque localement", ha="center", fontsize=6.6,
-            color="#888888", style="italic")
+    # --- Archive figée NAS (pas de flèche entrante active, juste une note) ---
+    ax.text(92, 22, "plus mis à jour depuis\nl'arrêt de la collecte\nsur le Pi (14/08/2026)",
+            ha="center", fontsize=6.3, color="#888888", style="italic")
 
     # ---------- Légende ----------
     legende_elements = [
         Line2D([0], [0], marker="s", color="none", markerfacecolor=COULEUR_EXT, markeredgecolor=COULEUR_EXT_BORD,
-               markersize=13, label="Source externe"),
+               markersize=13, label="Source externe / visiteur"),
+        Line2D([0], [0], marker="s", color="none", markerfacecolor=COULEUR_VPS, markeredgecolor=COULEUR_VPS_BORD,
+               markersize=13, label="Script/service automatisé — VPS"),
         Line2D([0], [0], marker="s", color="none", markerfacecolor=COULEUR_PI, markeredgecolor=COULEUR_PI_BORD,
-               markersize=13, label="Script automatisé (cron)"),
+               markersize=13, label="Script automatisé (cron) — Pi"),
         Line2D([0], [0], marker="s", color="none", markerfacecolor=COULEUR_PC, markeredgecolor=COULEUR_PC_BORD,
-               markersize=13, label="Application / script principal"),
+               markersize=13, label="Application / script principal — PC"),
         Line2D([0], [0], marker="s", color="none", markerfacecolor=COULEUR_MANUEL, markeredgecolor=COULEUR_MANUEL_BORD,
                markersize=13, label="Lancé manuellement / planifié"),
         Line2D([0], [0], marker="s", color="none", markerfacecolor="#ffffff", markeredgecolor=COULEUR_PC_BORD,
                markersize=13, label="Module partagé (pas un script autonome)"),
         Line2D([0], [0], marker="s", color="none", markerfacecolor=COULEUR_DONNEE, markeredgecolor=COULEUR_DONNEE_BORD,
                markersize=13, label="Fichier de données"),
+        Line2D([0], [0], marker="s", color="none", markerfacecolor=COULEUR_DONNEE_FIGEE, markeredgecolor=COULEUR_DONNEE_BORD,
+               markersize=13, label="Fichier de données figé (archive)"),
     ]
     ax.legend(handles=legende_elements, loc="lower left", bbox_to_anchor=(0.002, 0.001), fontsize=8.3,
               frameon=True, facecolor="white", edgecolor="#cccccc", ncol=1, title="Légende", title_fontsize=9)

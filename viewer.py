@@ -490,13 +490,20 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         for widget in (self.label_ratio_retard, self.label_cumule, self.label_moyen,
                        self.label_max, self.label_pire_gare):
             widget.pack_forget()
-        if sur_graphique:
-            # Les 5 stats principales ont toutes un équivalent dans la ligne
-            # de stats propre à cet onglet (scopée à la période choisie) —
-            # les garder ici ferait doublon, avec des chiffres différents
-            # pour le même libellé (l'historique filtré complet ici, contre
-            # la période choisie juste en dessous) — repéré par
-            # l'utilisateur, 2026-07-30.
+        if sur_graphique or sur_suivi_train:
+            # Graphique : les 5 stats principales ont toutes un équivalent
+            # dans la ligne de stats propre à cet onglet (scopée à la
+            # période choisie) — les garder ici ferait doublon, avec des
+            # chiffres différents pour le même libellé (l'historique filtré
+            # complet ici, contre la période choisie juste en dessous) —
+            # repéré par l'utilisateur, 2026-07-30.
+            # Suivi d'un train : le titre du graphique affiche déjà le
+            # train sélectionné et son retard max propre à cette
+            # circulation — une "Retard max"/"Gare la + touchée" globale à
+            # côté (souvent un tout autre train) prête à confusion plutôt
+            # qu'elle n'aide, même raison que pour Graphique — repéré par
+            # l'utilisateur côté web d'abord, 2026-08-15, porté ici pour
+            # rester cohérent entre les deux applications.
             widgets_a_montrer = []
         elif sur_graphique_ou_jour_heure:
             # Par jour/heure n'a pas de ligne équivalente pour circulations
@@ -1038,8 +1045,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # rsync plutôt que scp : ces fichiers ne grandissent que par ajout en
         # fin de fichier (jamais modifiés au milieu), donc rsync ne
         # retransfère que les nouvelles lignes plutôt que le fichier entier à
-        # chaque rafraîchissement (même mécanisme déjà utilisé pour la
-        # synchro Pi -> NAS, backup_to_nas.sh). observations.db (SQLite) se
+        # chaque rafraîchissement. observations.db (SQLite) se
         # comporte différemment (pas un simple append, voir
         # collect_realtime.py) mais reste rsync-safe : ce script ferme sa
         # connexion à chaque exécution (checkpoint WAL automatique), donc le
