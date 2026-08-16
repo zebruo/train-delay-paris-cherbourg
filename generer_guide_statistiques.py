@@ -254,7 +254,9 @@ GUIDE_PAGES = [
                     "Nos 40 circulations perturbées ont, ensemble, touché 90 passages",
                     "en gare (un même train peut être en retard à plusieurs gares).",
                     "Ces 90 passages cumulent 15 h de retard au total.",
-                    "→ Affiché : « Retard cumulé : 15 h 00 min (90 passages impactés) »",
+                    "→ Affiché : « Retard cumulé : 15 h 00 min »",
+                    "(le détail « 90 passages impactés » n'apparaît que sous le graphique",
+                    "de l'onglet Graphique, pas dans cette barre de stats du haut)",
                 ],
                 utilite=(
                     "comparer deux journées ou deux semaines entre elles sur le volume réel "
