@@ -10,18 +10,20 @@ desktop (Tkinter), rapports PDF automatiques et détection des perturbations.
 Migration d'un Raspberry Pi vers une VPS (IONOS) terminée : la VPS est la
 seule source de collecte depuis le 2026-08-14. Le Pi reste allumé, mais
 change de rôle — il ne collecte plus rien lui-même, il sert uniquement de
-relais pour les rapports PDF (voir plus bas), parce qu'il est sur le même
-réseau local que le NAS, contrairement à la VPS (serveur public).
+relais vers le NAS (rapports PDF et sauvegarde d'`observations.db`, voir
+plus bas), parce qu'il est sur le même réseau local que le NAS,
+contrairement à la VPS (serveur public).
 
 - **VPS** — collecte en continu et héberge l'appli web en production. Cron :
   - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, écrit dans `observations.db` (SQLite, écritures atomiques, colonnes typées).
   - `collect_alertes.py` (toutes les heures) : perturbations/travaux signalés, écrit `alertes.csv`.
   - `verifier_gtfs.py` (03:15) : compare le référentiel local aux horaires théoriques publiés par la SNCF, détecte quand `reference_paris_cherbourg.csv` devient obsolète.
   - `app_fastapi.py` tourne en continu (`systemd`, `train-delay.service`) derrière nginx + HTTPS (Let's Encrypt), lit directement `observations.db` — pas de rapatriement réseau, la collecte et l'appli sont sur la même machine.
-- **Raspberry Pi** — ne collecte plus (`collect_realtime.py`/`collect_alertes.py` retirés de son cron) ; sert uniquement de relais rapports → NAS :
+- **Raspberry Pi** — ne collecte plus (`collect_realtime.py`/`collect_alertes.py` retirés de son cron, plus présents du tout sur le Pi depuis le nettoyage du 2026-08-16) ; reste allumé uniquement comme relais vers le NAS (même IP privée que lui, contrairement à la VPS, serveur public) :
   - `executer_rapport_pi.sh` (quotidien 03:30, hebdomadaire 03:35 le lundi, mensuel 03:40 le 1er du mois) rapatrie d'abord `observations.db`/`alertes.csv` depuis la VPS par rsync, génère le rapport (`generer_rapport.py`), puis l'envoie au NAS (`envoyer_rapport_nas_pi.sh`).
+  - `sauvegarder_observations_nas.sh` (quotidien 03:45, indépendant de la génération de rapport) : sauvegarde datée d'`observations.db` (rapatrié depuis la VPS) vers le NAS, rotation 14 jours.
 - **PC** — `viewer.py` (Tkinter) : rapatrie `observations.db` depuis la VPS par rsync (bouton "Rafraîchir depuis la VPS"), même fonctionnalités que l'appli web plus l'onglet "Guide statistiques" et les actions qui écrivent sur la VPS (boutons de l'onglet "Vérification GTFS"). `app_fastapi.py` peut aussi tourner en local sur le PC (utile pour tester une modification avant de la déployer, ou en secours hors-ligne) — il lit alors la copie locale d'`observations.db`, elle aussi rapatriée par `viewer.py`, sans se rafraîchir tout seul.
-- **NAS** — destination des rapports PDF. L'historique CSV collecté par le Pi jusqu'au 2026-08-14 (`observations.csv`/`alertes.csv`/`backups/`) y reste archivé en l'état, dernière sauvegarde faite au moment de la coupure — plus mis à jour depuis (`backup_local.sh`/`backup_to_nas.sh` retirés du cron, plus rien de nouveau à sauvegarder une fois la collecte du Pi arrêtée).
+- **NAS** — destination des rapports PDF, et depuis le 2026-08-15 d'une sauvegarde quotidienne d'`observations.db` (voir `sauvegarder_observations_nas.sh` ci-dessus, 14 jours d'historique glissant). L'ancien historique CSV collecté par le Pi jusqu'au 2026-08-14 (`observations.csv`/`alertes.csv`/`backups/`) reste archivé séparément, figé à cette date (`backup_local.sh`/`backup_to_nas.sh`, retirés du cron, supprimés depuis).
 
 ## Fonctionnalités
 
