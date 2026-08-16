@@ -356,11 +356,21 @@ def generer(nom_periode, maintenant=None):
     # affichée comme "le" retard max — repéré par l'utilisateur, 2026-08-03.
     maximum = derniers.max()
     moyennes_par_gare = df_periode.groupby("gare")["retard_min"].mean()
-    pire_gare = (
-        moyennes_par_gare.idxmax()
-        if moyennes_par_gare.notna().any() and moyennes_par_gare.max() > 0
-        else None
-    )
+    # idxmax() ne renverrait que la première gare par ordre alphabétique en
+    # cas d'égalité (arbitraire, égalités courantes sur des moyennes issues
+    # de peu de relevés) — même correctif que calculer_stats_bloc
+    # (formatting.py, 2026-08-15/16), mais pas réutilisé tel quel : ce
+    # rapport affiche volontairement juste le(s) nom(s) de gare, sans la
+    # valeur (demande explicite, 2026-07-30, voir ligne2 plus bas).
+    if moyennes_par_gare.notna().any() and moyennes_par_gare.max() > 0:
+        gares_a_egalite = moyennes_par_gare[moyennes_par_gare == moyennes_par_gare.max()].index.tolist()
+        pire_gare = ", ".join(gares_a_egalite[:3])
+        if len(gares_a_egalite) > 3:
+            pire_gare += f" (+{len(gares_a_egalite) - 3} autres)"
+        label_pire_gare = "Gare les + touchées" if len(gares_a_egalite) > 1 else "Gare la + touchée"
+    else:
+        pire_gare = None
+        label_pire_gare = "Gare la + touchée"
 
     # Sélection + retard max calculés sur df_periode_complet (le trajet
     # complet, toutes gares), pas sur df_periode (restreint aux 11 gares de
@@ -558,7 +568,7 @@ def generer(nom_periode, maintenant=None):
         ligne2 = (
             f"  · Retard cumulé {heures_cumulees} h {minutes_cumulees:02d} min · "
             f"retard max {maximum:.0f} min · "
-            f"Gare la + touchée : {pire_gare if pire_gare else 'aucun retard significatif'}"
+            f"{label_pire_gare} : {pire_gare if pire_gare else 'aucun retard significatif'}"
         )
     else:
         fraction = ""
