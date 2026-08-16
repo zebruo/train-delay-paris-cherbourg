@@ -19,7 +19,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.font_manager import FontProperties
-from matplotlib.gridspec import GridSpec
 
 COULEUR_ACCENT = "#c2410c"
 COULEUR_TITRE = "#111"

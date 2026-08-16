@@ -274,6 +274,31 @@ def format_min_sans_zero(valeur):
     return f"{arrondi:.0f}" if arrondi == int(arrondi) else f"{arrondi:.1f}"
 
 
+def texte_categorie_maximale(serie, mot_singulier, mot_pluriel, formater_nom, formater_valeur):
+    """Motif partagé par "Gare la + touchée" et "Retard max" (calculer_stats_
+    bloc ci-dessous) : parmi une Series pandas indexée par nom de catégorie,
+    le(s) nom(s) au maximum. N'utilise PAS idxmax() : il ne renverrait que la
+    première catégorie dans l'ordre alphabétique en cas d'égalité — arbitraire
+    du point de vue de l'utilisateur, et les égalités sont courantes ici
+    (retards fréquemment des valeurs rondes) — donc toutes les catégories à
+    égalité sont listées (plafond à 3, "+N autres" au-delà, même convention
+    que les exemples de verifier_gtfs.py — demande explicite de
+    l'utilisateur, 2026-08-15). mot_singulier/mot_pluriel vides ("") pour
+    omettre le préfixe (Gare la + touchée n'a pas de mot avant les noms de
+    gare, contrairement à "train"/"trains"). Même motif que la version SQL
+    équivalente (app_fastapi._texte_categorie_maximale, sur des tuples plutôt
+    qu'une Series — pas factorisé entre pandas et SQL)."""
+    if serie.empty or serie.max() <= 0:
+        return "aucun retard significatif"
+    valeur_max = serie.max()
+    a_egalite = serie[serie == valeur_max].index.tolist()
+    noms = [formater_nom(n) for n in a_egalite[:3]]
+    suffixe = f" (+{len(a_egalite) - 3} autres)" if len(a_egalite) > 3 else ""
+    mot = mot_pluriel if len(a_egalite) > 1 else mot_singulier
+    debut = f"{mot} {', '.join(noms)}{suffixe}" if mot else f"{', '.join(noms)}{suffixe}"
+    return f"{debut} → {formater_valeur(valeur_max)}"
+
+
 def calculer_stats_bloc(df):
     """Calcule le bloc de statistiques partagé entre la barre du haut de
     viewer.py (_render_stats) et sa ligne de stats par période de l'onglet
@@ -296,24 +321,16 @@ def calculer_stats_bloc(df):
     passages_impactes = derniers[derniers > 0]
     heures, minutes = divmod(round(passages_impactes.sum()), 60)
 
+    # Même correctif dans les 2 blocs ci-dessous (idxmax() choisirait
+    # arbitrairement la première catégorie par ordre alphabétique en cas
+    # d'égalité) — une égalité exacte entre moyennes (valeur continue, Gare
+    # la + touchée) est plus rare qu'un retard max souvent rond (Retard max),
+    # mais reste possible (peu de relevés sur une gare, ou gares au
+    # comportement identique).
     moyennes_par_gare = df.groupby("gare")["retard_min"].mean()
-    if moyennes_par_gare.empty or moyennes_par_gare.max() <= 0:
-        pire_gare_texte = "aucun retard significatif"
-    else:
-        # Même correctif que "Retard max" ci-dessous (idxmax() choisirait
-        # arbitrairement la première gare par ordre alphabétique en cas
-        # d'égalité) — une égalité exacte entre moyennes (valeur continue)
-        # est plus rare qu'un retard max souvent rond, mais reste possible
-        # (peu de relevés sur une gare, ou gares au comportement identique).
-        valeur_max = moyennes_par_gare.max()
-        gares_a_egalite = moyennes_par_gare[moyennes_par_gare == valeur_max].index.tolist()
-        noms = gares_a_egalite[:3]
-        texte_valeur = f"moy {format_min_sans_zero(valeur_max)} min"
-        if len(gares_a_egalite) == 1:
-            pire_gare_texte = f"{noms[0]} → {texte_valeur}"
-        else:
-            suffixe = f" (+{len(gares_a_egalite) - 3} autres)" if len(gares_a_egalite) > 3 else ""
-            pire_gare_texte = f"{', '.join(noms)}{suffixe} → {texte_valeur}"
+    pire_gare_texte = texte_categorie_maximale(
+        moyennes_par_gare, "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
+    )
 
     # Basé sur la dernière valeur connue par passage (derniers ci-dessus),
     # pas le maximum brut sur tous les relevés : sinon une prédiction
@@ -335,26 +352,9 @@ def calculer_stats_bloc(df):
     # category) le fait réapparaître, comme ça a été le cas ce jour-là.
     train_par_passage = derniers.index.get_level_values("trip_id").astype(str).str.split(":").str[0]
     maximums_par_train = derniers.groupby(train_par_passage).max()
-    if maximums_par_train.empty or maximums_par_train.max() <= 0:
-        retard_max_texte = "aucun retard significatif"
-    else:
-        # idxmax() ne renverrait que le premier train dans l'ordre
-        # alphabétique de son trip_id en cas d'égalité (souvent le cas, les
-        # retards étant fréquemment des valeurs rondes) — arbitraire du
-        # point de vue de l'utilisateur, donc on liste tous les trains à
-        # égalité plutôt qu'un seul (demande explicite, 2026-08-15).
-        # Plafond à 3 (comme les "exemples" de verifier_gtfs.py) pour éviter
-        # une liste interminable dans le cas rare où beaucoup de trains
-        # partageraient exactement le même maximum.
-        valeur_max = maximums_par_train.max()
-        trains_a_egalite = maximums_par_train[maximums_par_train == valeur_max].index.tolist()
-        noms = [format_numero_train(t) for t in trains_a_egalite[:3]]
-        if len(trains_a_egalite) == 1:
-            prefixe = f"train {noms[0]}"
-        else:
-            suffixe = f" (+{len(trains_a_egalite) - 3} autres)" if len(trains_a_egalite) > 3 else ""
-            prefixe = f"trains {', '.join(noms)}{suffixe}"
-        retard_max_texte = f"{prefixe} → {valeur_max:.0f} min"
+    retard_max_texte = texte_categorie_maximale(
+        maximums_par_train, "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
+    )
 
     return dict(
         total=total, en_retard=en_retard,

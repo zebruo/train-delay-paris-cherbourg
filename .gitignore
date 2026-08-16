@@ -42,3 +42,7 @@ ventilo_regulation.py
 ventilo-regulation.service
 ventilo-icon.svg
 ventilo-icon.png
+
+# Outil personnel de contrôle de la VPS (état/redémarrage/logs), sans lien
+# avec l'appli elle-même
+vps_control.py
