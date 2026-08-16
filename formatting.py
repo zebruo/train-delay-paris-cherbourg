@@ -285,18 +285,24 @@ def texte_categorie_maximale(serie, mot_singulier, mot_pluriel, formater_nom, fo
     que les exemples de verifier_gtfs.py — demande explicite de
     l'utilisateur, 2026-08-15). mot_singulier/mot_pluriel vides ("") pour
     omettre le préfixe (Gare la + touchée n'a pas de mot avant les noms de
-    gare, contrairement à "train"/"trains"). Même motif que la version SQL
-    équivalente (app_fastapi._texte_categorie_maximale, sur des tuples plutôt
-    qu'une Series — pas factorisé entre pandas et SQL)."""
+    gare, contrairement à "train"/"trains"). Renvoie (texte, pluriel) — ce
+    2e booléen (≥ 2 catégories à égalité) sert à accorder un label externe
+    au pluriel ("Gare la + touchée" → "Gare les + touchées", demande de
+    l'utilisateur 2026-08-16) quand le mot lui-même vit dans le label plutôt
+    que dans le texte produit ici (mot_singulier/mot_pluriel vides). Même
+    motif que la version SQL équivalente (app_fastapi._texte_categorie_
+    maximale, sur des tuples plutôt qu'une Series — pas factorisé entre
+    pandas et SQL)."""
     if serie.empty or serie.max() <= 0:
-        return "aucun retard significatif"
+        return "aucun retard significatif", False
     valeur_max = serie.max()
     a_egalite = serie[serie == valeur_max].index.tolist()
     noms = [formater_nom(n) for n in a_egalite[:3]]
     suffixe = f" (+{len(a_egalite) - 3} autres)" if len(a_egalite) > 3 else ""
-    mot = mot_pluriel if len(a_egalite) > 1 else mot_singulier
+    pluriel = len(a_egalite) > 1
+    mot = mot_pluriel if pluriel else mot_singulier
     debut = f"{mot} {', '.join(noms)}{suffixe}" if mot else f"{', '.join(noms)}{suffixe}"
-    return f"{debut} → {formater_valeur(valeur_max)}"
+    return f"{debut} → {formater_valeur(valeur_max)}", pluriel
 
 
 def calculer_stats_bloc(df):
@@ -328,9 +334,10 @@ def calculer_stats_bloc(df):
     # mais reste possible (peu de relevés sur une gare, ou gares au
     # comportement identique).
     moyennes_par_gare = df.groupby("gare")["retard_min"].mean()
-    pire_gare_texte = texte_categorie_maximale(
+    pire_gare_texte, pire_gare_pluriel = texte_categorie_maximale(
         moyennes_par_gare, "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
     )
+    label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
 
     # Basé sur la dernière valeur connue par passage (derniers ci-dessus),
     # pas le maximum brut sur tous les relevés : sinon une prédiction
@@ -352,7 +359,11 @@ def calculer_stats_bloc(df):
     # category) le fait réapparaître, comme ça a été le cas ce jour-là.
     train_par_passage = derniers.index.get_level_values("trip_id").astype(str).str.split(":").str[0]
     maximums_par_train = derniers.groupby(train_par_passage).max()
-    retard_max_texte = texte_categorie_maximale(
+    # "train"/"trains" (pluriel éventuel) vit déjà dans le texte lui-même
+    # (mot_singulier/mot_pluriel non vides ci-dessus) — pas besoin du 2e
+    # élément du tuple ici, contrairement à Gare la + touchée un peu plus
+    # haut (voir label_pire_gare).
+    retard_max_texte, _ = texte_categorie_maximale(
         maximums_par_train, "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
     )
 
@@ -361,6 +372,7 @@ def calculer_stats_bloc(df):
         heures=heures, minutes=minutes, nb_passages_impactes=len(passages_impactes),
         moyen=df["retard_min"].mean(),
         pire_gare_texte=pire_gare_texte,
+        label_pire_gare=label_pire_gare,
         retard_max_texte=retard_max_texte,
     )
 

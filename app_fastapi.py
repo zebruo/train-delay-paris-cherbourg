@@ -915,7 +915,7 @@ def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens, lim
         f"({stats_periode['nb_passages_impactes']} passages impactés)",
         f"Retard moyen / relevé : {stats_periode['moyen']:.1f} min",
         f"Retard max : {stats_periode['retard_max_texte']}",
-        f"Gare la + touchée : {stats_periode['pire_gare_texte']}",
+        f"{stats_periode['label_pire_gare']} : {stats_periode['pire_gare_texte']}",
     ]
 
     return {
@@ -1169,17 +1169,23 @@ def _texte_categorie_maximale(lignes, mot_singulier, mot_pluriel, formater_nom, 
     plafond que les exemples de verifier_gtfs.py). `mot_singulier`/
     `mot_pluriel` vides ("") pour omettre le préfixe (Gare la + touchée
     n'a pas de mot avant les noms de gare, contrairement à "train"/
-    "trains"). Même motif que formatting.calculer_stats_bloc (version
-    pandas, structure de données différente — pas factorisé entre les 2)."""
+    "trains"). Renvoie (texte, pluriel) — ce 2e booléen (≥ 2 catégories à
+    égalité) sert à accorder un label externe au pluriel ("Gare la +
+    touchée" → "Gare les + touchées", demande de l'utilisateur 2026-08-16)
+    quand le mot lui-même vit dans le label plutôt que dans le texte
+    produit ici (mot_singulier/mot_pluriel vides). Même motif que
+    formatting.calculer_stats_bloc (version pandas, structure de données
+    différente — pas factorisé entre les 2)."""
     if not lignes or max(v for _, v in lignes) <= 0:
-        return "aucun retard significatif"
+        return "aucun retard significatif", False
     valeur_max = max(v for _, v in lignes)
     a_egalite = [n for n, v in lignes if v == valeur_max]
     noms = [formater_nom(n) for n in a_egalite[:3]]
     suffixe = f" (+{len(a_egalite) - 3} autres)" if len(a_egalite) > 3 else ""
-    mot = mot_pluriel if len(a_egalite) > 1 else mot_singulier
+    pluriel = len(a_egalite) > 1
+    mot = mot_pluriel if pluriel else mot_singulier
     debut = f"{mot} {', '.join(noms)}{suffixe}" if mot else f"{', '.join(noms)}{suffixe}"
-    return f"{debut} → {formater_valeur(valeur_max)}"
+    return f"{debut} → {formater_valeur(valeur_max)}", pluriel
 
 
 def _retard_max_et_cumule_sql(connexion, gare, train, sens, limiter_ligne, limiter_retard):
@@ -1212,7 +1218,11 @@ def _retard_max_et_cumule_sql(connexion, gare, train, sens, limiter_ligne, limit
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.derniers_par_passage")
 
-    retard_max_texte = _texte_categorie_maximale(
+    # "train"/"trains" (pluriel éventuel) vit déjà dans le texte lui-même
+    # (mot_singulier/mot_pluriel non vides ci-dessus) — pas besoin du 2e
+    # élément du tuple ici, contrairement à Gare la + touchée plus bas
+    # (voir label_pire_gare, _pire_gare_et_moyenne_sql).
+    retard_max_texte, _ = _texte_categorie_maximale(
         lignes_train, "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
     )
     heures, minutes = divmod(round(somme), 60)
@@ -1250,10 +1260,11 @@ def _pire_gare_et_moyenne_sql(connexion, gare, train, sens, limiter_ligne, limit
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.releves_filtres")
 
-    pire_gare_texte = _texte_categorie_maximale(
+    pire_gare_texte, pire_gare_pluriel = _texte_categorie_maximale(
         lignes_gare, "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
     )
-    return moyenne, nb_releves, pire_gare_texte
+    label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
+    return moyenne, nb_releves, pire_gare_texte, label_pire_gare
 
 
 def _circulations_et_trains_stats_sql(connexion, gare, train, sens, limiter_ligne):
@@ -1405,7 +1416,7 @@ def _calculer_stats_globales_sql_interne(connexion, gare, train, sens, limiter_l
     else:
         tooltip_ratio_retard = ""
 
-    moyen, nb_releves, pire_gare_texte = _pire_gare_et_moyenne_sql(
+    moyen, nb_releves, pire_gare_texte, label_pire_gare = _pire_gare_et_moyenne_sql(
         connexion, gare, train, sens, limiter_ligne, limiter_retard,
     )
     if nb_releves:
@@ -1415,6 +1426,7 @@ def _calculer_stats_globales_sql_interne(connexion, gare, train, sens, limiter_l
         stats = {
             "heures": heures, "minutes": minutes, "moyen": moyen,
             "retard_max_texte": retard_max_texte, "pire_gare_texte": pire_gare_texte,
+            "label_pire_gare": label_pire_gare,
         }
         tooltip_moyen = (
             f"Moyenne brute sur les {nb_releves} relevés issus des filtres actifs "

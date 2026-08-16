@@ -28,7 +28,7 @@
     </div>
     {% if vue != "jour_heure" %}
         <div class="stat">
-            <div class="stat-label">Gare la + touchée <span class="icone-info" title="{{ tooltip_pire_gare }}">ℹ</span></div>
+            <div class="stat-label">{{ stats.label_pire_gare }} <span class="icone-info" title="{{ tooltip_pire_gare }}">ℹ</span></div>
             <div class="stat-valeur">{{ stats.pire_gare_texte }}</div>
         </div>
     {% endif %}

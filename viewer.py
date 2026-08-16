@@ -1681,7 +1681,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         )
         self.stat_moyen_var.set(f"Retard moyen / relevé : {stats['moyen']:.1f} min")
         self.stat_max_var.set(f"Retard max : {stats['retard_max_texte']}")
-        self.stat_pire_gare_var.set(f"Gare la + touchée : {stats['pire_gare_texte']}")
+        self.stat_pire_gare_var.set(f"{stats['label_pire_gare']} : {stats['pire_gare_texte']}")
 
         nb_releves = int(df["retard_min"].count())
         self._tooltip_moyen.texte = (
@@ -1949,7 +1949,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 f"({stats_periode['nb_passages_impactes']} passages impactés)",
                 f"Retard moyen / relevé : {stats_periode['moyen']:.1f} min",
                 f"Retard max : {stats_periode['retard_max_texte']}",
-                f"Gare la + touchée : {stats_periode['pire_gare_texte']}",
+                f"{stats_periode['label_pire_gare']} : {stats_periode['pire_gare_texte']}",
             ]
             self._afficher_stats_periode(segments_periode)
 
