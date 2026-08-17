@@ -316,21 +316,17 @@ def generer(nom_periode, maintenant=None):
     # affichée comme "le" retard max — repéré par l'utilisateur, 2026-08-03.
     maximum = derniers.max()
     moyennes_par_gare = df_periode.groupby("gare")["retard_min"].mean()
-    # idxmax() ne renverrait que la première gare par ordre alphabétique en
-    # cas d'égalité (arbitraire, égalités courantes sur des moyennes issues
-    # de peu de relevés) — même correctif que calculer_stats_bloc
-    # (formatting.py, 2026-08-15/16), mais pas réutilisé tel quel : ce
-    # rapport affiche volontairement juste le(s) nom(s) de gare, sans la
-    # valeur (demande explicite, 2026-07-30, voir ligne2 plus bas).
-    if moyennes_par_gare.notna().any() and moyennes_par_gare.max() > 0:
-        gares_a_egalite = moyennes_par_gare[moyennes_par_gare == moyennes_par_gare.max()].index.tolist()
-        pire_gare = ", ".join(gares_a_egalite[:3])
-        if len(gares_a_egalite) > 3:
-            pire_gare += f" (+{len(gares_a_egalite) - 3} autres)"
-        label_pire_gare = "Gare les + touchées" if len(gares_a_egalite) > 1 else "Gare la + touchée"
-    else:
-        pire_gare = None
-        label_pire_gare = "Gare la + touchée"
+    # texte_categorie_maximale (formatting.py) : même motif que "Retard max"
+    # juste au-dessus et que la barre de stats de l'appli web (calculer_
+    # stats_bloc) — gère déjà l'égalité entre plusieurs gares (jusqu'à 3
+    # listées, "+N autres" au-delà) sans le biais alphabétique d'idxmax().
+    # Inclut désormais la valeur moyenne ("→ moy X min"), pas seulement le(s)
+    # nom(s) de gare comme avant (demande explicite de l'utilisateur,
+    # 2026-08-18 — annule le choix du 2026-07-30 de l'omettre)."""
+    pire_gare, pire_gare_pluriel = texte_categorie_maximale(
+        moyennes_par_gare, "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
+    )
+    label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
 
     # Sélection + retard max calculés sur df_periode_complet (le trajet
     # complet, toutes gares), pas sur df_periode (restreint aux 11 gares de
@@ -523,17 +519,23 @@ def generer(nom_periode, maintenant=None):
         # Volontairement peu chiffré (pas de "N passages impactés", pas de
         # "retard moyen / relevé" — trop sujet à mauvaise lecture, voir
         # mémoire du projet) : juste de quoi situer l'ampleur (cumulé, pire
-        # cas, où) sans noyer le lecteur sous les chiffres — demande
-        # explicite de l'utilisateur, 2026-07-30.
+        # cas) sans noyer le lecteur sous les chiffres — demande explicite de
+        # l'utilisateur, 2026-07-30. "Gare la + touchée" (avec sa valeur,
+        # demande explicite du 2026-08-18) n'est PLUS sur cette même ligne :
+        # un nom de gare long + "→ moy X min" dépassait la largeur imprimable
+        # de la page A4 et se faisait tronquer net (repéré en testant après
+        # l'ajout de la valeur) — sa propre ligne juste en dessous à la
+        # place, où toute la largeur de la page est disponible.
         ligne2 = (
             f"  · Retard cumulé {heures_cumulees} h {minutes_cumulees:02d} min · "
-            f"retard max {maximum:.0f} min · "
-            f"{label_pire_gare} : {pire_gare if pire_gare else 'aucun retard significatif'}"
+            f"retard max {maximum:.0f} min"
         )
+        texte_pire_gare = f"{label_pire_gare} : {pire_gare}"
     else:
         fraction = ""
         reste_ligne1 = "Aucune circulation arrivée sur cette période."
         ligne2 = ""
+        texte_pire_gare = ""
     # Sur une seule ligne mais plusieurs styles (fraction en couleur, reste
     # du compteur en gras noir, détail en petits caractères comme la météo) :
     # un seul ax.text() ne sait pas mélanger plusieurs tailles/couleurs dans
@@ -551,6 +553,8 @@ def generer(nom_periode, maintenant=None):
     ax_stats.add_artist(AnnotationBbox(
         boite_stats, (0, 0.97), xycoords="axes fraction", box_alignment=(0, 1), frameon=False,
     ))
+    if texte_pire_gare:
+        ax_stats.text(0, 0.78, texte_pire_gare, fontsize=8, color="#555", va="top", ha="left")
     if pd.notna(temp_moy):
         texte_meteo = (
             f"Météo sur la période : {temp_moy:.1f}°C en moyenne · "
