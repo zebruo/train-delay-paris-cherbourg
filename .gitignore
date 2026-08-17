@@ -48,3 +48,8 @@ ventilo-icon.png
 vps_control.py
 diag_vps.svg
 diag_vps.png
+
+# Diagnostic temporaire du bug StopArea (voir mémoire du projet,
+# 2026-08-17) — à supprimer une fois l'investigation terminée
+surveiller_stoparea.py
+surveiller_stoparea_control.py
