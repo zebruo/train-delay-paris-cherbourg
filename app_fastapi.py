@@ -1189,6 +1189,103 @@ def _cte_dernier_par_passage(where):
     """
 
 
+def _cte_dernier_par_passage_complet(where):
+    """Sœur de _cte_dernier_par_passage : même "dernier connu par
+    (trip_id, start_date, gare)", mais la CTE finale garde trip_id,
+    start_date, gare, retard_min ET poll_time (pas juste train,
+    retard_min) — nécessaire à _materialiser_circulations_arrivees_periode,
+    qui doit retrouver la circulation et l'horodatage de chaque ligne, pas
+    seulement le numéro de train agrégé."""
+    return f"""
+        WITH filtre AS (
+            SELECT trip_id, start_date, gare, poll_time,
+                   ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min
+            FROM observations WHERE {where}
+        ),
+        avec_rang AS (
+            SELECT trip_id, start_date, gare, poll_time, retard_min,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY trip_id, start_date, gare ORDER BY poll_time DESC
+                   ) AS rn
+            FROM filtre
+        ),
+        derniers AS (
+            SELECT trip_id, start_date, gare, poll_time, retard_min FROM avec_rang WHERE rn = 1
+        )
+    """
+
+
+def _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso):
+    """Construit la table temporaire `circulations_arrivees_periode(cle)`
+    référencée par _construire_where_sql(debut_iso=..., fin_iso=...) —
+    reproduit exactement generer_rapport.circulation_est_arrivee (même
+    logique, même horloge de référence : comparaison au dernier poll_time
+    CONNU DE LA CIRCULATION DANS LA PÉRIODE, jamais à l'heure actuelle,
+    voir son docstring) plutôt que de la réimplémenter en SQL — le calcul
+    dépend de choisir_variante/estimer_passage_reel, tous deux déjà en
+    Python et non traduisibles en SQL pur (référentiel horaire + gestion
+    des variantes selon la date).
+
+    Toutes gares confondues (pas de limiter_ligne) : le terminus d'une
+    circulation peut être hors des 11 gares de la ligne (ex: Coutances,
+    Granville) et doit malgré tout être observé pour juger la circulation
+    arrivée. Périmètre restreint à la période et aux lignes avec un retard
+    connu (arrival_delay_s OU departure_delay_s non NULL), comme le
+    dropna(subset=["retard_min"]) de filtrer_periode_arrivees.
+
+    S'appuie sur _cte_dernier_par_passage_complet : pour chaque circulation,
+    le dernier retard connu par gare DANS LA PÉRIODE suffit à reproduire
+    à la fois `derniere` (dernière ligne connue au terminus) et
+    `dernier_poll` (max(poll_time) de la circulation) de la version pandas
+    — le max des derniers-par-gare est égal au max de toutes les lignes,
+    puisque le regroupement par gare partitionne l'ensemble des lignes.
+
+    Nombre de circulations distinctes en jeu : petit vis-à-vis de la RAM
+    même sur un mois complet (voir le plan — jamais chargé en pandas sur
+    tout l'historique, seulement joint à la table déjà matérialisée par
+    la CTE ci-dessus). Appelant responsable du DROP TABLE ensuite."""
+    where = "(arrival_delay_s IS NOT NULL OR departure_delay_s IS NOT NULL) AND poll_time >= ? AND poll_time < ?"
+    params = [debut_iso, fin_iso]
+    cte = _cte_dernier_par_passage_complet(where)
+    connexion.execute("DROP TABLE IF EXISTS temp.derniers_complet_periode")
+    connexion.execute(
+        "CREATE TEMP TABLE derniers_complet_periode AS " + cte
+        + "SELECT trip_id, start_date, gare, poll_time, retard_min FROM derniers",
+        params,
+    )
+    lignes = connexion.execute(
+        "SELECT trip_id, start_date, gare, poll_time, retard_min FROM derniers_complet_periode",
+    ).fetchall()
+
+    variantes = reference_donnees["variantes"]
+    calendrier = reference_donnees["calendrier"]
+    par_circulation = {}
+    for trip_id, start_date, gare, poll_time, retard_min in lignes:
+        par_circulation.setdefault((trip_id, start_date), []).append((gare, poll_time, retard_min))
+
+    cles_arrivees = []
+    for (trip_id, start_date), circ in par_circulation.items():
+        variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+        if not variante:
+            continue
+        terminus = variante["gares"][-1]
+        ligne_terminus = next((l for l in circ if l[0] == terminus), None)
+        if ligne_terminus is None:
+            continue
+        dernier_poll = max(l[1] for l in circ)
+        heure_terminus = dict(zip(variante["gares"], variante["horaires"])).get(terminus)
+        passage_estime = estimer_passage_reel(heure_terminus, start_date, ligne_terminus[2])
+        if passage_estime is not None and pd.Timestamp(passage_estime) <= pd.Timestamp(dernier_poll):
+            cles_arrivees.append(f"{trip_id}|{start_date}")
+
+    connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
+    connexion.execute("CREATE TEMP TABLE circulations_arrivees_periode (cle TEXT PRIMARY KEY)")
+    connexion.executemany(
+        "INSERT INTO circulations_arrivees_periode (cle) VALUES (?)",
+        [(cle,) for cle in cles_arrivees],
+    )
+
+
 def _texte_categorie_maximale(lignes, mot_singulier, mot_pluriel, formater_nom, formater_valeur):
     """Motif partagé par Retard max (par train) et Gare la + touchée : parmi
     `lignes` ([(nom, valeur), ...]), le(s) nom(s) au maximum, avec gestion
