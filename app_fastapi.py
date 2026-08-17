@@ -34,6 +34,7 @@ from formatting import (
     PARIS_TZ,
     build_stop_names,
     build_trip_data,
+    calculer_periode,
     calculer_stats_bloc,
     choisir_variante,
     cle_circulation,
@@ -1983,6 +1984,140 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
             entree["escalier"] = calculer_escalier(trajet, ordre_gares, position_gare, start_date, horaires_par_gare)
         top5.append(entree)
     return top5
+
+
+def _pct_perturbees_sql(connexion, debut_iso, fin_iso):
+    """% de circulations perturbées sur [debut_iso, fin_iso), restreint aux
+    11 gares de la ligne et aux circulations arrivées — porte le calcul
+    partagé par generer_rapport.stats_perturbees_periode (comparaison au
+    mois précédent) ET par le total/en_retard du corps de generer()
+    (calculer_stats_globales_sql fait déjà ce calcul pour la période
+    COURANTE, mais avec exiger_retard_connu=False comme le reste de la
+    barre de stats — ce n'est PAS le même périmètre que df_periode ici,
+    qui exige un retard connu via le dropna de filtrer_periode_arrivees,
+    d'où cette requête dédiée plutôt qu'une réutilisation directe).
+    Suppose circulations_arrivees_periode déjà matérialisée pour la bonne
+    fenêtre (voir _materialiser_circulations_arrivees_periode)."""
+    where, params = _construire_where_sql(
+        "Toutes", "Tous", "Tous", limiter_ligne=True, debut_iso=debut_iso, fin_iso=fin_iso,
+    )
+    total, en_retard = connexion.execute(
+        f"""
+        SELECT COUNT(DISTINCT trip_id || '|' || start_date),
+               COUNT(DISTINCT CASE WHEN retard_min > 0 THEN trip_id || '|' || start_date END)
+        FROM (
+            SELECT trip_id, start_date,
+                   ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min
+            FROM observations WHERE {where}
+        )
+        """,
+        params,
+    ).fetchone()
+    return (100 * en_retard / total) if total else None
+
+
+def _moyenne_mois_precedent_sql(connexion, debut_local):
+    """% de circulations perturbées sur le mois précédent, pour la
+    comparaison affichée dans le rapport mensuel — None si ce mois n'est
+    pas entièrement couvert par la collecte (ex: tout premier rapport
+    mensuel, données commencées en cours de mois précédent), comme
+    generer_rapport.py. Matérialise circulations_arrivees_periode pour
+    cette fenêtre PRÉCÉDENTE — écrase temporairement le contenu de la
+    période courante, l'appelant DOIT re-matérialiser pour la période
+    courante après cet appel s'il en a encore besoin."""
+    debut_mois_precedent = debut_local - pd.DateOffset(months=1)
+    debut_mois_precedent_utc = debut_mois_precedent.tz_convert("UTC")
+    premiere_donnee = connexion.execute("SELECT MIN(poll_time) FROM observations").fetchone()[0]
+    if premiere_donnee is None or pd.Timestamp(premiere_donnee) > debut_mois_precedent_utc:
+        return None
+    debut_prec_iso = debut_mois_precedent_utc.isoformat()
+    fin_prec_iso = debut_local.tz_convert("UTC").isoformat()
+    _materialiser_circulations_arrivees_periode(connexion, debut_prec_iso, fin_prec_iso)
+    return _pct_perturbees_sql(connexion, debut_prec_iso, fin_prec_iso)
+
+
+def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
+    """Assemble tout le contenu de l'onglet Rapports pour une période
+    donnée ("quotidien"/"hebdomadaire"/"mensuel") — porte generer_rapport.
+    generer(), en réutilisant chaque brique déjà construite et vérifiée
+    séparément ci-dessus plutôt que de tout recalculer ici. maintenant_utc
+    (par défaut l'heure réelle) : paramétrable pour les tests, comme les
+    autres fonctions calculer_periode-dépendantes.
+
+    Purge ses 3 tables temporaires dans un bloc finally, y compris en cas
+    d'erreur en cours de route — jamais laissées sales pour l'appel
+    suivant sur cette même connexion."""
+    maintenant_utc = maintenant_utc if maintenant_utc is not None else pd.Timestamp.now(tz="UTC")
+    debut_local, fin_local = calculer_periode(nom_periode, maintenant_utc)
+    debut_iso = debut_local.tz_convert("UTC").isoformat()
+    fin_iso = fin_local.tz_convert("UTC").isoformat()
+
+    contexte = {"nom_periode": nom_periode, "debut_local": debut_local, "fin_local": fin_local}
+    try:
+        if nom_periode == "mensuel":
+            # AVANT la matérialisation de la période courante ci-dessous
+            # (_moyenne_mois_precedent_sql matérialise circulations_
+            # arrivees_periode pour le mois PRÉCÉDENT, un contenu qui doit
+            # être remplacé par celui de la période courante avant tout
+            # calcul dépendant de cette table).
+            contexte["moyenne_mois_precedent"] = _moyenne_mois_precedent_sql(connexion, debut_local)
+
+        _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso)
+        _materialiser_rapport_filtre(connexion, debut_iso, fin_iso)
+
+        contexte["stats"] = calculer_stats_globales_sql(
+            connexion, "Toutes", "Tous", "Tous", True, False, debut_iso=debut_iso, fin_iso=fin_iso,
+        )
+        temp_moy, vent_moy, pluie_totale = _meteo_periode_sql(connexion)
+        contexte["meteo"] = {"temp_moy": temp_moy, "vent_moy": vent_moy, "pluie_totale": pluie_totale}
+        contexte["alertes"] = alertes_periode(charger_alertes(LOCAL_ALERTES), debut_local, fin_local)
+
+        if nom_periode == "mensuel":
+            pct_par_jour, cumule_par_jour_h = _pct_et_cumule_par_jour_sql(connexion, debut_local, fin_local)
+            contexte["graph_pct_jour"] = pct_par_jour
+            contexte["graph_cumule_jour"] = cumule_par_jour_h
+            contexte["graph_gare"] = _construire_barre(
+                _moyenne_retard_par_categorie_sql(connexion, "gare", GARES_LIGNE_ORDRE),
+                "moyenne", GARES_LIGNE_ORDRE, " min", avec_moyenne=True,
+            )
+            contexte["graph_jour_semaine"] = _construire_barre(
+                _moyenne_retard_par_categorie_sql(connexion, "jour_semaine", JOURS_ORDRE),
+                "moyenne", JOURS_ORDRE, " min", avec_moyenne=True,
+            )
+        else:
+            contexte["top5"] = _construire_donnees_top5_sql(
+                connexion, reference_donnees["variantes"], reference_donnees["calendrier"],
+            )
+    finally:
+        connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
+        connexion.execute("DROP TABLE IF EXISTS temp.derniers_complet_periode")
+        connexion.execute("DROP TABLE IF EXISTS temp.rapport_filtre")
+
+    return contexte
+
+
+# Cache des RÉSULTATS déjà calculés (même motif que _cache_resultats_stats_
+# globales/_cache_resultats_jour_heure) — clé sur (nom_periode, fin_local)
+# EN PLUS de MAX(poll_time) : une période qui vient de "rouler" (ex: passage
+# de 2h du matin) doit invalider le cache même si la collecte est à l'arrêt
+# et que poll_time n'a pas changé entre-temps.
+_cache_resultats_rapport = {"dernier_poll": None, "resultats": {}}
+
+
+def calculer_contexte_rapport_sql_avec_cache(connexion, nom_periode):
+    """Enrobe calculer_contexte_rapport_sql d'un cache mémoire — voir
+    _cache_resultats_rapport ci-dessus."""
+    maintenant_utc = pd.Timestamp.now(tz="UTC")
+    debut_local, fin_local = calculer_periode(nom_periode, maintenant_utc)
+    dernier_poll = connexion.execute("SELECT MAX(poll_time) FROM observations").fetchone()[0]
+    cache = _cache_resultats_rapport
+    if cache["dernier_poll"] != dernier_poll:
+        cache["dernier_poll"] = dernier_poll
+        cache["resultats"] = {}
+    cle = (nom_periode, fin_local)
+    if cle not in cache["resultats"]:
+        cache["resultats"][cle] = calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc)
+    return cache["resultats"][cle]
 
 
 def calculer_contexte_travaux(alertes_df, alertes_actif):
