@@ -1192,42 +1192,21 @@ def _stats_par_categorie_sql(connexion, nom_colonne_categorie, ordre):
     return stats.reindex(ordre) if ordre is not None else stats
 
 
-def _cte_dernier_par_passage(where):
+def _cte_dernier_par_passage_complet(where):
     """Texte SQL (à préfixer devant une requête) de la CTE "dernier connu
     par passage réel" — équivalent SQL de formatting.derniers_par_passage :
     pour chaque (trip_id, start_date, gare), seule la ligne la plus récente
     (poll_time DESC) via ROW_NUMBER() (SQLite >= 3.25, largement présent).
     Base commune à Retard max et Retard cumulé (calculer_stats_bloc,
     formatting.py) — contrairement à Gare la + touchée, qui est une
-    moyenne brute sur TOUTES les lignes, pas sur ce dernier-connu."""
-    return f"""
-        WITH filtre AS (
-            SELECT trip_id, start_date, gare,
-                   substr(trip_id, 1, instr(trip_id, ':') - 1) AS train,
-                   poll_time,
-                   ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min
-            FROM observations WHERE {where}
-        ),
-        avec_rang AS (
-            SELECT trip_id, start_date, gare, train, retard_min,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY trip_id, start_date, gare ORDER BY poll_time DESC
-                   ) AS rn
-            FROM filtre
-        ),
-        derniers AS (
-            SELECT train, retard_min FROM avec_rang WHERE rn = 1
-        )
-    """
-
-
-def _cte_dernier_par_passage_complet(where):
-    """Sœur de _cte_dernier_par_passage : même "dernier connu par
-    (trip_id, start_date, gare)", mais la CTE finale garde trip_id,
-    start_date, gare, retard_min ET poll_time (pas juste train,
-    retard_min) — nécessaire à _materialiser_circulations_arrivees_periode,
-    qui doit retrouver la circulation et l'horodatage de chaque ligne, pas
-    seulement le numéro de train agrégé."""
+    moyenne brute sur TOUTES les lignes, pas sur ce dernier-connu. Garde
+    trip_id/start_date/gare/poll_time (pas juste retard_min) : nécessaire à
+    _materialiser_circulations_arrivees_periode, qui doit retrouver la
+    circulation et l'horodatage de chaque ligne — les appelants qui n'ont
+    besoin que d'un sous-ensemble (ex: train, retard_min) le projettent
+    eux-mêmes dans leur SELECT final plutôt que de dupliquer cette CTE avec
+    une projection plus étroite (audit de nettoyage, 2026-08-17 : une
+    version "_cte_dernier_par_passage" plus étroite existait ici, retirée)."""
     return f"""
         WITH filtre AS (
             SELECT trip_id, start_date, gare, poll_time,
@@ -1360,13 +1339,13 @@ def _retard_max_et_cumule_sql(
     where, params = _construire_where_sql(
         gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
     )
-    cte = _cte_dernier_par_passage(where)
+    cte = _cte_dernier_par_passage_complet(where)
 
     connexion.execute("DROP TABLE IF EXISTS temp.derniers_par_passage")
     try:
         connexion.execute(
             "CREATE TEMP TABLE derniers_par_passage AS "
-            + cte + "SELECT train, retard_min FROM derniers",
+            + cte + "SELECT substr(trip_id, 1, instr(trip_id, ':') - 1) AS train, retard_min FROM derniers",
             params,
         )
         lignes_train = connexion.execute(
@@ -2119,6 +2098,17 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
         contexte["alertes"] = alertes_periode(charger_alertes(LOCAL_ALERTES), debut_local, fin_local)
 
         if nom_periode == "mensuel":
+            # _pct_perturbees_sql (PAS contexte["pct_perturbe"] ci-dessus,
+            # qui vient de calculer_stats_globales_sql avec exiger_retard_
+            # connu=False comme le reste de la barre de stats) : même
+            # périmètre exact que moyenne_mois_precedent juste en dessous
+            # et que generer_rapport.py (dropna implicite de filtrer_
+            # periode_arrivees) — audit de nettoyage, 2026-08-17 : les deux
+            # valeurs comparées dans le texte de comparaison doivent
+            # utiliser exactement le même filtre, sans quoi une différence
+            # de couverture (relevé sans aucun retard connu) pourrait un
+            # jour rendre la comparaison incohérente.
+            contexte["moyenne_mois"] = _pct_perturbees_sql(connexion, debut_iso, fin_iso)
             pct_par_jour, cumule_par_jour_h = _pct_et_cumule_par_jour_sql(connexion, debut_local, fin_local)
             contexte["graph_pct_jour"] = pct_par_jour
             contexte["graph_cumule_jour"] = cumule_par_jour_h
@@ -2229,7 +2219,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
         pct_par_jour, cumule_par_jour_h = ctx["graph_pct_jour"], ctx["graph_cumule_jour"]
         resultat.update({
             "rapport_mensuel": True,
-            "rapport_moyenne_mois": ctx["pct_perturbe"],
+            "rapport_moyenne_mois": ctx["moyenne_mois"],
             "rapport_moyenne_mois_precedent": ctx["moyenne_mois_precedent"],
             "rapport_graph_pct_jour_json": json_pour_script({
                 "x": [d.strftime("%Y-%m-%d") for d in pct_par_jour.index],
