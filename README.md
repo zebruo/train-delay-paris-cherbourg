@@ -40,9 +40,17 @@ Propre à `viewer.py` :
 - **Guide statistiques** — explication de chaque statistique et code couleur (le même contenu alimente aussi `guide_statistiques.pdf`, via `generer_guide_statistiques.py`).
 - Boutons "Lancer la vérification maintenant", "Régénérer" et "Déployer vers la VPS" sur l'onglet "Vérification GTFS" — absents de la version web, qui reste volontairement en lecture seule tant qu'il n'y a pas d'authentification. "Déployer vers la VPS" envoie le référentiel régénéré (+ `gtfs/stops.txt`) et redémarre le service à distance pour qu'il en tienne compte immédiatement.
 
-Les rapports PDF (`generer_rapport.py`) et le référentiel des trajets
-(`build_reference.py`, à partir de l'export GTFS statique national SNCF)
-tournent indépendamment des deux interfaces.
+Propre à l'appli web :
+
+- **Rapports** — même contenu que les rapports PDF ci-dessous (quotidien/hebdomadaire/mensuel : stats, météo, alertes, Top 5 des circulations les plus perturbées ou graphiques mensuels selon la période), recalculé en direct en SQL plutôt que généré à l'avance — périmètre fixe (11 gares de la ligne, comme le PDF), pas de filtre Gare/Train/Sens.
+
+Les rapports PDF (`generer_rapport.py`, envoyés au NAS via le Pi) et le
+référentiel des trajets (`build_reference.py`, à partir de l'export GTFS
+statique national SNCF) tournent indépendamment des deux interfaces.
+L'onglet "Rapports" ci-dessus reproduit le même contenu en direct, mais
+reste une implémentation SQL séparée (pas de lecture du PDF) — période et
+libellés partagés avec `generer_rapport.py` via `formatting.py`
+(`calculer_periode`, `texte_periode_rapport`) pour ne pas diverger.
 
 ## Installation
 
