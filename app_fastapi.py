@@ -1711,6 +1711,120 @@ def calculer_contexte_jour_heure_sql_avec_cache(connexion, gare, train, sens, li
     return cache["resultats"][cle]
 
 
+def _materialiser_rapport_filtre(connexion, debut_iso, fin_iso):
+    """Construit la table temporaire `rapport_filtre` — un seul scan
+    d'observations.db pour le périmètre commun à plusieurs morceaux de
+    l'onglet Rapports (météo, graphique "retard moyen par gare", graphique
+    "retard moyen par jour de semaine") : période + circulations arrivées
+    + restreint aux 11 gares de la ligne (limiter_ligne=True, comme
+    df_periode dans generer_rapport.py — PAS df_periode_complet, ces
+    3 usages portent bien sur le périmètre restreint à la ligne).
+    L'appelant DOIT avoir déjà matérialisé circulations_arrivees_periode
+    (voir _materialiser_circulations_arrivees_periode) avant cet appel.
+    ligne_id (= rowid d'observations) : sert de départage déterministe à
+    _meteo_periode_sql (voir son docstring) pour reproduire exactement
+    l'ordre de lignes que pandas trouve "en premier". Appelant responsable
+    du DROP TABLE ensuite."""
+    where, params = _construire_where_sql(
+        "Toutes", "Tous", "Tous", limiter_ligne=True, debut_iso=debut_iso, fin_iso=fin_iso,
+    )
+    connexion.execute("DROP TABLE IF EXISTS temp.rapport_filtre")
+    connexion.execute(
+        f"""
+        CREATE TEMP TABLE rapport_filtre AS
+        SELECT rowid AS ligne_id, poll_time, gare, trip_id, start_date,
+               ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min,
+               temperature_c, precipitation_mm, wind_speed_kmh,
+               {_EXPR_JOUR_SEMAINE} AS jour_semaine
+        FROM observations WHERE {where}
+        """,
+        params,
+    )
+
+
+def _meteo_periode_sql(connexion):
+    """Moyennes température/vent + pluie cumulée sur la période — porte le
+    calcul météo de generer_rapport.py (voir son docstring, 2026-07-31) :
+    dédoublonnage à 2 niveaux, car la météo (une requête Open-Meteo par
+    gare, mise à jour ~1x/heure côté serveur, voir collect_realtime.py)
+    est répétée sur chaque ligne de rapport_filtre où elle apparaît (un
+    même poll_time+gare peut avoir plusieurs trains, ET un même relevé
+    météo horaire peut couvrir plusieurs polls consécutifs à 5 min
+    d'intervalle) :
+    1) Une seule ligne gardée par (poll_time, gare) — retire les doublons
+       dus aux trains, comme drop_duplicates(["poll_time", "gare"]) côté
+       pandas. IMPORTANT : ce dédoublonnage doit porter UNIQUEMENT sur
+       (poll_time, gare), pas sur le reste de la ligne (ex: DISTINCT sur
+       toutes les colonnes) — deux lignes peuvent partager un même
+       (poll_time, gare) mais différer sur les colonnes météo elles-mêmes
+       (une valeur NULL selon la ligne d'origine), auquel cas DISTINCT
+       sur toutes les colonnes les garderait toutes deux, contrairement à
+       pandas qui n'en garde qu'une (la première rencontrée). Départagé
+       par ligne_id (= rowid, l'ordre naturel d'insertion) ASC, comme le
+       fait pandas implicitement (keep="first" sur un DataFrame construit
+       via "ORDER BY poll_time" seul, sans second critère de tri — l'ordre
+       naturel des lignes à poll_time égal est donc l'ordre d'insertion).
+    2) Un seul relevé gardé par (gare, heure civile) : le plus récent de
+       cette heure (ROW_NUMBER, même technique que _cte_dernier_par_
+       passage) — sinon la pluie (cumul glissant sur la dernière heure
+       côté Open-Meteo) serait comptée en double à chaque poll partageant
+       la même heure civile (jusqu'à ×11 mesuré en pratique). Aucune
+       ambiguïté possible à cette étape : après l'étape 1, poll_time est
+       déjà unique par gare, donc unique aussi au sein d'un même (gare,
+       heure).
+    PIÈGE (trouvé en comparant à generer_rapport.py) : .groupby(["gare",
+    "heure"]).last() côté pandas ne prend PAS littéralement la dernière
+    ligne du groupe — par défaut, pandas y ignore les NaN et renvoie la
+    dernière valeur NON NULLE, colonne par colonne indépendamment (ex: la
+    température peut venir d'un poll different de celui qui fournit le
+    vent, si le poll le plus récent de l'heure a une valeur météo
+    manquante sur une seule des 3 colonnes). D'où les 3 CTE séparées
+    ci-dessous plutôt qu'une seule "dernière ligne de l'heure" partagée.
+    Suppose rapport_filtre déjà matérialisée (_materialiser_rapport_filtre).
+    """
+    lignes = connexion.execute(
+        """
+        WITH dedup_poll AS (
+            SELECT poll_time, gare, temperature_c, precipitation_mm, wind_speed_kmh,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY poll_time, gare ORDER BY ligne_id ASC
+                   ) AS rn
+            FROM rapport_filtre
+        ),
+        distinct_poll AS (
+            SELECT poll_time, gare, temperature_c, precipitation_mm, wind_speed_kmh
+            FROM dedup_poll WHERE rn = 1
+        ),
+        temp_par_heure AS (
+            SELECT temperature_c,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY gare, strftime('%Y-%m-%d %H', poll_time) ORDER BY poll_time DESC
+                   ) AS rn
+            FROM distinct_poll WHERE temperature_c IS NOT NULL
+        ),
+        vent_par_heure AS (
+            SELECT wind_speed_kmh,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY gare, strftime('%Y-%m-%d %H', poll_time) ORDER BY poll_time DESC
+                   ) AS rn
+            FROM distinct_poll WHERE wind_speed_kmh IS NOT NULL
+        ),
+        pluie_par_heure AS (
+            SELECT precipitation_mm,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY gare, strftime('%Y-%m-%d %H', poll_time) ORDER BY poll_time DESC
+                   ) AS rn
+            FROM distinct_poll WHERE precipitation_mm IS NOT NULL
+        )
+        SELECT
+            (SELECT AVG(temperature_c) FROM temp_par_heure WHERE rn = 1),
+            (SELECT AVG(wind_speed_kmh) FROM vent_par_heure WHERE rn = 1),
+            (SELECT SUM(precipitation_mm) FROM pluie_par_heure WHERE rn = 1)
+        """,
+    ).fetchone()
+    return lignes[0], lignes[1], lignes[2] or 0
+
+
 def calculer_contexte_travaux(alertes_df, alertes_actif):
     """Porte _render_travaux_tab (viewer.py: 673-724) : les deux tables de
     l'onglet Travaux / Alertes. alertes_df/alertes_actif proviennent déjà de
