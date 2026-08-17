@@ -865,15 +865,17 @@ nth-child plus bas) pour que les deux s'alignent malgré tout. */
     overflow-y: auto;
 }
 
-/* Même rôle que .zone-scroll côté Tableau, pour les 3 onglets basés sur un
+/* Même rôle que .zone-scroll côté Tableau, pour les onglets basés sur un
 graphique (pas de tableau à faire défiler en interne, juste tout le bloc
 onglet) : remplit l'espace laissé par #zone-contenu et défile en interne
 (sélecteur + graphique + stats en dessous peuvent dépasser la fenêtre, ex:
 fenêtre basse) au lieu de faire défiler la page entière. Règles identiques
-regroupées (étaient dupliquées 3x), audit du 2026-08-10. */
+regroupées (étaient dupliquées 3x), audit du 2026-08-10 ; .zone-rapports
+ajoutée le 2026-08-17 (même besoin). */
 .zone-graphique,
 .zone-train,
-.zone-jour-heure {
+.zone-jour-heure,
+.zone-rapports {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -939,6 +941,51 @@ rapport au texte autour, pour ressortir un peu sans être criarde. */
 .grille-jour-heure > div {
     height: 32vh;
     min-height: 260px;
+}
+
+/* Onglet Rapports — même disposition en ligne que .stat/#stats (réutilisées
+telles quelles par _stats.html), simplement pas accrochée à l'id #stats
+(déjà pris par la barre de stats générale de l'entête, masquée sur cet
+onglet). */
+.grille-stats-rapport {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    padding: 0.4rem 0 0.6rem;
+}
+
+.rapport-comparaison {
+    font-weight: 600;
+    margin: 0.3rem 0;
+}
+
+.zone-alertes-rapport {
+    max-height: 30vh;
+}
+
+/* Top 5 (quotidien/hebdomadaire) : une carte par circulation, mini-escalier
+compact — bien plus petit que #train-plot (vue détaillée d'un seul train),
+d'où une hauteur fixe modeste plutôt que les 65vh de .zone-train. */
+.grille-top5 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.top5-carte {
+    background: var(--fond-secondaire);
+    border-radius: 6px;
+    padding: 0.5rem;
+}
+
+.top5-entete {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 0 0 0.3rem;
+}
+
+.grille-top5 [id^="top5-plot-"] {
+    height: 220px;
 }
 
 .zone-travaux {

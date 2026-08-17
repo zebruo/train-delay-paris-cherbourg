@@ -788,6 +788,18 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
             connexion.close()
     elif contexte["vue"] == "travaux":
         contexte.update(calculer_contexte_travaux(alertes_df, alertes_actif))
+    elif contexte["vue"] == "rapports":
+        # Périmètre fixe (11 gares de la ligne, comme le PDF), pas de
+        # filtre Gare/Train/Sens — gare/train/sens ci-dessus (issus de
+        # preparer_contexte_commun) ne sont pas utilisés par cette branche.
+        rapports_periode = request.query_params.get("rapports_periode") or "quotidien"
+        contexte["rapports_periode"] = rapports_periode
+        contexte["rapports_periode_options"] = ["quotidien", "hebdomadaire", "mensuel"]
+        connexion_rapport = sqlite3.connect(OBSERVATIONS_DB)
+        try:
+            contexte.update(calculer_contexte_rapport_pour_affichage(connexion_rapport, rapports_periode))
+        finally:
+            connexion_rapport.close()
     elif contexte["vue"] == "gtfs":
         contexte.update(calculer_contexte_gtfs(request))
     else:
@@ -1574,11 +1586,19 @@ def _calculer_stats_globales_sql_interne(
         "« Gare la + touchée » ci-dessous, qui excluent ces cas."
     )
 
+    # "depuis le début de la collecte" n'a de sens que pour la barre de
+    # stats globale (debut_iso=None) — pour un appel borné à une période
+    # (Rapports), ce même texte affirmerait à tort porter sur tout
+    # l'historique alors que les chiffres sont bornés à la période choisie
+    # (bug réel trouvé en testant l'onglet Rapports en direct, 2026-08-17 :
+    # les NOMBRES étaient déjà correctement bornés, mais ce texte restait
+    # celui écrit pour la barre globale).
+    portee_texte = "sur cette période" if debut_iso is not None else "depuis le début de la collecte"
     if total:
         tooltip_ratio_retard = (
             f"{en_retard} circulations perturbées (retard à un moment de "
             f"leur trajet, même rattrapé ensuite) sur {total} déjà observées "
-            f"depuis le début de la collecte (issues de {nb_trains_observes} trains "
+            f"{portee_texte} (issues de {nb_trains_observes} trains "
             f"différents parmi les {len(reference_donnees['variantes'])} du référentiel), "
             f"soit {100 * en_retard / total:.0f} %."
         )
@@ -1611,12 +1631,15 @@ def _calculer_stats_globales_sql_interne(
             "lignes affichées dans le tableau)."
         )
         jours_cumules, heures_restantes = divmod(heures, 24)
+        depuis_texte = (
+            "sur cette période" if debut_iso is not None
+            else f"depuis le tout début de la collecte, le {date_debut_collecte}"
+        )
         tooltip_cumule = (
             "Additionne le dernier retard connu pour chaque passage impacté (un train "
-            f"à une gare précise), depuis le tout début de la collecte, le "
-            f"{date_debut_collecte}. Son intérêt est surtout de donner une idée de l'ampleur du "
-            f"volume total de retard généré par la ligne sur toute cette période "
-            f"(soit environ {jours_cumules} jours et {heures_restantes} h cumulés)."
+            f"à une gare précise), {depuis_texte}. Son intérêt est surtout de donner une "
+            f"idée de l'ampleur du volume total de retard généré par la ligne sur toute "
+            f"cette période (soit environ {jours_cumules} jours et {heures_restantes} h cumulés)."
         )
     else:
         stats = None
@@ -1970,7 +1993,7 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
             "trip_id": trip_id, "start_date": start_date,
             "train": format_numero_train(train), "sens": trajet_sens(trip_id, variantes),
             "retard_max": round(float(retard_max), 1) if retard_max is not None else None,
-            "escalier": None,
+            "escalier": None, "labels": [format_gare(g) for g in ordre_gares],
         }
         if ordre_gares:
             position_gare = {g: i for i, g in enumerate(ordre_gares)}
@@ -2065,9 +2088,16 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
         _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso)
         _materialiser_rapport_filtre(connexion, debut_iso, fin_iso)
 
-        contexte["stats"] = calculer_stats_globales_sql(
+        # .update (pas contexte["stats"] = ...) : calculer_stats_globales_sql
+        # renvoie déjà un dict avec les clés "stats"/"stats_ratio"/
+        # "pct_perturbe"/tooltips au niveau racine — exactement ce
+        # qu'attend templates/_stats.html (réutilisé tel quel par l'onglet
+        # Rapports, voir le plan) — les nicher sous une seule clé "stats"
+        # créerait une collision de nom avec la sous-clé "stats" qu'il
+        # contient déjà (heures/minutes/retard_max_texte...).
+        contexte.update(calculer_stats_globales_sql(
             connexion, "Toutes", "Tous", "Tous", True, False, debut_iso=debut_iso, fin_iso=fin_iso,
-        )
+        ))
         temp_moy, vent_moy, pluie_totale = _meteo_periode_sql(connexion)
         contexte["meteo"] = {"temp_moy": temp_moy, "vent_moy": vent_moy, "pluie_totale": pluie_totale}
         contexte["alertes"] = alertes_periode(charger_alertes(LOCAL_ALERTES), debut_local, fin_local)
@@ -2118,6 +2148,96 @@ def calculer_contexte_rapport_sql_avec_cache(connexion, nom_periode):
     if cle not in cache["resultats"]:
         cache["resultats"][cle] = calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc)
     return cache["resultats"][cle]
+
+
+def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
+    """Reformate calculer_contexte_rapport_sql_avec_cache pour l'affichage
+    (texte, JSON Plotly) — séparé du calcul lui-même pour garder celui-ci
+    indépendant de la présentation, même découpage que calculer_escalier/
+    calculer_detail (données brutes) vs calculer_contexte_train (labels,
+    JSON, texte) juste au-dessus.
+
+    stats/stats_ratio/pct_perturbe/tooltips/format_min_sans_zero (déjà au
+    niveau racine de ctx, voir calculer_contexte_rapport_sql) sont
+    reportées telles quelles dans le résultat — directement consommables
+    par _stats.html. PAS resume_collecte/tooltip_resume_collecte : ces deux
+    clés existent aussi dans ctx (période courante), mais préparer_
+    contexte_commun a déjà placé dans le contexte de la requête la version
+    GLOBALE (depuis le début de la collecte) affichée dans l'en-tête
+    (#resume-collecte, base.html, hors de #stats donc jamais masquée sur
+    cet onglet) — les reporter ici écraserait ce texte d'en-tête par la
+    version bornée à la période, pour toute la durée d'affichage de cet
+    onglet. Bug réel trouvé en testant en direct : sans cette exclusion
+    explicite, aucune des deux clés n'étant reportée du tout au départ,
+    _stats.html affichait silencieusement les stats GLOBALES (celles de
+    préparer_contexte_commun, jamais écrasées) au lieu des stats de la
+    période choisie."""
+    ctx = calculer_contexte_rapport_sql_avec_cache(connexion, nom_periode)
+
+    resultat = {
+        cle: valeur for cle, valeur in ctx.items()
+        if cle in (
+            "stats", "stats_ratio", "pct_perturbe", "format_min_sans_zero",
+            "tooltip_ratio_retard", "tooltip_cumule", "tooltip_moyen",
+            "tooltip_retard_max", "tooltip_pire_gare",
+        )
+    }
+    resultat["rapport_periode_texte"] = (
+        f"{ctx['debut_local'].strftime('%d/%m/%Y %Hh%M')} → {ctx['fin_local'].strftime('%d/%m/%Y %Hh%M')}"
+    )
+
+    temp_moy = ctx["meteo"]["temp_moy"]
+    if pd.notna(temp_moy):
+        resultat["rapport_texte_meteo"] = (
+            f"Météo sur la période : {temp_moy:.1f}°C en moyenne · "
+            f"{ctx['meteo']['pluie_totale']:.1f} mm de pluie cumulée · "
+            f"{ctx['meteo']['vent_moy']:.0f} km/h de vent moyen"
+        )
+    else:
+        resultat["rapport_texte_meteo"] = "Météo : non disponible sur cette période."
+
+    lignes_alertes = []
+    for _, ligne in ctx["alertes"].iterrows():
+        depuis = ligne["debut"].tz_convert(PARIS_TZ).strftime("%d/%m %Hh%M") if pd.notna(ligne["debut"]) else "-"
+        jusqua = ligne["fin"].tz_convert(PARIS_TZ).strftime("%d/%m %Hh%M") if pd.notna(ligne["fin"]) else "-"
+        lignes_alertes.append({
+            "gares": ligne["gares"], "depuis": depuis, "jusqua": jusqua,
+            "texte": ligne["texte"], "description": ligne["description"] or ligne["texte"],
+        })
+    resultat["rapport_lignes_alertes"] = lignes_alertes
+    resultat["rapport_texte_alertes"] = (
+        f"Travaux / alertes sur la période : {len(lignes_alertes)} alerte(s) active(s) "
+        "(détail ci-dessous)." if lignes_alertes else
+        "Travaux / alertes sur la période : aucune alerte connue."
+    )
+
+    if nom_periode == "mensuel":
+        pct_par_jour, cumule_par_jour_h = ctx["graph_pct_jour"], ctx["graph_cumule_jour"]
+        resultat.update({
+            "rapport_mensuel": True,
+            "rapport_moyenne_mois": ctx["pct_perturbe"],
+            "rapport_moyenne_mois_precedent": ctx["moyenne_mois_precedent"],
+            "rapport_graph_pct_jour_json": json_pour_script({
+                "x": [d.strftime("%Y-%m-%d") for d in pct_par_jour.index],
+                "y": [None if pd.isna(v) else round(float(v), 1) for v in pct_par_jour],
+            }),
+            "rapport_graph_cumule_jour_json": json_pour_script({
+                "x": [d.strftime("%Y-%m-%d") for d in cumule_par_jour_h.index],
+                "y": [round(float(v), 2) for v in cumule_par_jour_h],
+            }),
+            "rapport_graph_gare_json": json_pour_script(ctx["graph_gare"]),
+            "rapport_graph_jour_semaine_json": json_pour_script(ctx["graph_jour_semaine"]),
+        })
+    else:
+        resultat["rapport_mensuel"] = False
+        resultat["rapport_top5"] = [
+            {
+                "train": e["train"], "sens": e["sens"], "retard_max": e["retard_max"],
+                "escalier_json": json_pour_script({"labels": e["labels"], **e["escalier"]}) if e["escalier"] else None,
+            }
+            for e in ctx["top5"]
+        ]
+    return resultat
 
 
 def calculer_contexte_travaux(alertes_df, alertes_actif):

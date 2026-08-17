@@ -47,6 +47,16 @@ const CONFIG_JOUR_HEURE = {
     },
     type_jour: { titre: "Jour ouvré vs Weekend/Férié", ylabel: "Retard (min)", couleur: "#8a5cb5" },
     vacances: { titre: "Vacances vs Hors vacances", ylabel: "Retard (min)", couleur: "#b58a2c" },
+    // Onglet Rapports (mensuel uniquement, rapports.js) — pas dans
+    // dessinerJourHeure (boucle sur les 6 clés ci-dessus seulement) :
+    // dessinerBarre appelée directement par _rapports.html pour ces 2-là.
+    rapport_gare: {
+        titre: "Retard moyen par gare, sur le mois", ylabel: "Retard (min)", couleur: "#8a5cb5",
+        tickangle: -30,
+    },
+    rapport_jour_semaine: {
+        titre: "Retard moyen par jour de semaine, sur le mois", ylabel: "Retard (min)", couleur: "#5ba58c",
+    },
 };
 
 function dessinerBarre(cle, donnees) {
@@ -91,7 +101,12 @@ function dessinerBarre(cle, donnees) {
             // viewer.py (matplotlib) les affiche toutes ; forcé en tableau
             // explicite pour la même échelle complète "0h" à "23h".
             tickmode: "array", tickvals: labels, ticktext: labels,
-            tickangle: 0,
+            // tickangle par graphique (0 par défaut, comme jour/heure/type_
+            // jour/vacances, catégories courtes) : "gare" (Rapports, noms
+            // longs type "Paris Saint-Lazare") en horizontal se chevauchait
+            // entre étiquettes voisines — repéré en testant l'onglet
+            // Rapports en direct (Playwright), 2026-08-17.
+            tickangle: config.tickangle || 0,
         },
         yaxis: {
             title: { text: config.ylabel }, rangemode: "tozero",
@@ -108,7 +123,10 @@ function dessinerBarre(cle, donnees) {
             { type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: 0, y1: 0,
               line: { color: "gray", width: 0.6 }, layer: "below" },
         ],
-        margin: { t: 35, r: 15, b: (labels.length > 12 ? 55 : 30) + (config.xlabel ? 15 : 0), l: 45 },
+        margin: {
+            t: 35, r: 15, l: 45,
+            b: (labels.length > 12 || config.tickangle ? 55 : 30) + (config.xlabel ? 15 : 0),
+        },
         showlegend: false,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",

@@ -25,6 +25,7 @@
     <script src="/static/graphique.js"></script>
     <script src="/static/train.js"></script>
     <script src="/static/jour_heure.js"></script>
+    <script src="/static/rapports.js"></script>
 </head>
 <body>
     <div id="toast" onclick="masquerToast()">
@@ -110,7 +111,7 @@
                 <span class="icone-info" title="Un train reste inclus tant qu'il a eu du retard à un moment de son trajet, même si ses relevés les plus récents sont revenus à 0 min — le tableau n'affichant que les 300 dernières lignes, ce retard peut ne plus être visible dans les lignes affichées.">ℹ</span>
             </div>
         </form>
-        <div id="stats" {% if vue in ("graphique", "train") %}style="display:none"{% endif %}>
+        <div id="stats" {% if vue in ("graphique", "train", "rapports") %}style="display:none"{% endif %}>
             {% include "_stats.html" %}
         </div>
         <nav id="onglets">
@@ -143,6 +144,11 @@
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
                     hx-vals='{"vue": "gtfs"}' onclick="activerOnglet(this, 'gtfs')">
                 Vérification GTFS
+            </button>
+            <button type="button" class="onglet {% if vue == 'rapports' %}actif{% endif %}"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "rapports"}' onclick="activerOnglet(this, 'rapports')">
+                Rapports
             </button>
         </nav>
     </header>
@@ -273,6 +279,13 @@
         // df_filtre — voir construire_contexte) et sur Suivi d'un train
         // (qui a son propre filtre "Trains du jour en retard uniquement").
         function mettreAJourVisibiliteFiltres(vue) {
+            // Rapports : périmètre fixe (11 gares de la ligne, comme le PDF),
+            // pas de filtre Gare/Train/Sens du tout — le formulaire entier
+            // est masqué plutôt que juste les 2 cases (seul onglet dans ce
+            // cas ; les autres gardent Gare/Train/Sens visibles même
+            // lorsqu'ils ne les utilisent pas, ex: Travaux/Vérification
+            // GTFS — coexistence assumée, pas une incohérence à corriger).
+            document.getElementById("filtres").style.display = vue === "rapports" ? "none" : "";
             document.getElementById("case-limiter-ligne").style.display = vue === "train" ? "none" : "";
             document.getElementById("case-limiter-retard").style.display =
                 vue === "train" || vue === "graphique" || vue === "jour_heure" ? "none" : "";
