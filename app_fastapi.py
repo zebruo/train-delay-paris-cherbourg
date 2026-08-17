@@ -2208,7 +2208,13 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
             "gares": ligne["gares"], "depuis": depuis, "jusqua": jusqua,
             "texte": ligne["texte"], "description": ligne["description"] or ligne["texte"],
         })
-    resultat["rapport_lignes_alertes"] = lignes_alertes
+    # "lignes_alertes" (pas "rapport_lignes_alertes") : même nom de clé que
+    # calculer_contexte_travaux, pour partager templates/_table_alertes.html
+    # (audit de nettoyage, 2026-08-18 — les deux onglets avaient un tableau
+    # d'alertes quasi identique, dupliqué). Aucun risque de collision : les
+    # deux vues sont mutuellement exclusives, jamais mergées dans le même
+    # contexte de requête.
+    resultat["lignes_alertes"] = lignes_alertes
     resultat["rapport_texte_alertes"] = (
         f"Travaux / alertes sur la période : {len(lignes_alertes)} alerte(s) active(s) "
         "(détail ci-dessous)." if lignes_alertes else

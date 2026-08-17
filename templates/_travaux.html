@@ -8,26 +8,7 @@
         </p>
         <p class="resume-travaux">{{ resume_travaux }}</p>
         <div class="zone-scroll">
-            <table class="table-alertes">
-                <thead>
-                    <tr><th>Gare(s) concernée(s)</th><th>Depuis</th><th>Jusqu'à</th><th>Alerte</th></tr>
-                </thead>
-                <tbody>
-                    {% for alerte in lignes_alertes %}
-                        <tr class="{{ 'alerte-active' if alerte.actif else 'alerte-passee' }}">
-                            <td>{{ alerte.gares }}</td>
-                            <td>{{ alerte.depuis }}</td>
-                            <td>{{ alerte.jusqua }}</td>
-                            <td>
-                                <details>
-                                    <summary>{{ alerte.texte }}</summary>
-                                    {{ alerte.description }}
-                                </details>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            {% include "_table_alertes.html" %}
         </div>
     </section>
     <section class="section-travaux">

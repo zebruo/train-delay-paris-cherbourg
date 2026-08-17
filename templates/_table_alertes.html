@@ -1,0 +1,20 @@
+<table class="table-alertes">
+    <thead>
+        <tr><th>Gare(s) concernée(s)</th><th>Depuis</th><th>Jusqu'à</th><th>Alerte</th></tr>
+    </thead>
+    <tbody>
+        {% for alerte in lignes_alertes %}
+            <tr {% if alerte.actif is defined %}class="{{ 'alerte-active' if alerte.actif else 'alerte-passee' }}"{% endif %}>
+                <td>{{ alerte.gares }}</td>
+                <td>{{ alerte.depuis }}</td>
+                <td>{{ alerte.jusqua }}</td>
+                <td>
+                    <details>
+                        <summary>{{ alerte.texte }}</summary>
+                        {{ alerte.description }}
+                    </details>
+                </td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

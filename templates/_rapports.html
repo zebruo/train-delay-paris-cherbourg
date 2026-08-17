@@ -20,28 +20,9 @@
 
     <p class="info">{{ rapport_texte_meteo }}</p>
     <p class="info">{{ rapport_texte_alertes }}</p>
-    {% if rapport_lignes_alertes %}
+    {% if lignes_alertes %}
         <div class="zone-scroll zone-alertes-rapport">
-            <table class="table-alertes">
-                <thead>
-                    <tr><th>Gare(s) concernée(s)</th><th>Depuis</th><th>Jusqu'à</th><th>Alerte</th></tr>
-                </thead>
-                <tbody>
-                    {% for alerte in rapport_lignes_alertes %}
-                        <tr>
-                            <td>{{ alerte.gares }}</td>
-                            <td>{{ alerte.depuis }}</td>
-                            <td>{{ alerte.jusqua }}</td>
-                            <td>
-                                <details>
-                                    <summary>{{ alerte.texte }}</summary>
-                                    {{ alerte.description }}
-                                </details>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            {% include "_table_alertes.html" %}
         </div>
     {% endif %}
 

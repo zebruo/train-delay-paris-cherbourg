@@ -567,12 +567,20 @@ devenu trop large pour son propre contenu. */
     white-space: nowrap;
 }
 
-#stats {
+/* Disposition partagée avec .grille-stats-rapport (onglet Rapports, plus
+bas) — audit de nettoyage, 2026-08-18 : les deux étaient dupliquées à
+l'identique sur ces 4 propriétés, la seule différence réelle (background,
+padding) reste sur chaque règle séparément. */
+#stats,
+.grille-stats-rapport {
     display: flex;
     flex-wrap: wrap;
     gap: 1.5rem;
-    padding-bottom: 0.2rem;
     justify-content: space-around;
+}
+
+#stats {
+    padding-bottom: 0.2rem;
     background: var(--fond-secondaire);
 }
 
@@ -944,14 +952,12 @@ rapport au texte autour, pour ressortir un peu sans être criarde. */
     min-height: 260px;
 }
 
-/* Onglet Rapports — même disposition en ligne que .stat/#stats (réutilisées
-telles quelles par _stats.html), simplement pas accrochée à l'id #stats
+/* Onglet Rapports — disposition en ligne partagée avec #stats (voir plus
+haut) ; .stat/.stat-label/.stat-valeur (réutilisées telles quelles par
+_stats.html) restent inchangées, simplement pas accrochée à l'id #stats
 (déjà pris par la barre de stats générale de l'entête, masquée sur cet
 onglet). */
 .grille-stats-rapport {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.5rem;
     padding: 0.4rem 0 0.6rem;
 }
 
