@@ -494,6 +494,23 @@ def calculer_alertes_actives(alertes_df):
     return actif, libelle
 
 
+def alertes_periode(alertes_df, debut_local, fin_local):
+    """Alertes actives à un moment de [debut_local, fin_local) — porte le
+    filtre de generer_rapport.py (variable alertes_periode dans generer()),
+    même règle que calculer_alertes_actives mais bornée aux deux extrémités
+    de la période plutôt qu'à l'instant présent (sans la borne du haut, une
+    alerte démarrée après la fin de la période serait comptée à tort).
+    alertes_df minuscule (perturbations.charger_alertes) : filtre pandas
+    direct, pas de brique SQL nécessaire ici — hors discipline RAM du
+    reste de l'onglet Rapports."""
+    debut_utc = debut_local.tz_convert("UTC")
+    fin_utc = fin_local.tz_convert("UTC")
+    return alertes_df[
+        (alertes_df["debut"].isna() | (alertes_df["debut"] <= fin_utc))
+        & (alertes_df["fin"].isna() | (alertes_df["fin"] >= debut_utc))
+    ]
+
+
 # Système de coordonnées fixe pour la frise (#pied-de-page) : contrairement
 # au tk.Canvas de viewer.py, qui recalculait les positions à chaque
 # redimensionnement (largeur réelle en pixels), le SVG se redimensionne
