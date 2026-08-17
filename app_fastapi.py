@@ -1918,6 +1918,73 @@ def _pct_et_cumule_par_jour_sql(connexion, debut_local, fin_local):
     return pct_par_jour, cumule_par_jour_h
 
 
+def _construire_donnees_top5_sql(connexion, variantes, calendrier):
+    """Les 5 circulations les plus retardées de la période (quotidien/
+    hebdomadaire, jamais mensuel — voir generer_rapport.py) + leur
+    mini-graphique "escalier" (figé/prédiction) — porte la sélection et
+    le rendu du Top 5 de generer_rapport.py.
+
+    Sélection : réutilise derniers_complet_periode, déjà matérialisée par
+    _materialiser_circulations_arrivees_periode (dernier retard connu par
+    (trip_id, start_date, gare), TOUTES gares confondues — le retard max
+    d'une circulation peut survenir hors des 11 gares de la ligne, ex:
+    Coutances, Granville) — aucun nouveau scan d'observations. Restreint à
+    circulations_arrivees_periode comme le reste de l'onglet.
+
+    Par circulation retenue (au plus 5) : calculer_escalier (déjà utilisée
+    par l'onglet "Suivi d'un train") a besoin du trajet complet de CETTE
+    circulation — une petite requête SQL dédiée par circulation (quelques
+    dizaines de lignes chacune), plutôt qu'un chargement pandas de tout
+    l'historique, pour rester dans la même discipline RAM que le reste de
+    cet onglet. Les deux tables temporaires ci-dessus DOIVENT déjà être
+    matérialisées avant cet appel.
+
+    ORDER BY ... trip_id ASC : 3e clé nécessaire pour reproduire EXACTEMENT
+    le tri de generer_rapport.py sur une égalité (retard_max, start_date) —
+    infos.sort_values(["retard_max","start_date"], ascending=[False,False])
+    est un tri stable sur un DataFrame déjà groupé par (trip_id, start_date)
+    croissant (groupby(sort=True), le défaut) : pour une égalité totale, le
+    résidu d'ordre préservé est trip_id croissant. Sans cette 3e clé,
+    l'ordre SQL des égalités est indéterminé et peut differer du rapport
+    PDF sur QUEL train exact occupe le 5e rang — repéré en comparant aux
+    vrais résultats sur la période hebdomadaire (2 trains à 70 min à la
+    frontière du top 5)."""
+    lignes = connexion.execute(
+        """
+        SELECT trip_id, start_date, MAX(retard_min) AS retard_max
+        FROM derniers_complet_periode
+        WHERE (trip_id || '|' || start_date) IN (SELECT cle FROM circulations_arrivees_periode)
+        GROUP BY trip_id, start_date
+        ORDER BY retard_max DESC, start_date DESC, trip_id ASC
+        LIMIT 5
+        """,
+    ).fetchall()
+
+    top5 = []
+    for trip_id, start_date, retard_max in lignes:
+        variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+        ordre_gares = variante["gares"] if variante else []
+        train = trip_id.split(":", 1)[0]
+        entree = {
+            "trip_id": trip_id, "start_date": start_date,
+            "train": format_numero_train(train), "sens": trajet_sens(trip_id, variantes),
+            "retard_max": round(float(retard_max), 1) if retard_max is not None else None,
+            "escalier": None,
+        }
+        if ordre_gares:
+            position_gare = {g: i for i, g in enumerate(ordre_gares)}
+            horaires_par_gare = dict(zip(ordre_gares, variante["horaires"]))
+            trajet = pd.read_sql_query(
+                "SELECT poll_time, gare, "
+                "ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min "
+                "FROM observations WHERE trip_id = ? AND start_date = ?",
+                connexion, params=(trip_id, start_date),
+            )
+            entree["escalier"] = calculer_escalier(trajet, ordre_gares, position_gare, start_date, horaires_par_gare)
+        top5.append(entree)
+    return top5
+
+
 def calculer_contexte_travaux(alertes_df, alertes_actif):
     """Porte _render_travaux_tab (viewer.py: 673-724) : les deux tables de
     l'onglet Travaux / Alertes. alertes_df/alertes_actif proviennent déjà de
