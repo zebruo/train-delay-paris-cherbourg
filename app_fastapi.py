@@ -1842,6 +1842,23 @@ def _meteo_periode_sql(connexion):
     return lignes[0], lignes[1], lignes[2] or 0
 
 
+def _moyenne_retard_par_categorie_sql(connexion, colonne_categorie, ordre):
+    """Moyenne de retard_min + n par catégorie, sur rapport_filtre — porte
+    df_periode.groupby(colonne)["retard_min"].mean() de generer_rapport.py
+    (graphiques mensuels "retard moyen par gare"/"par jour de semaine",
+    colonne_categorie = "gare" ou "jour_semaine"). Plus simple que
+    _stats_par_categorie_sql (onglet Par jour/heure) : pas de calcul de
+    pourcentage en retard ici, generer_rapport.py n'affiche que la moyenne
+    pour ces 2 graphiques. Suppose rapport_filtre déjà matérialisée
+    (_materialiser_rapport_filtre)."""
+    lignes = connexion.execute(
+        f"SELECT {colonne_categorie} AS categorie, AVG(retard_min) AS moyenne, COUNT(*) AS n "
+        f"FROM rapport_filtre GROUP BY categorie",
+    ).fetchall()
+    stats = pd.DataFrame(lignes, columns=["categorie", "moyenne", "n"]).set_index("categorie")
+    return stats.reindex(ordre) if ordre is not None else stats
+
+
 def calculer_contexte_travaux(alertes_df, alertes_actif):
     """Porte _render_travaux_tab (viewer.py: 673-724) : les deux tables de
     l'onglet Travaux / Alertes. alertes_df/alertes_actif proviennent déjà de
