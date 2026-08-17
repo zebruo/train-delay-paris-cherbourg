@@ -42,7 +42,8 @@ from matplotlib.ticker import AutoMinorLocator
 from formatting import (
     PARIS_TZ, build_stop_names, build_trip_data, calculer_periode, choisir_variante,
     cle_circulation, derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel,
-    format_gare, format_heure_avec_arret, format_numero_train, load_calendrier, load_reference,
+    format_gare, format_heure_avec_arret, format_min_sans_zero, format_numero_train,
+    load_calendrier, load_reference, texte_categorie_maximale, texte_periode_rapport,
 )
 
 OBSERVATIONS_DB = "observations.db"
@@ -496,7 +497,7 @@ def generer(nom_periode, maintenant=None):
     ax_titre.text(0.5, 0.75, f"{titre} — Circulations sur l'axe Paris ↔ Cherbourg",
                   fontsize=15, fontweight="bold", va="top", ha="center")
     ax_titre.text(0.5, 0.15,
-                  f"(Période : {debut_local.strftime('%d/%m/%Y %Hh%M')} → {fin_local.strftime('%d/%m/%Y %Hh%M')}"
+                  f"({texte_periode_rapport(nom_periode, debut_local, fin_local)}"
                   f"   ·   généré le {maintenant_local.strftime('%d/%m/%Y à %Hh%M')})",
                   fontsize=9, color="#555", va="top", ha="center")
 

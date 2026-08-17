@@ -203,6 +203,35 @@ def calculer_periode(nom_periode, maintenant_utc):
     return debut_local, fin_local
 
 
+# Noms de mois en dur (pas strftime("%B")) : dépendrait de la locale système
+# du serveur, jamais garantie en français — même choix que les jours de
+# semaine (JOURS_ORDRE, app_fastapi.py / _EXPR_JOUR_SEMAINE, SQL).
+MOIS_NOMS = [
+    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
+]
+# Élision "de" -> "d'" devant une voyelle ("Mois d'Avril", pas "Mois de
+# Avril") — seuls ces 3 mois du français commencent par une voyelle (Août :
+# le h est muet, la liaison se fait comme devant une vraie voyelle).
+MOIS_AVEC_ELISION = {"Avril", "Août", "Octobre"}
+
+
+def texte_periode_rapport(nom_periode, debut_local, fin_local):
+    """Texte décrivant la période d'un rapport (PDF et onglet web
+    "Rapports") — "Journée du :"/"Semaine du :" avec les bornes complètes ;
+    "Mois de X" seul pour le mensuel (pas de bornes horaires, juste le nom
+    du mois) — demande explicite de l'utilisateur, 2026-08-17. debut_local
+    est toujours le 1er du mois à 2h pour "mensuel" (calculer_periode), son
+    mois est donc celui du rapport."""
+    if nom_periode == "quotidien":
+        return f"Journée du : {debut_local.strftime('%d/%m/%Y %Hh%M')} au {fin_local.strftime('%d/%m/%Y %Hh%M')}"
+    if nom_periode == "hebdomadaire":
+        return f"Semaine du : {debut_local.strftime('%d/%m/%Y %Hh%M')} au {fin_local.strftime('%d/%m/%Y %Hh%M')}"
+    nom_mois = MOIS_NOMS[debut_local.month - 1]
+    prefixe = "d'" if nom_mois in MOIS_AVEC_ELISION else "de "
+    return f"Mois {prefixe}{nom_mois}"
+
+
 VALEUR_MANQUANTE = "–"  # tiret cadratin (U+2013), PAS un simple "-" (U+002D) :
 # un "-" seul en début de cellule est interprété comme une liste à puce par
 # le rendu Markdown de st.table (chaque cellule y est rendue en Markdown) —

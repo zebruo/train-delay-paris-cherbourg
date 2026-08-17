@@ -53,6 +53,7 @@ from formatting import (
     format_valeur,
     load_calendrier,
     load_reference,
+    texte_periode_rapport,
     titre_dynamique_jour_heure,
     trajet_sens,
 )
@@ -2197,9 +2198,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
             "tooltip_retard_max", "tooltip_pire_gare",
         )
     }
-    resultat["rapport_periode_texte"] = (
-        f"{ctx['debut_local'].strftime('%d/%m/%Y %Hh%M')} → {ctx['fin_local'].strftime('%d/%m/%Y %Hh%M')}"
-    )
+    resultat["rapport_periode_texte"] = texte_periode_rapport(nom_periode, ctx["debut_local"], ctx["fin_local"])
 
     temp_moy = ctx["meteo"]["temp_moy"]
     if pd.notna(temp_moy):
