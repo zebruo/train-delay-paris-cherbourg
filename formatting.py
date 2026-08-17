@@ -163,6 +163,46 @@ def duree_theorique(depart_gtfs, arrivee_gtfs, start_date):
     return f"{minutes // 60}h{minutes % 60:02d}"
 
 
+def calculer_periode(nom_periode, maintenant_utc):
+    """Bornes (heure locale Paris) de la période couverte par un rapport,
+    calées sur des horaires fixes plutôt que sur une fenêtre glissante de
+    N heures avant l'instant d'exécution : une fenêtre glissante ferait
+    dériver la période d'un jour sur l'autre selon l'heure exacte de
+    l'appel (PC éteint/en veille, tâche planifiée en retard...) — peu
+    comparable et pas intuitif ("hier"/"cette semaine" doivent correspondre
+    au calendrier). 2h du matin est choisi comme frontière car c'est le
+    creux du trafic nocturne (peu ou pas de trains, voir mémoire du projet) :
+    une circulation a très peu de chances d'être en plein trajet pile à cet
+    instant, ce qui limite le risque d'en couper une en deux périodes
+    consécutives — complète le filtre "circulations arrivées uniquement"
+    plutôt que de le contredire.
+    Quotidien : le dernier cycle 2h→2h déjà terminé (ex: exécuté le 28 à
+    07h00, période = 27 à 2h → 28 à 2h). Hebdomadaire : du lundi 2h au lundi
+    suivant 2h, le dernier cycle déjà terminé. Mensuel : même principe à
+    l'échelle du mois calendaire (1er du mois 2h → 1er du mois suivant 2h).
+    Partagée entre generer_rapport.py et l'onglet web "Rapports"."""
+    maintenant_local = maintenant_utc.tz_convert(PARIS_TZ)
+    if nom_periode == "hebdomadaire":
+        fin_local = (maintenant_local - pd.Timedelta(days=maintenant_local.weekday())).normalize() \
+            + pd.Timedelta(hours=2)
+        if fin_local > maintenant_local:
+            fin_local -= pd.Timedelta(days=7)
+        debut_local = fin_local - pd.Timedelta(days=7)
+    elif nom_periode == "mensuel":
+        # pd.DateOffset(months=1) gère les mois de longueur différente
+        # correctement (contrairement à un simple pd.Timedelta(days=30)).
+        fin_local = maintenant_local.replace(day=1).normalize() + pd.Timedelta(hours=2)
+        if fin_local > maintenant_local:
+            fin_local -= pd.DateOffset(months=1)
+        debut_local = fin_local - pd.DateOffset(months=1)
+    else:
+        fin_local = maintenant_local.normalize() + pd.Timedelta(hours=2)
+        if fin_local > maintenant_local:
+            fin_local -= pd.Timedelta(days=1)
+        debut_local = fin_local - pd.Timedelta(hours=24)
+    return debut_local, fin_local
+
+
 VALEUR_MANQUANTE = "–"  # tiret cadratin (U+2013), PAS un simple "-" (U+002D) :
 # un "-" seul en début de cellule est interprété comme une liste à puce par
 # le rendu Markdown de st.table (chaque cellule y est rendue en Markdown) —

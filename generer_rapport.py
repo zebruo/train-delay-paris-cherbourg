@@ -40,9 +40,9 @@ from matplotlib.offsetbox import AnnotationBbox, HPacker, TextArea
 from matplotlib.ticker import AutoMinorLocator
 
 from formatting import (
-    PARIS_TZ, build_stop_names, build_trip_data, choisir_variante, cle_circulation,
-    derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel, format_gare,
-    format_heure_avec_arret, format_numero_train, load_calendrier, load_reference,
+    PARIS_TZ, build_stop_names, build_trip_data, calculer_periode, choisir_variante,
+    cle_circulation, derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel,
+    format_gare, format_heure_avec_arret, format_numero_train, load_calendrier, load_reference,
 )
 
 OBSERVATIONS_DB = "observations.db"
@@ -167,47 +167,6 @@ def numero_suivant(nom_periode):
     with open(COMPTEUR_FILE, "w") as f:
         json.dump(compteurs, f)
     return numero
-
-
-def calculer_periode(nom_periode, maintenant_utc):
-    """Bornes (heure locale Paris) de la période couverte par le rapport,
-    calées sur des horaires fixes plutôt que sur une fenêtre glissante de
-    N heures avant l'instant d'exécution du script : la tâche planifiée
-    Windows se déclenche vers 07h00/07h05, une heure pas garantie exacte
-    (PC éteint/en veille, tâche en retard...), donc une fenêtre glissante
-    ferait dériver la période d'un jour sur l'autre — peu comparable et pas
-    intuitif ("hier"/"cette semaine" doivent correspondre au calendrier).
-    2h du matin est choisi comme frontière car c'est le creux du trafic
-    nocturne (peu ou pas de trains, voir mémoire du projet) : une
-    circulation a très peu de chances d'être en plein trajet pile à cet
-    instant, ce qui limite le risque d'en couper une en deux périodes
-    consécutives — complète le filtre "circulations arrivées uniquement"
-    plutôt que de le contredire.
-    Quotidien : le dernier cycle 2h→2h déjà terminé (ex: exécuté le 28 à
-    07h00, période = 27 à 2h → 28 à 2h). Hebdomadaire : du lundi 2h au
-    lundi suivant 2h, le dernier cycle déjà terminé."""
-    maintenant_local = maintenant_utc.tz_convert(PARIS_TZ)
-    if nom_periode == "hebdomadaire":
-        fin_local = (maintenant_local - pd.Timedelta(days=maintenant_local.weekday())).normalize() \
-            + pd.Timedelta(hours=2)
-        if fin_local > maintenant_local:
-            fin_local -= pd.Timedelta(days=7)
-        debut_local = fin_local - pd.Timedelta(days=7)
-    elif nom_periode == "mensuel":
-        # Même principe que "hebdomadaire", à l'échelle du mois calendaire
-        # (1er du mois 2h → 1er du mois suivant 2h) — pd.DateOffset(months=1)
-        # gère les mois de longueur différente correctement (contrairement à
-        # un simple pd.Timedelta(days=30)).
-        fin_local = maintenant_local.replace(day=1).normalize() + pd.Timedelta(hours=2)
-        if fin_local > maintenant_local:
-            fin_local -= pd.DateOffset(months=1)
-        debut_local = fin_local - pd.DateOffset(months=1)
-    else:
-        fin_local = maintenant_local.normalize() + pd.Timedelta(hours=2)
-        if fin_local > maintenant_local:
-            fin_local -= pd.Timedelta(days=1)
-        debut_local = fin_local - pd.Timedelta(hours=24)
-    return debut_local, fin_local
 
 
 def circulation_est_arrivee(circ, trip_id, start_date, variantes, calendrier):

@@ -999,9 +999,21 @@ _EXPR_TYPE_JOUR = """
 _EXPR_VACANCES = "CASE WHEN vacances_scolaires = 1 THEN 'Vacances' WHEN vacances_scolaires = 0 THEN 'Hors vacances' END"
 
 
-def _construire_where_sql(gare, train, sens, limiter_ligne, limiter_retard=False, exiger_retard_connu=True):
+def _construire_where_sql(
+    gare, train, sens, limiter_ligne, limiter_retard=False, exiger_retard_connu=True,
+    debut_iso=None, fin_iso=None,
+):
     """Équivalent SQL de filtrer_df() — mêmes règles exactes
-    (_gare_est_filtree, GARES_LIGNE). exiger_retard_connu (par défaut True) :
+    (_gare_est_filtree, GARES_LIGNE). debut_iso/fin_iso (par défaut None,
+    tous les appels existants restent inchangés) : réservé à l'onglet
+    Rapports, borne sur poll_time ET restreint aux circulations dont le
+    terminus est déjà "arrivé" à la fin de la période (table temporaire
+    `circulations_arrivees_periode(cle)`, que l'appelant DOIT avoir déjà
+    matérialisée — même contrat que limiter_retard/circulations_retard
+    ci-dessous). Les deux bornes sont toujours fournies ensemble (jamais
+    l'une sans l'autre) : Rapports n'a jamais besoin de l'une sans l'autre,
+    pas de paramètre séparé pour découpler les deux. exiger_retard_connu
+    (par défaut True) :
     ajoute le dropna(subset=["retard_min"]) fait par la plupart des
     appelants pandas, MAIS PAS calculer_stats_globales (app_fastapi.py) pour
     stats_ratio/resume_collecte — ces deux-là opèrent sur df_avant_retard,
@@ -1041,18 +1053,33 @@ def _construire_where_sql(gare, train, sens, limiter_ligne, limiter_retard=False
         params.extend(GARES_LIGNE_ORDRE)
     if limiter_retard:
         conditions.append("(trip_id || '|' || start_date) IN (SELECT cle FROM circulations_retard)")
+    if debut_iso is not None:
+        conditions.append("poll_time >= ? AND poll_time < ?")
+        params.append(debut_iso)
+        params.append(fin_iso)
+        conditions.append(
+            "(trip_id || '|' || start_date) IN (SELECT cle FROM circulations_arrivees_periode)"
+        )
     return (" AND ".join(conditions) if conditions else "1=1"), params
 
 
-def _materialiser_circulations_retard(connexion, gare, train, sens, limiter_ligne):
+def _materialiser_circulations_retard(
+    connexion, gare, train, sens, limiter_ligne, debut_iso=None, fin_iso=None,
+):
     """Construit la table temporaire `circulations_retard(cle)` — les
     circulations (trip_id|start_date) ayant eu AU MOINS UNE ligne en retard
     n'importe où dans le périmètre Gare/Train/Sens/Limiter (SANS
     limiter_retard lui-même, pour éviter la référence circulaire). À
     appeler une seule fois par requête HTTP quand limiter_retard=True,
     avant tout appel de _construire_where_sql(..., limiter_retard=True)
-    (voir son docstring). Appelant responsable du DROP TABLE ensuite."""
-    where, params = _construire_where_sql(gare, train, sens, limiter_ligne, exiger_retard_connu=False)
+    (voir son docstring). Appelant responsable du DROP TABLE ensuite.
+    debut_iso/fin_iso (Rapports uniquement) : si fournis, l'appelant DOIT
+    avoir déjà matérialisé circulations_arrivees_periode (voir
+    _construire_where_sql)."""
+    where, params = _construire_where_sql(
+        gare, train, sens, limiter_ligne, exiger_retard_connu=False,
+        debut_iso=debut_iso, fin_iso=fin_iso,
+    )
     connexion.execute(
         f"""
         CREATE TEMP TABLE circulations_retard AS
@@ -1188,7 +1215,9 @@ def _texte_categorie_maximale(lignes, mot_singulier, mot_pluriel, formater_nom, 
     return f"{debut} → {formater_valeur(valeur_max)}", pluriel
 
 
-def _retard_max_et_cumule_sql(connexion, gare, train, sens, limiter_ligne, limiter_retard):
+def _retard_max_et_cumule_sql(
+    connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
+):
     """Retard max (par train, avec gestion des égalités jusqu'à 3 —
     même motif texte que calculer_stats_bloc, formatting.py) et Retard
     cumulé (somme des dernières valeurs positives), tous deux dérivés de
@@ -1199,7 +1228,9 @@ def _retard_max_et_cumule_sql(connexion, gare, train, sens, limiter_ligne, limit
     initiales — passage plus filtre Gare gare="Caen" : ~500ms -> ~200ms).
     Nom de table fixe car une seule requête HTTP == un seul connexion.execute
     à la fois sur cette connexion (pas de risque de collision concurrente)."""
-    where, params = _construire_where_sql(gare, train, sens, limiter_ligne, limiter_retard)
+    where, params = _construire_where_sql(
+        gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
+    )
     cte = _cte_dernier_par_passage(where)
 
     connexion.execute("DROP TABLE IF EXISTS temp.derniers_par_passage")
@@ -1230,7 +1261,9 @@ def _retard_max_et_cumule_sql(connexion, gare, train, sens, limiter_ligne, limit
     return retard_max_texte, heures, minutes
 
 
-def _pire_gare_et_moyenne_sql(connexion, gare, train, sens, limiter_ligne, limiter_retard):
+def _pire_gare_et_moyenne_sql(
+    connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
+):
     """Gare la + touchée (moyenne BRUTE de retard_min par gare, toutes les
     lignes, pas seulement le dernier relevé connu par passage — contrairement
     à Retard max/cumulé) ET Retard moyen / relevé (même moyenne, non groupée)
@@ -1240,7 +1273,9 @@ def _pire_gare_et_moyenne_sql(connexion, gare, train, sens, limiter_ligne, limit
     — matérialisé ici une seule fois (gare, retard_min brut) puis les 2
     agrégats en sont dérivés à faible coût, comme déjà fait pour Retard max/
     cumulé (_retard_max_et_cumule_sql)."""
-    where, params = _construire_where_sql(gare, train, sens, limiter_ligne, limiter_retard)
+    where, params = _construire_where_sql(
+        gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
+    )
     expr_retard = "ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1)"
 
     connexion.execute("DROP TABLE IF EXISTS temp.releves_filtres")
@@ -1267,7 +1302,9 @@ def _pire_gare_et_moyenne_sql(connexion, gare, train, sens, limiter_ligne, limit
     return moyenne, nb_releves, pire_gare_texte, label_pire_gare
 
 
-def _circulations_et_trains_stats_sql(connexion, gare, train, sens, limiter_ligne):
+def _circulations_et_trains_stats_sql(
+    connexion, gare, train, sens, limiter_ligne, debut_iso=None, fin_iso=None,
+):
     """Circulations perturbées (total de circulations distinctes trip_id+
     start_date dans le périmètre filtré, et combien d'entre elles ont eu au
     moins une ligne en retard n'importe où — PAS "dernière valeur connue",
@@ -1282,7 +1319,10 @@ def _circulations_et_trains_stats_sql(connexion, gare, train, sens, limiter_lign
     même ~520k lignes. Le GLOB isole les trip_id se terminant bien par le
     suffixe date avant de le retirer (SUBSTR aveugle aurait tronqué à tort
     les trip_id ne le portant pas, cas rare mais existant en pratique)."""
-    where, params = _construire_where_sql(gare, train, sens, limiter_ligne, exiger_retard_connu=False)
+    where, params = _construire_where_sql(
+        gare, train, sens, limiter_ligne, exiger_retard_connu=False,
+        debut_iso=debut_iso, fin_iso=fin_iso,
+    )
     expr_retard = "COALESCE(arrival_delay_s, departure_delay_s)"
     expr_sans_date = (
         "CASE WHEN trip_id GLOB '*:[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' "
@@ -1300,7 +1340,9 @@ def _circulations_et_trains_stats_sql(connexion, gare, train, sens, limiter_lign
     return ligne[0] or 0, ligne[1] or 0, ligne[2] or 0
 
 
-def calculer_stats_globales_sql(connexion, gare, train, sens, limiter_ligne, limiter_retard):
+def calculer_stats_globales_sql(
+    connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
+):
     """Porte calculer_stats_globales en SQL — même structure de sortie
     (mêmes clés de contexte, mêmes textes de tooltips), mais n'a plus
     besoin de charger tout l'historique en pandas (voir mémoire du projet,
@@ -1311,7 +1353,12 @@ def calculer_stats_globales_sql(connexion, gare, train, sens, limiter_ligne, lim
     `circulations_retard` UNE fois ici (voir _construire_where_sql/
     _materialiser_circulations_retard) — Retard max/cumulé, Gare la +
     touchée et Retard moyen la référencent tous les 3 au lieu de
-    recalculer chacun leur propre sous-requête.
+    recalculer chacun leur propre sous-requête. debut_iso/fin_iso (Rapports
+    uniquement) : contrairement à circulations_retard, circulations_
+    arrivees_periode n'est PAS matérialisée ici — l'appelant (l'orchestration
+    Rapports) DOIT l'avoir déjà fait avant cet appel, car elle sert aussi à
+    d'autres calculs du rapport en dehors des stats globales (voir
+    _construire_where_sql).
 
     Calcul intrinsèquement coûteux (2026-08-16, mesuré sur observations.db
     réel, ~950k lignes) : "dernier retard connu par passage" (Retard max/
@@ -1325,10 +1372,13 @@ def calculer_stats_globales_sql(connexion, gare, train, sens, limiter_ligne, lim
     cette fonction plutôt que de l'appeler directement à chaque requête."""
     if limiter_retard:
         connexion.execute("DROP TABLE IF EXISTS temp.circulations_retard")
-        _materialiser_circulations_retard(connexion, gare, train, sens, limiter_ligne)
+        _materialiser_circulations_retard(
+            connexion, gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
+        )
     try:
         return _calculer_stats_globales_sql_interne(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
+            debut_iso=debut_iso, fin_iso=fin_iso,
         )
     finally:
         if limiter_retard:
@@ -1368,9 +1418,11 @@ def calculer_stats_globales_sql_avec_cache(connexion, gare, train, sens, limiter
     return cache["resultats"][cle]
 
 
-def _calculer_stats_globales_sql_interne(connexion, gare, train, sens, limiter_ligne, limiter_retard):
+def _calculer_stats_globales_sql_interne(
+    connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
+):
     total, en_retard, nb_trains_observes = _circulations_et_trains_stats_sql(
-        connexion, gare, train, sens, limiter_ligne,
+        connexion, gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
     )
     pct_perturbe = 100 * en_retard / total if total else None
 
@@ -1386,6 +1438,7 @@ def _calculer_stats_globales_sql_interne(connexion, gare, train, sens, limiter_l
     # ci-dessus).
     where_filtre, params_filtre = _construire_where_sql(
         gare, train, sens, limiter_ligne, limiter_retard=limiter_retard, exiger_retard_connu=False,
+        debut_iso=debut_iso, fin_iso=fin_iso,
     )
     nb_relevés_filtre = connexion.execute(
         f"SELECT COUNT(*) FROM observations WHERE {where_filtre}", params_filtre,
@@ -1417,11 +1470,12 @@ def _calculer_stats_globales_sql_interne(connexion, gare, train, sens, limiter_l
         tooltip_ratio_retard = ""
 
     moyen, nb_releves, pire_gare_texte, label_pire_gare = _pire_gare_et_moyenne_sql(
-        connexion, gare, train, sens, limiter_ligne, limiter_retard,
+        connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
     )
     if nb_releves:
         retard_max_texte, heures, minutes = _retard_max_et_cumule_sql(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
+            debut_iso=debut_iso, fin_iso=fin_iso,
         )
         stats = {
             "heures": heures, "minutes": minutes, "moyen": moyen,
