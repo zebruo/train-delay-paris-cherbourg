@@ -1598,17 +1598,29 @@ def _calculer_stats_globales_sql_interne(
             "retard_max_texte": retard_max_texte, "pire_gare_texte": pire_gare_texte,
             "label_pire_gare": label_pire_gare,
         }
+        # "filtres actifs ci-dessus"/"300 dernières lignes affichées dans le
+        # tableau" n'ont de sens que pour la barre de stats globale — sur
+        # l'onglet Rapports (debut_iso is not None), il n'y a ni filtres
+        # (formulaire #filtres entièrement masqué) ni tableau du tout,
+        # référence trompeuse à des éléments d'interface absents. Repéré en
+        # relisant les tooltips affichés en vrai sur cet onglet, 2026-08-18.
+        portee_releves_texte = (
+            "issus de la période" if debut_iso is not None
+            else "issus des filtres actifs ci-dessus, pas seulement sur les 300 dernières "
+                 "lignes affichées dans le tableau"
+        )
         tooltip_moyen = (
-            f"Moyenne brute sur les {nb_releves} relevés issus des filtres actifs "
-            "ci-dessus, pas seulement sur les 300 dernières lignes affichées dans le "
-            "tableau — un même passage réel est vu à plusieurs relevés tant qu'il reste "
-            "dans la fenêtre du flux temps réel, d'où une moyenne « par relevé » très "
-            "diluée par rapport au retard cumulé réel."
+            f"Moyenne brute sur les {nb_releves} relevés {portee_releves_texte} — un même "
+            "passage réel est vu à plusieurs relevés tant qu'il reste dans la fenêtre du "
+            "flux temps réel, d'où une moyenne « par relevé » très diluée par rapport au "
+            "retard cumulé réel."
         )
         tooltip_pire_gare = (
             f"Gare avec le retard moyen / relevé le plus élevé, sur les {nb_releves} "
-            "relevés issus des filtres actifs ci-dessus (pas seulement les 300 dernières "
-            "lignes affichées dans le tableau)."
+            f"relevés {portee_releves_texte} — une moyenne brute (voir « Retard moyen / "
+            "relevé » ci-dessus) peut donc être dominée par un seul train très en retard, "
+            "sondé à répétition tant qu'il reste dans le flux temps réel, plutôt que "
+            "refléter une vraie difficulté récurrente de cette gare."
         )
         jours_cumules, heures_restantes = divmod(heures, 24)
         depuis_texte = (
