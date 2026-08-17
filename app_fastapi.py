@@ -1945,8 +1945,9 @@ def _pct_et_cumule_par_jour_sql(connexion, debut_local, fin_local):
 def _construire_donnees_top5_sql(connexion, variantes, calendrier):
     """Les 5 circulations les plus retardées de la période (quotidien/
     hebdomadaire, jamais mensuel — voir generer_rapport.py) + leur
-    mini-graphique "escalier" (figé/prédiction) — porte la sélection et
-    le rendu du Top 5 de generer_rapport.py.
+    mini-graphique "dernier relevé" (voir calculer_dernier_releve, PAS
+    l'Escalier de "Suivi d'un train") — porte la sélection et le rendu du
+    Top 5 de generer_rapport.py.
 
     Sélection : réutilise derniers_complet_periode, déjà matérialisée par
     _materialiser_circulations_arrivees_periode (dernier retard connu par
@@ -1955,10 +1956,10 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
     Coutances, Granville) — aucun nouveau scan d'observations. Restreint à
     circulations_arrivees_periode comme le reste de l'onglet.
 
-    Par circulation retenue (au plus 5) : calculer_escalier (déjà utilisée
-    par l'onglet "Suivi d'un train") a besoin du trajet complet de CETTE
-    circulation — une petite requête SQL dédiée par circulation (quelques
-    dizaines de lignes chacune), plutôt qu'un chargement pandas de tout
+    Par circulation retenue (au plus 5) : calculer_dernier_releve a besoin
+    du trajet complet de CETTE circulation — une petite requête SQL dédiée
+    par circulation (quelques dizaines de lignes chacune), plutôt qu'un
+    chargement pandas de tout
     l'historique, pour rester dans la même discipline RAM que le reste de
     cet onglet. Les deux tables temporaires ci-dessus DOIVENT déjà être
     matérialisées avant cet appel.
@@ -1989,11 +1990,23 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
         variante = choisir_variante(variantes, calendrier, trip_id, start_date)
         ordre_gares = variante["gares"] if variante else []
         train = trip_id.split(":", 1)[0]
+        # Noms complets ("Paris Saint-Lazare → Trouville - Deauville"), pas
+        # les codes abrégés de formatting.trajet_sens (menus déroulants) —
+        # même trajet_sens que generer_rapport.py (PDF), demande explicite
+        # de l'utilisateur, 2026-08-17 : reproduire le même titre que le
+        # rapport PDF pour cette section.
+        sens = f"{ordre_gares[0]} → {ordre_gares[-1]}" if len(ordre_gares) >= 2 else ""
         entree = {
             "trip_id": trip_id, "start_date": start_date,
-            "train": format_numero_train(train), "sens": trajet_sens(trip_id, variantes),
+            "train": format_numero_train(train), "sens": sens,
             "retard_max": round(float(retard_max), 1) if retard_max is not None else None,
-            "escalier": None, "labels": [format_gare(g) for g in ordre_gares],
+            "releve": None, "labels": [format_gare(g) for g in ordre_gares],
+            # Gares hors des 11 de la ligne (trains de jonction, ex: Rennes,
+            # Granville, Rouen) grisées côté JS — même traitement que Suivi
+            # d'un train (hors_ligne, calculer_contexte_train) et le rapport
+            # PDF (generer_rapport.py, tick.set_color("#999999")), demande
+            # explicite de l'utilisateur, 2026-08-17.
+            "hors_ligne": [g not in GARES_LIGNE for g in ordre_gares],
         }
         if ordre_gares:
             position_gare = {g: i for i, g in enumerate(ordre_gares)}
@@ -2004,7 +2017,9 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
                 "FROM observations WHERE trip_id = ? AND start_date = ?",
                 connexion, params=(trip_id, start_date),
             )
-            entree["escalier"] = calculer_escalier(trajet, ordre_gares, position_gare, start_date, horaires_par_gare)
+            entree["releve"] = calculer_dernier_releve(
+                trajet, ordre_gares, position_gare, start_date, horaires_par_gare,
+            )
         top5.append(entree)
     return top5
 
@@ -2230,10 +2245,20 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
         })
     else:
         resultat["rapport_mensuel"] = False
+        # Même format de titre que le rapport PDF (generer_rapport.py) —
+        # demande explicite de l'utilisateur, 2026-08-17 : "train 3379
+        # (Paris Saint-Lazare → Trouville - Deauville) — 16/08/2026 — max
+        # 120 min".
         resultat["rapport_top5"] = [
             {
-                "train": e["train"], "sens": e["sens"], "retard_max": e["retard_max"],
-                "escalier_json": json_pour_script({"labels": e["labels"], **e["escalier"]}) if e["escalier"] else None,
+                "titre": (
+                    f"train {e['train']} ({e['sens']}) — {_format_start_date(e['start_date'])} — "
+                    f"max {e['retard_max']:.0f} min"
+                ),
+                "releve_json": (
+                    json_pour_script({"labels": e["labels"], "hors_ligne": e["hors_ligne"], **e["releve"]})
+                    if e["releve"] else None
+                ),
             }
             for e in ctx["top5"]
         ]
@@ -2488,28 +2513,64 @@ def construire_options_trajet(df_pour_trajets, df_complet, filtre_jour_retard):
     return options
 
 
-def calculer_escalier(trajet, ordre_gares, position_gare, start_date, horaires_par_gare):
-    """Porte _render_train_escalier (viewer.py:2113-2158) : dernière valeur
-    connue par gare, jugée "figée" (déjà passée) ou non par rapport au tout
-    dernier relevé du trajet."""
-    dernier_poll_trajet = pd.to_datetime(trajet["poll_time"]).max()
-    dernieres = trajet.sort_values("poll_time").groupby("gare").last()
-
+def _construire_points_figes(ordre_gares, position_gare, start_date, horaires_par_gare, dernier_poll, valeur_gare):
+    """Factorise la partie commune à calculer_escalier/calculer_dernier_releve
+    (audit de nettoyage, 2026-08-17 : ces deux fonctions ne différaient que
+    par la source du retard par gare) : pour chaque gare de l'ordre donné,
+    récupère son retard via valeur_gare(gare) (None/NaN si non disponible —
+    la gare est alors simplement absente du tracé), calcule "figé" par
+    comparaison au dernier poll du trajet, puis wrap en {points, runs}
+    (voir _runs_json)."""
     points = []
     for gare in ordre_gares:
-        if gare not in dernieres.index:
-            continue
-        retard = dernieres.loc[gare, "retard_min"]
-        if pd.isna(retard):
+        retard = valeur_gare(gare)
+        if retard is None or pd.isna(retard):
             continue
         passage_estime = estimer_passage_reel(horaires_par_gare.get(gare), start_date, retard)
-        fige = passage_estime is not None and passage_estime <= dernier_poll_trajet
+        fige = passage_estime is not None and passage_estime <= dernier_poll
         points.append((position_gare[gare], round(float(retard), 1), bool(fige)))
 
     return {
         "points": [{"x": x, "y": y, "fige": f} for x, y, f in points],
         "runs": _runs_json(points),
     }
+
+
+def calculer_escalier(trajet, ordre_gares, position_gare, start_date, horaires_par_gare):
+    """Porte _render_train_escalier (viewer.py:2113-2158) : dernière valeur
+    connue par gare, jugée "figée" (déjà passée) ou non par rapport au tout
+    dernier relevé du trajet."""
+    dernier_poll_trajet = pd.to_datetime(trajet["poll_time"]).max()
+    dernieres = trajet.sort_values("poll_time").groupby("gare").last()
+    return _construire_points_figes(
+        ordre_gares, position_gare, start_date, horaires_par_gare, dernier_poll_trajet,
+        lambda gare: dernieres.loc[gare, "retard_min"] if gare in dernieres.index else None,
+    )
+
+
+def calculer_dernier_releve(trajet, ordre_gares, position_gare, start_date, horaires_par_gare):
+    """Porte le tracé du Top 5 de generer_rapport.py (rapport PDF) : PAS
+    l'Escalier ci-dessus (valeur tenue jusqu'à la gare suivante), mais
+    uniquement le TOUT DERNIER relevé de la circulation — un point par gare
+    réellement observée à ce relevé précis, reliées par de vraies
+    diagonales (pas de palier) ; une gare non observée à ce relevé (poll
+    manqué, gare hors ligne jamais interrogée...) n'apparaît simplement
+    pas, plutôt que d'être comblée par une valeur d'un relevé plus ancien
+    comme le ferait l'Escalier. Demande explicite de l'utilisateur,
+    2026-08-17 : le Top 5 web doit reproduire ce rendu, pas celui de
+    "Suivi d'un train"."""
+    trajet = trajet.copy()
+    trajet["poll_time"] = pd.to_datetime(trajet["poll_time"])
+    dernier_poll = trajet["poll_time"].max()
+    snapshot = trajet[trajet["poll_time"] == dernier_poll]
+
+    def valeur_gare(gare):
+        lignes_gare = snapshot[snapshot["gare"] == gare]
+        return lignes_gare["retard_min"].iloc[0] if not lignes_gare.empty else None
+
+    return _construire_points_figes(
+        ordre_gares, position_gare, start_date, horaires_par_gare, dernier_poll, valeur_gare,
+    )
 
 
 def calculer_detail(trajet, ordre_gares, position_gare, start_date, horaires_par_gare):

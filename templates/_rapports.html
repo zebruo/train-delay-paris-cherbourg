@@ -68,19 +68,24 @@
         <script>
             dessinerPctParJour({{ rapport_graph_pct_jour_json | safe }});
             dessinerCumuleJour({{ rapport_graph_cumule_jour_json | safe }});
-            dessinerBarre("rapport_gare", {{ rapport_graph_gare_json | safe }});
-            dessinerBarre("rapport_jour_semaine", {{ rapport_graph_jour_semaine_json | safe }});
+            // Mémorisées explicitement (contrairement à dessinerJourHeure,
+            // qui le fait elle-même sous window._donneesJourHeure) : Rapports
+            // appelle dessinerBarre directement pour ces 2-là (voir
+            // jour_heure.js), basculerTheme (base.html) a besoin de ces
+            // données pour redessiner au changement de thème.
+            window._donneesRapportGare = {{ rapport_graph_gare_json | safe }};
+            window._donneesRapportJourSemaine = {{ rapport_graph_jour_semaine_json | safe }};
+            dessinerBarre("rapport_gare", window._donneesRapportGare);
+            dessinerBarre("rapport_jour_semaine", window._donneesRapportJourSemaine);
         </script>
     {% else %}
         {% if rapport_top5 %}
+            <p class="rapport-titre-section">Évolution du retard gare par gare des 5 circulations les plus perturbées</p>
             <div class="grille-top5">
                 {% for entree in rapport_top5 %}
                     <div class="top5-carte">
-                        <p class="top5-entete">
-                            Train {{ entree.train }}{% if entree.sens %} — {{ entree.sens }}{% endif %}
-                            — {{ entree.retard_max }} min
-                        </p>
-                        {% if entree.escalier_json %}
+                        <p class="top5-entete">{{ entree.titre }}</p>
+                        {% if entree.releve_json %}
                             <div id="top5-plot-{{ loop.index0 }}"></div>
                         {% else %}
                             <p class="info">Trajet théorique introuvable dans le référentiel actuel.</p>
@@ -90,8 +95,8 @@
             </div>
             <script>
                 {% for entree in rapport_top5 %}
-                    {% if entree.escalier_json %}
-                        dessinerTop5({{ loop.index0 }}, {{ entree.escalier_json | safe }});
+                    {% if entree.releve_json %}
+                        dessinerTop5({{ loop.index0 }}, {{ entree.releve_json | safe }});
                     {% endif %}
                 {% endfor %}
             </script>

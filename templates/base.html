@@ -312,6 +312,29 @@
             if (document.getElementById("jh-jour_moyenne") && window._donneesJourHeure) {
                 dessinerJourHeure(window._donneesJourHeure);
             }
+            // Onglet Rapports (rapports.js) — même oubli déjà rencontré pour
+            // Graphique/Suivi d'un train/Par jour-heure ci-dessus (demande de
+            // l'utilisateur, 2026-08-17) : chacun de ses graphiques Plotly
+            // doit être redessiné explicitement au changement de thème.
+            if (document.getElementById("rapport-pct-jour") && window._donneesRapportPctJour) {
+                dessinerPctParJour(window._donneesRapportPctJour);
+            }
+            if (document.getElementById("rapport-cumule-jour") && window._donneesRapportCumuleJour) {
+                dessinerCumuleJour(window._donneesRapportCumuleJour);
+            }
+            if (document.getElementById("jh-rapport_gare") && window._donneesRapportGare) {
+                dessinerBarre("rapport_gare", window._donneesRapportGare);
+            }
+            if (document.getElementById("jh-rapport_jour_semaine") && window._donneesRapportJourSemaine) {
+                dessinerBarre("rapport_jour_semaine", window._donneesRapportJourSemaine);
+            }
+            if (window._donneesRapportTop5) {
+                Object.keys(window._donneesRapportTop5).forEach((indice) => {
+                    if (document.getElementById("top5-plot-" + indice)) {
+                        dessinerTop5(indice, window._donneesRapportTop5[indice]);
+                    }
+                });
+            }
         }
 
         // Reflète le thème effectif (choix enregistré, sinon préférence

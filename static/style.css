@@ -668,7 +668,7 @@ de l'utilisateur, 2026-08-14. */
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    padding: 0.5rem 1.5rem;
+    padding: 0.4rem 1.5rem;
     display: flex;
     flex-direction: column;
 }
@@ -885,9 +885,10 @@ ajoutée le 2026-08-17 (même besoin). */
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: 1rem;
     font-size: 0.75rem;
-    justify-content: space-around;
+    justify-content: center;
+    margin-bottom: 0.5rem;
 }
 
 /* .champ a son propre font-size (0.85rem), qui l'emporte sur l'héritage
@@ -959,16 +960,27 @@ onglet). */
     margin: 0.3rem 0;
 }
 
+/* En-tête de la section Top 5 — centré, comme ax_entete_circulations.text
+(ha="center") côté generer_rapport.py (rapport PDF). */
+.rapport-titre-section {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+    margin: 0.6rem 0 0.6rem;
+}
+
 .zone-alertes-rapport {
     max-height: 30vh;
 }
 
-/* Top 5 (quotidien/hebdomadaire) : une carte par circulation, mini-escalier
-compact — bien plus petit que #train-plot (vue détaillée d'un seul train),
-d'où une hauteur fixe modeste plutôt que les 65vh de .zone-train. */
+/* Top 5 (quotidien/hebdomadaire) : une carte par circulation, chacune sur
+toute la largeur (1 colonne, empilées) — demande explicite de l'utilisateur,
+2026-08-17, même disposition en pleine largeur que #train-plot (Suivi d'un
+train), plafonnée à 45vh plutôt que ses 65vh : ce sont 5 mini-graphiques
+d'aperçu à la suite, pas une vue détaillée unique occupant tout l'écran. */
 .grille-top5 {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    grid-template-columns: 1fr;
     gap: 1rem;
 }
 
@@ -979,13 +991,15 @@ d'où une hauteur fixe modeste plutôt que les 65vh de .zone-train. */
 }
 
 .top5-entete {
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     font-weight: 600;
     margin: 0 0 0.3rem;
+    text-align: center;
 }
 
 .grille-top5 [id^="top5-plot-"] {
-    height: 220px;
+    height: 45vh;
+    min-height: 280px;
 }
 
 .zone-travaux {

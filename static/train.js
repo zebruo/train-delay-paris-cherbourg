@@ -188,7 +188,7 @@ function dessinerTrain(donnees) {
         // de l'utilisateur, 2026-08-09.
         Plotly.newPlot("train-plot", traces, layout, { responsive: true, displaylogo: false, displayModeBar: false, showTips: false })
             .then((gd) => {
-                griserGaresHorsLigne(donnees.hors_ligne);
+                griserGaresHorsLigne("train-plot", donnees.hors_ligne);
                 // Un clic sur la légende (masquer/afficher un relevé) déclenche
                 // en interne un restyle qui régénère les <text> de l'axe X,
                 // effaçant le style posé une seule fois ci-dessus — repéré par
@@ -197,18 +197,21 @@ function dessinerTrain(donnees) {
                 // déclenche après CHAQUE redessin, peu importe la cause (clic
                 // légende, zoom...), donc plus fiable qu'un événement ciblé sur
                 // la légende spécifiquement.
-                gd.on("plotly_afterplot", () => griserGaresHorsLigne(donnees.hors_ligne));
+                gd.on("plotly_afterplot", () => griserGaresHorsLigne("train-plot", donnees.hors_ligne));
             });
     });
 }
 
 // Gares hors ligne Paris-Cherbourg (trains de jonction) grisées, comme
-// viewer.py (tick.set_color("#999999")) — pas de mise en forme pseudo-HTML
-// disponible sur ticktext dans ce bundle Plotly (testé, sans effet), donc
-// stylé directement sur le SVG une fois le graphique posé.
-function griserGaresHorsLigne(horsLigne) {
+// viewer.py/generer_rapport.py (tick.set_color("#999999")) — pas de mise en
+// forme pseudo-HTML disponible sur ticktext dans ce bundle Plotly (testé,
+// sans effet), donc stylé directement sur le SVG une fois le graphique
+// posé. idConteneur paramétré (pas juste "train-plot" en dur) : réutilisée
+// par le Top 5 de l'onglet Rapports (rapports.js, un id "top5-plot-N" par
+// carte), demande explicite de l'utilisateur, 2026-08-17.
+function griserGaresHorsLigne(idConteneur, horsLigne) {
     if (!horsLigne) return;
-    const ticks = document.querySelectorAll("#train-plot .xaxislayer-above .xtick text");
+    const ticks = document.querySelectorAll("#" + idConteneur + " .xaxislayer-above .xtick text");
     ticks.forEach((tick, i) => {
         if (horsLigne[i]) tick.style.fill = "#999999";
     });
