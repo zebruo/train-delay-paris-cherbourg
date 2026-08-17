@@ -46,3 +46,5 @@ ventilo-icon.png
 # Outil personnel de contrôle de la VPS (état/redémarrage/logs), sans lien
 # avec l'appli elle-même
 vps_control.py
+diag_vps.svg
+diag_vps.png
