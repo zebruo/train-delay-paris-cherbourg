@@ -38,6 +38,7 @@ from formatting import (
     choisir_variante,
     cle_circulation,
     derniers_par_passage,
+    derniers_par_passage_avec_date,
     duree_theorique,
     estimer_passage_reel,
     format_bool_oui_non,
@@ -1857,6 +1858,64 @@ def _moyenne_retard_par_categorie_sql(connexion, colonne_categorie, ordre):
     ).fetchall()
     stats = pd.DataFrame(lignes, columns=["categorie", "moyenne", "n"]).set_index("categorie")
     return stats.reindex(ordre) if ordre is not None else stats
+
+
+def _construire_jours_periode(debut_local, fin_local):
+    """Un jour par entrée, de minuit local (Paris) à minuit local — PAS
+    aligné sur la borne 2h de la période elle-même (calculer_periode) :
+    repère purement calendaire ("jour par jour"), différent du repère
+    "cycle 2h→2h" utilisé pour découper la période globale. Même
+    normalize() que generer_rapport.py — inclusive="left" car fin_local
+    (minuit du jour suivant le dernier jour complet) ne doit pas devenir
+    un jour à part entière."""
+    return pd.date_range(debut_local.normalize(), fin_local.normalize(), freq="D", inclusive="left")
+
+
+def _pct_et_cumule_par_jour_sql(connexion, debut_local, fin_local):
+    """(% perturbées, retard cumulé en heures) jour par jour calendaire
+    (heure locale Paris) — porte les 2 graphiques mensuels "% perturbées
+    par jour"/"retard cumulé croissant" de generer_rapport.py.
+
+    Le bucketing par jour local est DST-sensible (un jour de changement
+    d'heure ne fait pas 24h) : SQLite n'a pas de vraie base de fuseaux
+    horaires pour le faire correctement en SQL pur. Plutôt que de
+    réimplémenter la logique pandas de generer_rapport.py (cle_circulation
+    + derniers_par_passage_avec_date, déjà présentes et testées), les
+    lignes de rapport_filtre — déjà bornées à la période et aux 11 gares
+    de la ligne, jamais la table observations complète — sont rechargées
+    dans un petit DataFrame et passées telles quelles à ces mêmes
+    fonctions : garantit un résultat identique par construction plutôt que
+    par vérification a posteriori d'une 2e implémentation parallèle.
+    Suppose rapport_filtre déjà matérialisée (_materialiser_rapport_filtre).
+    """
+    jours_periode = _construire_jours_periode(debut_local, fin_local)
+    lignes = connexion.execute(
+        "SELECT poll_time, gare, trip_id, start_date, retard_min FROM rapport_filtre",
+    ).fetchall()
+    if not lignes:
+        pct_par_jour = pd.Series(float("nan"), index=jours_periode, dtype=float)
+        cumule_par_jour_h = pd.Series(0.0, index=jours_periode, dtype=float)
+        return pct_par_jour, cumule_par_jour_h
+
+    df = pd.DataFrame(lignes, columns=["poll_time", "gare", "trip_id", "start_date", "retard_min"])
+    df["poll_time"] = pd.to_datetime(df["poll_time"])
+
+    def _pct_perturbees(g):
+        circ = cle_circulation(g)
+        tot = circ.nunique()
+        return 100 * circ[g["retard_min"] > 0].nunique() / tot if tot else float("nan")
+
+    jour = df["poll_time"].dt.tz_convert(PARIS_TZ).dt.normalize()
+    pct_par_jour = df.groupby(jour).apply(_pct_perturbees, include_groups=False)
+    pct_par_jour = pct_par_jour.astype(float).reindex(jours_periode)
+
+    derniers_avec_date = derniers_par_passage_avec_date(df)
+    derniers_avec_date = derniers_avec_date[derniers_avec_date["retard_min"] > 0]
+    jour_dernier = derniers_avec_date["poll_time"].dt.tz_convert(PARIS_TZ).dt.normalize()
+    cumule_par_jour_min = derniers_avec_date.groupby(jour_dernier)["retard_min"].sum()
+    cumule_par_jour_h = cumule_par_jour_min.reindex(jours_periode, fill_value=0.0).astype(float).cumsum() / 60
+
+    return pct_par_jour, cumule_par_jour_h
 
 
 def calculer_contexte_travaux(alertes_df, alertes_actif):
