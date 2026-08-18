@@ -494,7 +494,7 @@ def generer(nom_periode, maintenant=None):
                   fontsize=15, fontweight="bold", va="top", ha="center")
     ax_titre.text(0.5, 0.15,
                   f"({texte_periode_rapport(nom_periode, debut_local, fin_local)}"
-                  f"   ·   généré le {maintenant_local.strftime('%d/%m/%Y à %Hh%M')})",
+                  f"   ·   créé le {maintenant_local.strftime('%d/%m/%Y à %Hh%M')})",
                   fontsize=9, color="#555", va="top", ha="center")
 
     ax_stats = fig.add_subplot(gs[1, :])
