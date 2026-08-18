@@ -57,7 +57,11 @@ function layoutBaseRapport(titre, ylabel, maxY, plancherPas) {
         showlegend: false,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
-        font: { color: couleurTheme("--texte") },
+        // size: 10 — même valeur que dessinerBarre (jour_heure.js), pour que
+        // les 4 graphiques du rapport mensuel (2 ici + 2 via dessinerBarre)
+        // partagent la même taille de légendes/graduations — demande
+        // explicite de l'utilisateur, 2026-08-18.
+        font: { size: 10, color: couleurTheme("--texte") },
     };
 }
 

@@ -136,7 +136,13 @@ function dessinerBarre(cle, donnees) {
         showlegend: false,
         paper_bgcolor: "rgba(0,0,0,0)",
         plot_bgcolor: "rgba(0,0,0,0)",
-        font: { color: texte },
+        // size: 10 — légendes/graduations trop grandes par défaut (repéré
+        // par l'utilisateur, 2026-08-18, sur les graphiques mensuels de
+        // l'onglet Rapports, qui réutilisent dessinerBarre pour "retard
+        // moyen par gare"/"par jour de semaine") ; même valeur appliquée à
+        // l'onglet Par jour/heure, qui appelle aussi cette fonction pour
+        // ses 6 graphiques, pour rester cohérent entre les deux.
+        font: { size: 10, color: texte },
     };
     if (config.xlabel) {
         layout.xaxis.title = { text: config.xlabel };
