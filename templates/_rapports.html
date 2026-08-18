@@ -11,6 +11,11 @@
                 {% endfor %}
             </select>
         </div>
+        {% if rapport_pdf_disponible %}
+            <a class="bouton-telecharger-rapport" href="/rapports/{{ rapports_periode }}/telecharger"
+               download aria-label="Télécharger le PDF"
+               title="Télécharger le PDF complet de cette période">⬇</a>
+        {% endif %}
         <p class="info stat-graphique">{{ rapport_periode_texte }}</p>
     </div>
 

@@ -32,3 +32,4 @@ echo "$SORTIE"
 CHEMIN_LOCAL=$(echo "$SORTIE" | sed -n 's/^Rapport généré : //p')
 
 ./envoyer_rapport_nas_pi.sh "$CHEMIN_LOCAL"
+./envoyer_rapport_vps_pi.sh "$PERIODE" "$CHEMIN_LOCAL"

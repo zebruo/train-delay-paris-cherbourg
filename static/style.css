@@ -245,6 +245,29 @@ h1 {
     border-color: var(--accent);
 }
 
+/* Même recette visuelle que #bouton-aide/#bouton-parametres ci-dessus, mais
+   sans position: absolute — élément normal du flex .ligne-periode (voir
+   plus bas), qui gère déjà l'espacement via gap. */
+.bouton-telecharger-rapport {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8rem;
+    height: 1.8rem;
+    border: 1px solid var(--bordure);
+    border-radius: 0.4rem;
+    background: var(--fond-secondaire);
+    color: var(--texte);
+    font-size: 1rem;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.bouton-telecharger-rapport:hover {
+    border-color: var(--accent);
+}
+
 #menu-parametres {
     position: fixed;
     top: 2.5rem;

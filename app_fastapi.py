@@ -25,8 +25,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 import pandas as pd
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -61,6 +61,12 @@ from perturbations import charger_alertes, charger_evenements
 from verifier_gtfs import charger_journal
 
 OBSERVATIONS_DB = "observations.db"
+
+# Copies à nom fixe des PDF (poussées par le Pi via envoyer_rapport_vps_pi.sh,
+# écrasées à chaque nouvelle génération, pas d'historique ici) — pour le
+# bouton de téléchargement de l'onglet "Rapports" ; cette appli ne génère
+# jamais elle-même de PDF (voir README, section Architecture).
+RAPPORTS_PDF_DIR = "rapports"
 
 # Fichiers locaux écrits directement par la collecte tournant sur cette même
 # machine (collect_alertes.py, perturbations.py, verifier_gtfs.py) — plus de
@@ -796,6 +802,12 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
         rapports_periode = request.query_params.get("rapports_periode") or "quotidien"
         contexte["rapports_periode"] = rapports_periode
         contexte["rapports_periode_options"] = ["quotidien", "hebdomadaire", "mensuel"]
+        # Masque le bouton de téléchargement tant que le Pi n'a pas encore
+        # poussé de copie pour cette période (ex: juste après un déploiement,
+        # avant le premier cron) plutôt que de proposer un lien mort.
+        contexte["rapport_pdf_disponible"] = os.path.isfile(
+            os.path.join(RAPPORTS_PDF_DIR, f"{rapports_periode}.pdf")
+        )
         connexion_rapport = sqlite3.connect(OBSERVATIONS_DB)
         try:
             contexte.update(calculer_contexte_rapport_pour_affichage(connexion_rapport, rapports_periode))
@@ -2776,5 +2788,17 @@ def index(request: Request, gare: str = "Toutes", train: str = "Tous", sens: str
 def contenu(request: Request, gare: str = "Toutes", train: str = "Tous", sens: str = "Tous"):
     contexte = construire_contexte(request, gare, train, sens)
     return templates.TemplateResponse(request, "_contenu_reponse.html", contexte)
+
+
+@app.get("/rapports/{periode}/telecharger")
+def telecharger_rapport(periode: str):
+    """Sert la copie à nom fixe poussée par le Pi (envoyer_rapport_vps_pi.sh)
+    — cette appli ne génère jamais elle-même de PDF, voir RAPPORTS_PDF_DIR."""
+    if periode not in ("quotidien", "hebdomadaire", "mensuel"):
+        raise HTTPException(status_code=404)
+    chemin = os.path.join(RAPPORTS_PDF_DIR, f"{periode}.pdf")
+    if not os.path.isfile(chemin):
+        raise HTTPException(status_code=404)
+    return FileResponse(chemin, media_type="application/pdf", filename=f"rapport_{periode}.pdf")
 
 
