@@ -1006,8 +1006,12 @@ onglet). */
 /* Top 5 (quotidien/hebdomadaire) : une carte par circulation, chacune sur
 toute la largeur (1 colonne, empilées) — demande explicite de l'utilisateur,
 2026-08-17, même disposition en pleine largeur que #train-plot (Suivi d'un
-train), plafonnée à 45vh plutôt que ses 65vh : ce sont 5 mini-graphiques
-d'aperçu à la suite, pas une vue détaillée unique occupant tout l'écran. */
+train), mais nettement plus bas que ses 65vh : ce sont 5 mini-graphiques
+d'aperçu à la suite, pas une vue détaillée unique occupant tout l'écran.
+32vh (au lieu de 45vh initialement) : encore un peu trop haut vu les 5
+empilés à la suite — ramené à la même valeur que .grille-jour-heure > div
+ci-dessus, déjà le repère du projet pour un graphique secondaire compact,
+demande explicite de l'utilisateur, 2026-08-18. */
 .grille-top5 {
     display: grid;
     grid-template-columns: 1fr;
@@ -1028,8 +1032,8 @@ d'aperçu à la suite, pas une vue détaillée unique occupant tout l'écran. */
 }
 
 .grille-top5 [id^="top5-plot-"] {
-    height: 45vh;
-    min-height: 280px;
+    height: 32vh;
+    min-height: 220px;
 }
 
 .zone-travaux {
