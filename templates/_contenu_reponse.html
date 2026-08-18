@@ -12,7 +12,7 @@
     <span id="badge-travaux" hx-swap-oob="true">{{ libelle_travaux }}</span>
 {% endif %}
 {% if frise is defined %}
-    <div id="frise-contenu" hx-swap-oob="true">
+    <div id="frise-contenu" hx-swap-oob="true" {% if vue == "rapports" %}style="display:none"{% endif %}>
         {% include "_frise.html" %}
     </div>
 {% endif %}

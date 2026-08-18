@@ -680,11 +680,11 @@ def calculer_contexte_frise(df_avant_retard, vue, trajet_choisi):
     nb_releves = int(df_avant_retard["retard_min"].count())
     tooltip = (
         "Retard moyen par relevé propre à chaque gare ≠ du « Retard moyen par relevé » "
-        "affiché en haut, qui suit les filtres actifs, alors que cette frise "
-        f"(calculée sur {nb_releves} relevés) reste toujours limitée aux 11 gares "
-        "de la ligne et ignore « Limiter aux trains avec retard ». Point gris plein : "
-        "aucune donnée pour cette gare sous les filtres actuels. Point creux (Suivi "
-        "d'un train uniquement) : gare que le train sélectionné ne dessert pas du tout."
+        "affiché en haut, qui suit les filtres actifs sur tout l'historique, alors que "
+        f"cette frise (calculée sur {nb_releves} relevés, limités aux 7 derniers jours) "
+        "reste toujours limitée aux 11 gares de la ligne et ignore « Limiter aux trains "
+        "avec retard ». Gris plein : aucune donnée pour cette gare sous les filtres "
+        "actuels. Contour grisé : gare que le train sélectionné ne dessert pas du tout."
     )
 
     return {"frise": {

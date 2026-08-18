@@ -156,7 +156,7 @@
         {% include "_vue_dispatch.html" %}
     </main>
     <footer id="pied-de-page">
-        <div id="frise-contenu">
+        <div id="frise-contenu" {% if vue == "rapports" %}style="display:none"{% endif %}>
             {% include "_frise.html" %}
         </div>
     </footer>
