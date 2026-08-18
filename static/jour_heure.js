@@ -107,6 +107,12 @@ function dessinerBarre(cle, donnees) {
             // entre étiquettes voisines — repéré en testant l'onglet
             // Rapports en direct (Playwright), 2026-08-17.
             tickangle: config.tickangle || 0,
+            // automargin : "Paris Saint-Lazare" (rapport_gare, tickangle -30)
+            // débordait de la marge fixe (margin.l, plus bas) et se faisait
+            // tronquer à gauche — repéré par l'utilisateur sur capture
+            // d'écran, 2026-08-18. Même correctif déjà appliqué au Top 5
+            // (dessinerTop5, rapports.js) pour le même type de débordement.
+            automargin: true,
         },
         yaxis: {
             title: { text: config.ylabel }, rangemode: "tozero",
