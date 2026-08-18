@@ -1955,10 +1955,15 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
 
     Sélection : réutilise derniers_complet_periode, déjà matérialisée par
     _materialiser_circulations_arrivees_periode (dernier retard connu par
-    (trip_id, start_date, gare), TOUTES gares confondues — le retard max
-    d'une circulation peut survenir hors des 11 gares de la ligne, ex:
-    Coutances, Granville) — aucun nouveau scan d'observations. Restreint à
-    circulations_arrivees_periode comme le reste de l'onglet.
+    (trip_id, start_date, gare), TOUTES gares confondues) — aucun nouveau
+    scan d'observations. Restreint à circulations_arrivees_periode comme le
+    reste de l'onglet. Classée sur retard_max_ligne (restreint aux 11 gares
+    de la ligne), PAS retard_max (toutes gares, gardé pour le titre affiché
+    plus bas) : un retard survenu uniquement hors ligne (ex: Coutances,
+    Granville) n'a été ressenti par aucun voyageur Paris-Cherbourg, il ne
+    doit donc pas, à lui seul, faire entrer une circulation dans le
+    classement — même principe que generer_rapport.py, demande explicite de
+    l'utilisateur, 2026-08-18.
 
     Par circulation retenue (au plus 5) : calculer_dernier_releve a besoin
     du trajet complet de CETTE circulation — une petite requête SQL dédiée
@@ -1969,28 +1974,42 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
     matérialisées avant cet appel.
 
     ORDER BY ... trip_id ASC : 3e clé nécessaire pour reproduire EXACTEMENT
-    le tri de generer_rapport.py sur une égalité (retard_max, start_date) —
-    infos.sort_values(["retard_max","start_date"], ascending=[False,False])
-    est un tri stable sur un DataFrame déjà groupé par (trip_id, start_date)
-    croissant (groupby(sort=True), le défaut) : pour une égalité totale, le
-    résidu d'ordre préservé est trip_id croissant. Sans cette 3e clé,
-    l'ordre SQL des égalités est indéterminé et peut differer du rapport
-    PDF sur QUEL train exact occupe le 5e rang — repéré en comparant aux
-    vrais résultats sur la période hebdomadaire (2 trains à 70 min à la
-    frontière du top 5)."""
+    le tri de generer_rapport.py sur une égalité (retard_max_ligne,
+    start_date) — infos.sort_values(["retard_max_ligne","start_date"],
+    ascending=[False,False]) est un tri stable sur un DataFrame déjà groupé
+    par (trip_id, start_date) croissant (groupby(sort=True), le défaut) :
+    pour une égalité totale, le résidu d'ordre préservé est trip_id
+    croissant. Sans cette 3e clé, l'ordre SQL des égalités est indéterminé
+    et peut differer du rapport PDF sur QUEL train exact occupe le 5e rang —
+    repéré en comparant aux vrais résultats sur la période hebdomadaire
+    (2 trains à 70 min à la frontière du top 5)."""
+    # Classement (ORDER BY) sur retard_max_ligne, restreint aux 11 gares de
+    # la ligne — pas sur retard_max (toutes gares, gardé pour l'affichage
+    # ci-dessous, titre inclus) : un retard survenu uniquement hors ligne
+    # (Coutances, Granville...) n'a été ressenti par aucun voyageur
+    # Paris-Cherbourg, il ne doit donc pas, à lui seul, faire entrer une
+    # circulation dans le top 5 — même principe que generer_rapport.py
+    # (retard_max_ligne_par_circulation), demande explicite de
+    # l'utilisateur, 2026-08-18, vérifié sur le rapport hebdomadaire réel :
+    # 3 circulations sur 5 changeaient avec ce critère. NULLs (circulation
+    # sans aucun retard connu sur la ligne) triés en dernier par SQLite en
+    # ORDER BY DESC, même comportement que le sort_values pandas côté PDF.
+    gares_placeholders = ",".join("?" * len(GARES_LIGNE_ORDRE))
     lignes = connexion.execute(
-        """
-        SELECT trip_id, start_date, MAX(retard_min) AS retard_max
+        f"""
+        SELECT trip_id, start_date, MAX(retard_min) AS retard_max,
+               MAX(CASE WHEN gare IN ({gares_placeholders}) THEN retard_min END) AS retard_max_ligne
         FROM derniers_complet_periode
         WHERE (trip_id || '|' || start_date) IN (SELECT cle FROM circulations_arrivees_periode)
         GROUP BY trip_id, start_date
-        ORDER BY retard_max DESC, start_date DESC, trip_id ASC
+        ORDER BY retard_max_ligne DESC, start_date DESC, trip_id ASC
         LIMIT 5
         """,
+        list(GARES_LIGNE_ORDRE),
     ).fetchall()
 
     top5 = []
-    for trip_id, start_date, retard_max in lignes:
+    for trip_id, start_date, retard_max, _retard_max_ligne in lignes:
         variante = choisir_variante(variantes, calendrier, trip_id, start_date)
         ordre_gares = variante["gares"] if variante else []
         train = trip_id.split(":", 1)[0]

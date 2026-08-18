@@ -339,24 +339,39 @@ def generer(nom_periode, maintenant=None):
     )
     label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
 
-    # Sélection + retard max calculés sur df_periode_complet (le trajet
-    # complet, toutes gares), pas sur df_periode (restreint aux 11 gares de
-    # la ligne) : sinon un pic de retard survenu sur une gare hors ligne
-    # (ex: Coutances, Granville) resterait invisible ici alors qu'il est
-    # bien visible sur le mini-graphique de cette même circulation (même
-    # bug déjà rencontré et corrigé dans viewer.py, voir mémoire du projet).
-    # Retard max basé sur la dernière valeur connue par passage (pas le
-    # maximum brut sur tous les relevés, même correctif que plus haut) :
-    # sinon les 5 circulations "les plus perturbées" mises en avant dans le
-    # rapport pourraient être choisies sur une prédiction ponctuelle depuis
-    # corrigée, pas sur un vrai retard confirmé — repéré par l'utilisateur,
-    # 2026-08-03.
+    # Retard max AFFICHÉ (titre + échelle Y, plus bas) calculé sur
+    # df_periode_complet (trajet complet, toutes gares) : sinon un pic de
+    # retard survenu sur une gare hors ligne (ex: Coutances, Granville)
+    # resterait invisible dans le titre alors qu'il est bien visible sur le
+    # mini-graphique de cette même circulation (même bug déjà rencontré et
+    # corrigé dans viewer.py, voir mémoire du projet). Retard max basé sur
+    # la dernière valeur connue par passage (pas le maximum brut sur tous
+    # les relevés, même correctif que plus haut) : sinon les 5 circulations
+    # "les plus perturbées" mises en avant dans le rapport pourraient être
+    # choisies sur une prédiction ponctuelle depuis corrigée, pas sur un
+    # vrai retard confirmé — repéré par l'utilisateur, 2026-08-03.
+    #
+    # Sélection (quelles 5 circulations entrent dans le classement) basée
+    # séparément sur retard_max_ligne, restreint à df_periode (les 11 gares
+    # de la ligne) : un retard survenu uniquement hors ligne (Coutances,
+    # Granville, voire une tout autre branche du même train physique)
+    # n'a été ressenti par aucun voyageur Paris-Cherbourg — il ne doit donc
+    # pas, à lui seul, faire entrer une circulation dans le top 5, même s'il
+    # reste visible (grisé) sur son mini-graphique une fois sélectionnée
+    # pour une autre raison — demande explicite de l'utilisateur, 2026-08-18,
+    # vérifié sur le rapport hebdomadaire réel : 3 circulations sur 5
+    # changeaient avec ce critère (Granville/Elbeuf - Saint-Aubin/
+    # Dol-de-Bretagne remplacées par Bernay/Bonnières/Gaillon-Aubevoye).
     infos = df_periode_complet.groupby(["trip_id", "start_date"]).agg(train=("train", "first")).reset_index()
     retard_max_par_circulation = derniers_par_passage(df_periode_complet).groupby(
         level=["trip_id", "start_date"]
     ).max().rename("retard_max")
+    retard_max_ligne_par_circulation = derniers_par_passage(df_periode).groupby(
+        level=["trip_id", "start_date"]
+    ).max().rename("retard_max_ligne")
     infos = infos.merge(retard_max_par_circulation, on=["trip_id", "start_date"], how="left")
-    top5 = infos.sort_values(["retard_max", "start_date"], ascending=[False, False]).head(5).copy()
+    infos = infos.merge(retard_max_ligne_par_circulation, on=["trip_id", "start_date"], how="left")
+    top5 = infos.sort_values(["retard_max_ligne", "start_date"], ascending=[False, False]).head(5).copy()
     top5["sens"] = top5.apply(lambda r: trajet_sens(r["trip_id"], r["start_date"], variantes, calendrier), axis=1)
 
     # Bornée aux deux extrémités (pas juste "fin >= début") maintenant que la
