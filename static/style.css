@@ -987,6 +987,7 @@ onglet). */
 .rapport-comparaison {
     font-weight: 600;
     margin: 0.3rem 0;
+    text-align: center;
 }
 
 /* En-tête de la section Top 5 — centré, comme ax_entete_circulations.text
