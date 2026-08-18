@@ -553,8 +553,14 @@ def generer(nom_periode, maintenant=None):
     ax_stats.add_artist(AnnotationBbox(
         boite_stats, (0, 0.97), xycoords="axes fraction", box_alignment=(0, 1), frameon=False,
     ))
+    # Répartition régulière sur les 4 lignes (0.97 → 0.15, 3 intervalles
+    # égaux) — l'ajout de "Gare la + touchée" (sa propre ligne, voir plus
+    # haut) les avait tassées vers le haut (0.97/0.78/0.55) sans retoucher
+    # l'espacement d'origine, pensé pour seulement 3 lignes : interligne
+    # visiblement plus serré qu'entre météo et alertes — repéré par
+    # l'utilisateur, 2026-08-18.
     if texte_pire_gare:
-        ax_stats.text(0, 0.78, texte_pire_gare, fontsize=8, color="#555", va="top", ha="left")
+        ax_stats.text(0, 0.70, texte_pire_gare, fontsize=8, color="#555", va="top", ha="left")
     if pd.notna(temp_moy):
         texte_meteo = (
             f"Météo sur la période : {temp_moy:.1f}°C en moyenne · "
@@ -562,7 +568,7 @@ def generer(nom_periode, maintenant=None):
         )
     else:
         texte_meteo = "Météo : non disponible sur cette période."
-    ax_stats.text(0, 0.55, texte_meteo, fontsize=8, color="#555", va="top", ha="left")
+    ax_stats.text(0, 0.43, texte_meteo, fontsize=8, color="#555", va="top", ha="left")
     texte_alertes = (
         f"Travaux / alertes sur la période : {len(alertes_periode)} alerte(s) active(s) (détail ci-dessous)."
         if has_alertes else "Travaux / alertes sur la période : aucune alerte connue."
