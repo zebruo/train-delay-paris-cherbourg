@@ -44,8 +44,11 @@ ventilo-icon.svg
 ventilo-icon.png
 
 # Outil personnel de contrôle de la VPS (état/redémarrage/logs), sans lien
-# avec l'appli elle-même
+# avec l'appli elle-même — pi_status.py n'est plus importé par viewer.py
+# depuis le 2026-08-14 (voir son docstring), seulement par vps_control.py :
+# même sort que lui.
 vps_control.py
+pi_status.py
 diag_vps.svg
 diag_vps.png
 
