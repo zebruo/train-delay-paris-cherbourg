@@ -314,7 +314,18 @@ def generer(nom_periode, maintenant=None):
     # pas le maximum brut sur tous les relevés : sinon une prédiction
     # ponctuelle depuis corrigée (ex: 50 min révisés ensuite à 20) resterait
     # affichée comme "le" retard max — repéré par l'utilisateur, 2026-08-03.
-    maximum = derniers.max()
+    # Même motif que calculer_stats_bloc (formatting.py, appli web) pour
+    # retrouver le train responsable, pas seulement la valeur — demande
+    # explicite de l'utilisateur, 2026-08-18. .astype(str) avant .str.
+    # split() : trip_id peut être de type category selon l'origine du
+    # DataFrame, sur laquelle .str.split() renverrait la représentation
+    # texte de la liste plutôt qu'une vraie liste (voir calculer_stats_bloc,
+    # bug déjà rencontré et corrigé ailleurs, 2026-08-14).
+    train_par_passage = derniers.index.get_level_values("trip_id").astype(str).str.split(":").str[0]
+    maximums_par_train = derniers.groupby(train_par_passage).max()
+    retard_max_texte, _ = texte_categorie_maximale(
+        maximums_par_train, "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
+    )
     moyennes_par_gare = df_periode.groupby("gare")["retard_min"].mean()
     # texte_categorie_maximale (formatting.py) : même motif que "Retard max"
     # juste au-dessus et que la barre de stats de l'appli web (calculer_
@@ -528,7 +539,7 @@ def generer(nom_periode, maintenant=None):
         # place, où toute la largeur de la page est disponible.
         ligne2 = (
             f"  · Retard cumulé {heures_cumulees} h {minutes_cumulees:02d} min · "
-            f"retard max {maximum:.0f} min"
+            f"Retard max : {retard_max_texte}"
         )
         texte_pire_gare = f"{label_pire_gare} : {pire_gare}"
     else:
