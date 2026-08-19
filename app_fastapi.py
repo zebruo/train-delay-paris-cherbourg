@@ -929,7 +929,7 @@ def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens, lim
 
     explication_max_retard = (
         "Indique le pic de tous les relevés à cet instant (selon les filtres actifs). "
-        "C'est différent du \"Retard max\" affiché en haut de l'appli, qui est le pire "
+        "C'est différent du \"Retard max\" affiché en haut de l'appli, qui est le plus grand "
         "retard d'un seul train à un instant donné, pas une moyenne."
     )
     explication_max_pct = (
