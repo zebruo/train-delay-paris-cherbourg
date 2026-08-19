@@ -711,7 +711,11 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     indépendante d'observations.csv — voir Travaux/Alertes, qui n'a pas
     besoin des quatre premiers)."""
     limiter_ligne = lire_checkbox(request, "limiter_ligne", True)
-    limiter_retard = lire_checkbox(request, "limiter_retard", True)
+    # False par défaut (décoché) — cochée, cette case donne une vue plus
+    # étroite du trafic (seulement les circulations ayant eu du retard),
+    # pas une vue d'ensemble du trafic réel — demande explicite de
+    # l'utilisateur, 2026-08-19.
+    limiter_retard = lire_checkbox(request, "limiter_retard", False)
     vue = request.query_params.get("vue") or "tableau"
 
     contexte = {

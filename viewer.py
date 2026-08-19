@@ -416,7 +416,11 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             "dans les autres onglets, si coché.",
         )
 
-        self.limiter_retard_var = tk.BooleanVar(value=True)
+        # False par défaut (décoché) — cochée, cette case donne une vue plus
+        # étroite du trafic (seulement les circulations ayant eu du retard),
+        # pas une vue d'ensemble du trafic réel — demande explicite de
+        # l'utilisateur, 2026-08-19, alignée avec le même défaut côté web.
+        self.limiter_retard_var = tk.BooleanVar(value=False)
         self.case_limiter_retard = ttk.Checkbutton(
             filters, text="Limiter aux trains avec retard", variable=self.limiter_retard_var,
             command=self.render,
@@ -1540,7 +1544,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         self.filtre_train_var.set("Tous")
         self.filtre_sens_var.set("Tous")
         self.limiter_ligne_var.set(True)
-        self.limiter_retard_var.set(True)
+        self.limiter_retard_var.set(False)
         self.filtre_jour_retard_var.set(True)
         self.status_var.set("Filtres réinitialisés.")
         self.render()
