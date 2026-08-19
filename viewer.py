@@ -59,6 +59,7 @@ from formatting import (
     load_reference,
     sans_date_trip_id,
     titre_dynamique_jour_heure,
+    trajet_origine_destination,
     trajet_sens,
 )
 from tooltips import SimpleTooltip, SurvolArtistes, TreeviewHeaderTooltips
@@ -796,11 +797,14 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             if ligne["type"] == "trajet_annule":
                 # Un trajet annulé n'a pas de gare renseignée (voir
                 # perturbations.detecter_evenements) — la liaison est dérivée
-                # du référentiel via trajet_sens, comme pour la colonne
-                # "Sens" du Tableau, plutôt qu'un reparsing manuel du
-                # trip_id. Vide si le trajet théorique n'est plus dans le
-                # référentiel actuel (repli déjà géré par trajet_sens).
-                sens = trajet_sens(ligne["trip_id"], self.variantes)
+                # du référentiel via trajet_origine_destination (noms
+                # complets, pas trajet_sens et ses codes abrégés type
+                # "COUTA" — incohérent avec "Arrêt supprimé : Granville"
+                # juste en dessous, repéré par l'utilisateur, 2026-08-19)
+                # plutôt qu'un reparsing manuel du trip_id. Vide si le trajet
+                # théorique n'est plus dans le référentiel actuel (repli déjà
+                # géré par trajet_origine_destination).
+                sens = trajet_origine_destination(ligne["trip_id"], self.variantes)
                 evenement = f"Trajet annulé (entier) : {sens}" if sens else "Trajet annulé (entier)"
             else:
                 evenement = f"Arrêt supprimé : {ligne['gare']}"

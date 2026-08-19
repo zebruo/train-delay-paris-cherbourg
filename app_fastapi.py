@@ -55,6 +55,7 @@ from formatting import (
     load_reference,
     texte_periode_rapport,
     titre_dynamique_jour_heure,
+    trajet_origine_destination,
     trajet_sens,
 )
 from perturbations import charger_alertes, charger_evenements
@@ -2341,11 +2342,14 @@ def calculer_contexte_travaux(alertes_df, alertes_actif):
             # perturbations.detecter_evenements : un trip.schedule_relationship
             # = CANCELED ne liste aucun arrêt un par un dans le flux) — la
             # liaison (origine → destination) est dérivée du référentiel via
-            # trajet_sens plutôt que d'un reparsing manuel du trip_id, comme
-            # pour la colonne "Sens" du Tableau. Vide si le trajet théorique
-            # n'est plus dans le référentiel actuel (repli silencieux déjà
-            # géré par trajet_sens lui-même).
-            sens = trajet_sens(ligne["trip_id"], reference_donnees["variantes"])
+            # trajet_origine_destination (noms complets, pas trajet_sens et
+            # ses codes abrégés type "COUTA" — incohérent avec "Arrêt
+            # supprimé : Granville" juste en dessous, repéré par
+            # l'utilisateur, 2026-08-19) plutôt que d'un reparsing manuel du
+            # trip_id, comme pour la colonne "Sens" du Tableau. Vide si le
+            # trajet théorique n'est plus dans le référentiel actuel (repli
+            # silencieux déjà géré par trajet_origine_destination elle-même).
+            sens = trajet_origine_destination(ligne["trip_id"], reference_donnees["variantes"])
             evenement = f"Trajet annulé (entier) : {sens}" if sens else "Trajet annulé (entier)"
         else:
             evenement = f"Arrêt supprimé : {ligne['gare']}"

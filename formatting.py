@@ -497,6 +497,23 @@ def trajet_sens(trip_id, variantes):
     return f"{origine} → {destination}"
 
 
+def trajet_origine_destination(trip_id, variantes):
+    """Origine et destination d'un trajet en noms complets ('Coutances →
+    Caen'), contrairement à trajet_sens ci-dessus (codes abrégés 'COUTA →
+    CAEN', pensés pour le menu déroulant "Sens" compact) — même structure
+    et repli silencieux (chaîne vide) que trajet_sens. Pour "Trajet annulé"
+    dans Travaux/Alertes, où le nom complet doit rester cohérent avec
+    "Arrêt supprimé : {gare}" juste à côté (lui aussi en nom complet) —
+    repéré par l'utilisateur, 2026-08-19."""
+    liste = variantes.get(sans_date_trip_id(trip_id))
+    if not liste:
+        return ""
+    gares = liste[-1]["gares"]
+    if len(gares) < 2:
+        return ""
+    return f"{format_gare(gares[0])} → {format_gare(gares[-1])}"
+
+
 def load_reference():
     # dtype=str sur service_id : sinon pandas le déduit numérique et perd le
     # zéro-padding (ex. "000399" -> 399), le désynchronisant des clés du
