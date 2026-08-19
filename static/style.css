@@ -1273,3 +1273,36 @@ tr.depart-retard td:nth-child(7) {
 tr.hors-ligne {
     color: #999999;
 }
+
+/* Badge à côté du numéro de train (2e colonne), pas à la place du code
+couleur retard existant (tr.retard-fort/-moyen ci-dessus, sur les colonnes
+Arr./Dép.) — un trajet entièrement annulé garde son dernier retard prédit
+avant l'annulation dans le Tableau (observations.db ne reçoit plus rien
+après, voir calculer_contexte_travaux), sans quoi rien n'y distingue un
+train qui a vraiment circulé d'un train jamais parti — repéré par
+l'utilisateur sur le train 852610, 2026-08-19. */
+.badge-annule {
+    display: inline-block;
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+    border: 1px solid #ef4444;
+    color: #ef4444;
+    font-size: 0.7em;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+/* Bleu (pas rouge comme .badge-annule ci-dessus) : un arrêt ajouté n'est
+pas un problème en soi, contrairement à annulé/supprimé — juste une info
+(le train dessert une gare hors référentiel théorique, voir
+formatting.format_heure_reelle et mémoire du projet). */
+.badge-ajoute {
+    display: inline-block;
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+    border: 1px solid #3b82f6;
+    color: #3b82f6;
+    font-size: 0.7em;
+    font-weight: 600;
+    vertical-align: middle;
+}

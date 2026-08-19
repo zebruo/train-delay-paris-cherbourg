@@ -832,9 +832,20 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
     elif contexte["vue"] == "gtfs":
         contexte.update(calculer_contexte_gtfs(request))
     else:
+        evenements_df = charger_evenements(PERTURBATIONS_FILE)
+        annules = evenements_df[evenements_df["type"] == "trajet_annule"]
+        circulations_annulees = set(zip(annules["trip_id"], annules["start_date"].astype(str)))
+        # Arrêt supprimé : contrairement à un trajet annulé, les autres
+        # gares de la même circulation continuent d'être suivies normalement
+        # — le badge cible donc la (gare, trip_id, start_date) précise, pas
+        # tout le train (voir _construire_lignes_tableau).
+        supprimes = evenements_df[evenements_df["type"] == "arret_supprime"]
+        arrets_supprimes = set(
+            zip(supprimes["trip_id"], supprimes["start_date"].astype(str), supprimes["gare"])
+        )
         contexte.update({
             "entetes": [ENTETES[c] for c in COLONNES],
-            "lignes": construire_lignes_tableau(df_filtre),
+            "lignes": construire_lignes_tableau(df_filtre, circulations_annulees, arrets_supprimes),
         })
 
     # Frise (#pied-de-page, base.html) : comme le badge d'onglet, présente
@@ -2546,15 +2557,19 @@ def _runs_json(points):
     ]
 
 
-def construire_options_trajet(df_pour_trajets, df_complet, filtre_jour_retard):
+def construire_options_trajet(df_pour_trajets, df_complet, filtre_jour_retard, circulations_annulees):
     """Porte _update_trajet_list (viewer.py:1089-1150). df_pour_trajets :
     Gare/Train/Sens seulement, SANS "Limiter aux gares de la ligne" (voir
     filtrer_df(..., appliquer_limite_ligne=False), même règle que
     _filtered_df_pour_trajets) — établit quelles circulations proposer.
     df_complet : non filtré du tout — sert à calculer le vrai retard max de
     chaque circulation, y compris sur une gare hors ligne exclue de
-    df_pour_trajets. Renvoie une liste de (valeur, libellé), valeur =
-    "trip_id|start_date" (aucun des deux ne contient jamais "|")."""
+    df_pour_trajets. circulations_annulees : ensemble de (trip_id,
+    start_date), même construction que construire_lignes_tableau — ajoute
+    "[ANNULÉ]" au libellé pour éviter de sélectionner un trajet dont le
+    graphique s'arrête net sans explication, demande explicite de
+    l'utilisateur, 2026-08-19. Renvoie une liste de (valeur, libellé),
+    valeur = "trip_id|start_date" (aucun des deux ne contient jamais "|")."""
     infos = df_pour_trajets.groupby(["trip_id", "start_date"]).agg(train=("train", "first")).reset_index()
     retard_max_reel = derniers_par_passage(df_complet).groupby(
         level=["trip_id", "start_date"]
@@ -2571,6 +2586,8 @@ def construire_options_trajet(df_pour_trajets, df_complet, filtre_jour_retard):
         trip_id, start_date = row["trip_id"], row["start_date"]
         date_str = _format_start_date(start_date)
         label = f"{format_numero_train(row['train'])} du {date_str} (retard max {row['retard_max']:.0f} min)"
+        if (trip_id, str(start_date)) in circulations_annulees:
+            label += " [ANNULÉ]"
         options.append((f"{trip_id}|{start_date}", label))
     return options
 
@@ -2683,7 +2700,14 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
     (construire_options_trajet), pas sur df_avant_retard/df_filtre."""
     filtre_jour_retard = lire_checkbox(request, "filtre_jour_retard", True)
     df_pour_trajets = filtrer_df(df, gare, train, sens, appliquer_limite_ligne=False)
-    options_trajet = construire_options_trajet(df_pour_trajets, df, filtre_jour_retard)
+    # Même ensemble que le Tableau (construire_lignes_tableau) : sans
+    # marqueur, un trajet annulé sélectionné ici affiche un graphique qui
+    # s'arrête net sans aucune explication — repéré par l'utilisateur,
+    # 2026-08-19.
+    evenements_df = charger_evenements(PERTURBATIONS_FILE)
+    annules = evenements_df[evenements_df["type"] == "trajet_annule"]
+    circulations_annulees = set(zip(annules["trip_id"], annules["start_date"].astype(str)))
+    options_trajet = construire_options_trajet(df_pour_trajets, df, filtre_jour_retard, circulations_annulees)
 
     trajet_demande = request.query_params.get("trajet") or ""
     valeurs_valides = {valeur for valeur, _ in options_trajet}
@@ -2778,10 +2802,27 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
     return contexte
 
 
-def construire_lignes_tableau(df_filtre):
+def construire_lignes_tableau(df_filtre, circulations_annulees, arrets_supprimes):
     """Même construction que app_streamlit.py (300 relevés les plus
     récents, tri stable, ligne vide entre groupes (train, poll_time)
-    différents, couleur calculée AVANT le formatage d'affichage)."""
+    différents, couleur calculée AVANT le formatage d'affichage).
+
+    circulations_annulees : ensemble de (trip_id, start_date) — un trajet
+    entièrement annulé n'a plus aucune ligne fraîche dans observations
+    après l'annulation (voir calculer_contexte_travaux), donc son dernier
+    relevé connu reste affiché ici tel quel, sans rien qui indique qu'il ne
+    circulera pas — juste une prédiction figée, indiscernable d'un train
+    "normal" pour qui consulte seulement cet onglet. Badge "ANNULÉ" ajouté
+    pour lever l'ambiguïté, sans toucher au code couleur retard existant
+    (badge à côté, pas à la place) — repéré par l'utilisateur sur le train
+    852610 (Coutances → Caen), 2026-08-19.
+
+    arrets_supprimes : ensemble de (trip_id, start_date, gare) — même
+    principe, mais un arrêt supprimé isolé (contrairement à un trajet
+    annulé) n'empêche pas les AUTRES gares de la même circulation de
+    continuer à être suivies : le badge "Arrêt supprimé" cible donc la
+    ligne précise (cette gare-là uniquement), pas tout le train — repéré
+    par l'utilisateur sur le train 852820 (Granville), 2026-08-19."""
     recent = df_filtre.tail(300).sort_values("poll_time", ascending=False, kind="stable").reset_index(drop=True)
 
     # .apply(axis=1) convertit les None renvoyés par couleur_ligne() en NaN
@@ -2794,6 +2835,21 @@ def construire_lignes_tableau(df_filtre):
     # incorrect (repéré en construisant un mockup, 2026-08-10).
     couleurs = recent.apply(couleur_ligne, axis=1).fillna("")
     groupes = list(zip(recent["train"], recent["poll_time"]))
+    annule_flags = [
+        (tid, str(sd)) in circulations_annulees for tid, sd in zip(recent["trip_id"], recent["start_date"])
+    ]
+    # AVANT recent["gare"] = recent["gare"].map(format_gare) plus bas :
+    # arrets_supprimes est construit sur les noms de gare bruts (stop_names,
+    # voir perturbations.detecter_evenements), pas encore abrégés ("Saint-"
+    # -> "St-").
+    supprime_flags = [
+        (tid, str(sd), gare) in arrets_supprimes
+        for tid, sd, gare in zip(recent["trip_id"], recent["start_date"], recent["gare"])
+    ]
+    # arret_ajoute : déjà calculé par préparer_donnees (df["arret_ajoute"]) —
+    # pas besoin d'un ensemble séparé, contrairement à annule/supprime (qui
+    # viennent de perturbations_detectees.csv, une source externe).
+    ajoute_flags = list(recent["arret_ajoute"])
 
     recent["poll_time"] = recent["poll_time"].map(format_poll_time)
     recent["train"] = recent["train"].map(format_numero_train)
@@ -2817,6 +2873,9 @@ def construire_lignes_tableau(df_filtre):
             "separateur": False,
             "css_class": couleurs.iloc[i],
             "cellules": table_brut.iloc[i].tolist(),
+            "annule": annule_flags[i],
+            "arret_supprime": supprime_flags[i],
+            "arret_ajoute": ajoute_flags[i],
         })
     return lignes
 

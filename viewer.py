@@ -1279,6 +1279,12 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # pas "du jour", contrairement à ce que "sur" laissait penser).
         self.texte_filtre_jour_retard_var.set(f"Trains du jour en retard uniquement ({len(infos)} trajets)")
 
+        # Même ensemble que le Tableau (_render_table) : sans marqueur, un
+        # trajet annulé sélectionné ici affiche un graphique qui s'arrête
+        # net sans aucune explication — repéré par l'utilisateur, 2026-08-19.
+        annules = self.evenements[self.evenements["type"] == "trajet_annule"]
+        circulations_annulees = set(zip(annules["trip_id"], annules["start_date"].astype(str)))
+
         self.trajet_labels = {}
         # D'abord par retard max (les cas les plus intéressants en premier),
         # puis par date la plus récente pour départager les trajets à retard
@@ -1290,6 +1296,8 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             trip_id, start_date = row["trip_id"], row["start_date"]
             date_str = datetime.strptime(str(start_date), "%Y%m%d").strftime("%d/%m/%Y")
             label = f"{format_numero_train(row['train'])} du {date_str} (retard max {row['retard_max']:.0f} min)"
+            if (trip_id, str(start_date)) in circulations_annulees:
+                label += " [ANNULÉ]"
             self.trajet_labels[label] = (trip_id, start_date)
         options = list(self.trajet_labels.keys())
         self.select_trajet_combo["values"] = options
@@ -1723,6 +1731,21 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         # gares) entre lignes qui partagent le même horodatage — sinon un train
         # capté d'un coup affichait sa dernière gare avant sa première.
         recent = df.tail(300).sort_values("poll_time", ascending=False, kind="stable")
+        # Un trajet entièrement annulé garde son dernier retard prédit avant
+        # l'annulation (observations.db ne reçoit plus rien après, voir le
+        # rendu de l'onglet Travaux) — sans marqueur, rien ne le distingue
+        # d'un train qui a vraiment circulé. Même correctif que côté web
+        # (app_fastapi.construire_lignes_tableau), repéré par l'utilisateur
+        # sur le train 852610, 2026-08-19.
+        annules = self.evenements[self.evenements["type"] == "trajet_annule"]
+        circulations_annulees = set(zip(annules["trip_id"], annules["start_date"].astype(str)))
+        # Arrêt supprimé isolé : contrairement à un trajet annulé, les
+        # autres gares de la même circulation continuent d'être suivies —
+        # ciblé sur la (gare, trip_id, start_date) précise, pas tout le
+        # train. Même correctif que côté web, repéré par l'utilisateur sur
+        # le train 852820 (Granville), 2026-08-19.
+        supprimes = self.evenements[self.evenements["type"] == "arret_supprime"]
+        arrets_supprimes = set(zip(supprimes["trip_id"], supprimes["start_date"].astype(str), supprimes["gare"]))
         dernier_groupe = None
         for _, row in recent.iterrows():
             groupe = (row["train"], row["poll_time"])
@@ -1750,11 +1773,19 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
                 tags.append("retard_moyen")
             elif pd.notna(retard_depart) and retard_depart >= SEUIL_RETARD_MOYEN:
                 tags.append("depart_retard")
+            numero_train = format_numero_train(row["train"])
+            if (row["trip_id"], str(row["start_date"])) in circulations_annulees:
+                numero_train += " [ANNULÉ]"
+            nom_gare = format_gare(row["gare"])
+            if (row["trip_id"], str(row["start_date"]), row["gare"]) in arrets_supprimes:
+                nom_gare += " [ARRÊT SUPPRIMÉ]"
+            elif row.get("arret_ajoute"):
+                nom_gare += " [ARRÊT AJOUTÉ]"
             self.tree.insert("", "end", tags=tuple(tags), values=(
                 format_poll_time(row["poll_time"]),
-                format_numero_train(row["train"]),
+                numero_train,
                 row["sens"],
-                format_gare(row["gare"]),
+                nom_gare,
                 row.get("heure_theorique", ""),
                 format_retard(row["retard_arrivee_min"]),
                 format_retard(row["retard_depart_min"]),
