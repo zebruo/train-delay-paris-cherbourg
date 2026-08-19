@@ -179,14 +179,16 @@ function dessinerTrain(donnees) {
     // commentaire) — ce script s'exécute au moment de l'échange htmx, le
     // conteneur #train-plot n'a pas forcément terminé sa mise en page.
     requestAnimationFrame(() => {
-        // displayModeBar: false — la barre d'outils zoom/pan/export de Plotly
-        // apparaît au survol dans la même bande que la légende (y: 1.18,
-        // au-dessus du graphique) et intercepte alors les clics destinés à
-        // la légende (repéré en pratique, Playwright, 2026-08-06).
-        // showTips: false — désactive l'info-bulle native de Plotly
-        // ("double-click on legend to isolate one trace"), demande explicite
-        // de l'utilisateur, 2026-08-09.
-        Plotly.newPlot("train-plot", traces, layout, { responsive: true, displaylogo: false, displayModeBar: false, showTips: false })
+        // Barre d'outils Plotly (zoom/pan/export) affichée, comme sur
+        // Graphique — plus de conflit avec la légende depuis qu'elle est en
+        // encart intérieur (x:0.01, y:0.99, voir plus haut) plutôt qu'au-
+        // dessus du graphique (l'ancien souci qui l'avait fait désactiver,
+        // 2026-08-06, ne s'applique plus : vérifié en testant l'activation,
+        // 2026-08-18, aucun recouvrement, ce graphique est assez large pour
+        // les deux). showTips: false — désactive l'info-bulle native de
+        // Plotly ("double-click on legend to isolate one trace"), demande
+        // explicite de l'utilisateur, 2026-08-09.
+        Plotly.newPlot("train-plot", traces, layout, { responsive: true, displaylogo: false, showTips: false })
             .then((gd) => {
                 griserGaresHorsLigne("train-plot", donnees.hors_ligne);
                 // Un clic sur la légende (masquer/afficher un relevé) déclenche

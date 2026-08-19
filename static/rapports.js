@@ -72,6 +72,9 @@ function dessinerPctParJour(donnees) {
     requestAnimationFrame(() => {
         Plotly.newPlot(
             "rapport-pct-jour", [traceJournaliere(donnees, "#c2410c", null)], layout,
+            // displayModeBar: false — recouvre le titre sur ces graphiques
+            // compacts (même souci que dessinerBarre, jour_heure.js) au
+            // survol, repéré en testant l'activation partout, 2026-08-18.
             { responsive: true, displaylogo: false, displayModeBar: false, showTips: false },
         );
     });
@@ -84,6 +87,9 @@ function dessinerCumuleJour(donnees) {
     requestAnimationFrame(() => {
         Plotly.newPlot(
             "rapport-cumule-jour", [traceJournaliere(donnees, "#2c6ea5", "rgba(44,110,165,0.08)")], layout,
+            // displayModeBar: false — recouvre le titre sur ces graphiques
+            // compacts (même souci que dessinerBarre, jour_heure.js) au
+            // survol, repéré en testant l'activation partout, 2026-08-18.
             { responsive: true, displaylogo: false, displayModeBar: false, showTips: false },
         );
     });
@@ -178,6 +184,11 @@ function dessinerTop5(indice, donnees) {
     requestAnimationFrame(() => {
         Plotly.newPlot(
             "top5-plot-" + indice, traces, layout,
+            // displayModeBar: false — marge du haut trop fine (margin.t: 8
+            // ci-dessus, ce mini-graphique n'a pas de titre Plotly, juste
+            // .top5-entete au-dessus dans le HTML) : la barre d'outils au
+            // survol déborde par-dessus ce texte — repéré en testant
+            // l'activation partout, 2026-08-18.
             { responsive: true, displaylogo: false, displayModeBar: false, showTips: false },
         ).then(() => {
             // griserGaresHorsLigne (train.js) : pas de "plotly_afterplot" ici

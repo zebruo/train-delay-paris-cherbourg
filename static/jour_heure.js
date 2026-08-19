@@ -170,6 +170,12 @@ function dessinerBarre(cle, donnees) {
         // showTips: false — désactive l'info-bulle native de Plotly
         // ("double-click on legend to isolate one trace"), demande explicite
         // de l'utilisateur, 2026-08-09.
+        // displayModeBar: false — sur cette grille de 6 petits graphiques,
+        // la barre d'outils (coin haut-droit, apparaît au survol) recouvre
+        // le titre de chaque graphique, trop peu de marge disponible en
+        // haut sur un format aussi compact (repéré en testant l'activation
+        // partout, 2026-08-18 — contrairement à Suivi d'un train, un seul
+        // grand graphique où ça ne pose pas ce problème).
         Plotly.newPlot("jh-" + cle, [trace], layout, { responsive: true, displaylogo: false, displayModeBar: false, showTips: false });
     });
 }
