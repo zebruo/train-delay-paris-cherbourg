@@ -46,6 +46,7 @@ from formatting import (
     format_entier,
     format_gare,
     format_heure_avec_arret,
+    format_heure_reelle,
     format_min_sans_zero,
     format_numero_train,
     format_poll_time,
@@ -377,14 +378,24 @@ def preparer_donnees(df, stop_names, variantes, calendrier):
 
     def heure_theorique_ligne(r):
         variante = variante_pour_ligne(r["trip_id"], r["start_date"])
-        if variante is None:
-            return format_heure_avec_arret(None, r["start_date"], None)
-        return format_heure_avec_arret(
-            variante["horaires_par_stop"].get(r["stop_id"]), r["start_date"],
-            variante["arrets_par_stop"].get(r["stop_id"]),
-        )
+        if variante is not None:
+            heure_theo = variante["horaires_par_stop"].get(r["stop_id"])
+            if heure_theo is not None:
+                return format_heure_avec_arret(
+                    heure_theo, r["start_date"], variante["arrets_par_stop"].get(r["stop_id"]),
+                )
+        # Repli : pas de correspondance théorique (stop_id StopArea:* sans
+        # StopPoint:*, souvent un arrêt ajouté en temps réel — voir mémoire
+        # du projet et formatting.format_heure_reelle) — utilise l'heure
+        # réelle rapportée par le flux si elle a été captée, plutôt qu'une
+        # case vide.
+        return format_heure_reelle(r.get("arrival_time") or r.get("departure_time"))
 
     df["heure_theorique"] = df.apply(heure_theorique_ligne, axis=1)
+    # "~" : seul format_heure_reelle (repli ci-dessus) le produit jamais —
+    # sert de signal pour le badge "ARRÊT AJOUTÉ" (construire_lignes_tableau)
+    # sans refaire la recherche de variante une 2e fois.
+    df["arret_ajoute"] = df["heure_theorique"].str.startswith("~")
     df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
     df["retard_depart_min"] = (df["departure_delay_s"] / 60).round(1)
     df["retard_min"] = df["retard_arrivee_min"].fillna(df["retard_depart_min"])

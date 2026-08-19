@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS observations (
     stop_id TEXT NOT NULL,
     arrival_delay_s INTEGER,
     departure_delay_s INTEGER,
+    arrival_time INTEGER,
+    departure_time INTEGER,
     temperature_c REAL,
     precipitation_mm REAL,
     wind_speed_kmh REAL,
@@ -65,6 +67,15 @@ ALTER_TABLE_SQL = {
     "gare": "ALTER TABLE observations ADD COLUMN gare TEXT",
     "sens": "ALTER TABLE observations ADD COLUMN sens TEXT",
     "heure_locale": "ALTER TABLE observations ADD COLUMN heure_locale INTEGER",
+    # arrival_time/departure_time : ajoutées le 2026-08-19 — heure réelle
+    # (timestamp Unix, StopTimeEvent.time) rapportée par le flux pour un
+    # arrêt sans correspondance théorique (stop_id StopArea:* plutôt que
+    # StopPoint:*, souvent un arrêt ajouté en temps réel — horaires_par_stop
+    # ne le trouve jamais, voir formatting.format_heure_reelle et mémoire du
+    # projet). Distinct de arrival_delay_s/departure_delay_s (écart relatif
+    # à un horaire théorique qui, ici, n'existe pas).
+    "arrival_time": "ALTER TABLE observations ADD COLUMN arrival_time INTEGER",
+    "departure_time": "ALTER TABLE observations ADD COLUMN departure_time INTEGER",
 }
 
 
@@ -207,6 +218,13 @@ def main():
                 "stop_id": stu.stop_id,
                 "arrival_delay_s": stu.arrival.delay if stu.HasField("arrival") else None,
                 "departure_delay_s": stu.departure.delay if stu.HasField("departure") else None,
+                # StopTimeEvent.time (timestamp Unix) : rempli par la SNCF
+                # pour un arrêt sans horaire théorique de référence (ex:
+                # arrêt ajouté en temps réel) — vérifié en direct sur le
+                # flux national, 2026-08-19, valeurs cohérentes avec
+                # l'heure réellement annoncée (SNCF Connect).
+                "arrival_time": stu.arrival.time if stu.HasField("arrival") and stu.arrival.HasField("time") else None,
+                "departure_time": stu.departure.time if stu.HasField("departure") and stu.departure.HasField("time") else None,
             })
 
     # Une requête météo par gare distincte présente dans ce relevé, pas par ligne
@@ -248,10 +266,12 @@ def main():
         connexion.executemany(
             """INSERT INTO observations (
                 poll_time, trip_id, start_date, stop_id, arrival_delay_s, departure_delay_s,
+                arrival_time, departure_time,
                 temperature_c, precipitation_mm, wind_speed_kmh, weather_code,
                 type_jour, vacances_scolaires, arrets_restants, gare, sens, heure_locale
             ) VALUES (
                 :poll_time, :trip_id, :start_date, :stop_id, :arrival_delay_s, :departure_delay_s,
+                :arrival_time, :departure_time,
                 :temperature_c, :precipitation_mm, :wind_speed_kmh, :weather_code,
                 :type_jour, :vacances_scolaires, :arrets_restants, :gare, :sens, :heure_locale
             )""",

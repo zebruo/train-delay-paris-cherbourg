@@ -126,6 +126,20 @@ def format_heure_avec_arret(heure_gtfs, start_date, temps_arret_min):
     return heure_str
 
 
+def format_heure_reelle(timestamp):
+    """Convertit un timestamp Unix (StopTimeEvent.arrival.time/departure.time
+    GTFS-RT) en 'HH:MM' heure de Paris, préfixé "~" pour le distinguer
+    visuellement d'une vraie heure théorique (format_heure_avec_date) — cette
+    valeur vient du temps réel, pas de l'horaire statique, et n'existe que
+    pour les arrêts hors référentiel (stop_id StopArea:* sans correspondance
+    StopPoint:*, souvent un arrêt ajouté en temps réel, voir mémoire du
+    projet). "" si timestamp est None (rien capté pour cet arrêt)."""
+    if timestamp is None or pd.isna(timestamp):
+        return ""
+    dt = datetime.fromtimestamp(int(timestamp), tz=ZoneInfo("UTC")).astimezone(PARIS_TZ)
+    return f"~{dt.strftime('%H:%M')}"
+
+
 def estimer_passage_reel(heure_gtfs, start_date, retard_min):
     """Datetime (UTC) estimée du passage réel du train à une gare : heure
     théorique GTFS (ajustée si >= 24:00, voir format_heure_avec_date) +
