@@ -372,10 +372,11 @@ def texte_categorie_maximale(serie, mot_singulier, mot_pluriel, formater_nom, fo
     2e booléen (≥ 2 catégories à égalité) sert à accorder un label externe
     au pluriel ("Gare la + touchée" → "Gare les + touchées", demande de
     l'utilisateur 2026-08-16) quand le mot lui-même vit dans le label plutôt
-    que dans le texte produit ici (mot_singulier/mot_pluriel vides). Même
-    motif que la version SQL équivalente (app_fastapi._texte_categorie_
-    maximale, sur des tuples plutôt qu'une Series — pas factorisé entre
-    pandas et SQL)."""
+    que dans le texte produit ici (mot_singulier/mot_pluriel vides).
+    Réutilisée telle quelle par app_fastapi.py pour ses résultats SQL
+    (converti en Series via pd.Series(dict(lignes)) — une copie locale sur
+    tuples existait avant d'être fusionnée ici, audit de nettoyage,
+    2026-08-19)."""
     if serie.empty or serie.max() <= 0:
         return "aucun retard significatif", False
     valeur_max = serie.max()
@@ -488,11 +489,13 @@ STATION_CODES = {
 }
 
 
-def trajet_sens(trip_id, variantes):
-    """Sens d'un trajet ('CHERB → PARIS') à partir de ses gares de départ et
-    d'arrivée théoriques (variantes, voir build_trip_data) — chaîne vide si
-    le trajet théorique du train n'est plus dans le référentiel actuel
-    (voir sans_date_trip_id) ou n'a qu'une seule gare.
+def _gares_extremes(trip_id, variantes):
+    """Gare de départ et d'arrivée théoriques d'un trajet (variantes, voir
+    build_trip_data) — None si le trajet théorique du train n'est plus dans
+    le référentiel actuel (voir sans_date_trip_id) ou n'a qu'une seule gare.
+    Lookup partagé par trajet_sens/trajet_origine_destination ci-dessous,
+    qui ne diffèrent ensuite que par le formatage des 2 noms (codes abrégés
+    vs noms complets) — factorisé lors d'un audit de nettoyage, 2026-08-19.
 
     Pas sensible à la date, contrairement à choisir_variante : l'origine et
     la destination d'un train ne changent pas d'une variante d'horaire à
@@ -502,30 +505,38 @@ def trajet_sens(trip_id, variantes):
     simple .map() par trip_id, sans accès à start_date)."""
     liste = variantes.get(sans_date_trip_id(trip_id))
     if not liste:
-        return ""
+        return None
     gares = liste[-1]["gares"]
     if len(gares) < 2:
+        return None
+    return gares[0], gares[-1]
+
+
+def trajet_sens(trip_id, variantes):
+    """Sens d'un trajet ('CHERB → PARIS'), en codes abrégés (STATION_CODES)
+    — pensé pour le menu déroulant "Sens" compact. Chaîne vide si
+    _gares_extremes ne trouve rien (voir son docstring)."""
+    extremes = _gares_extremes(trip_id, variantes)
+    if extremes is None:
         return ""
-    origine = STATION_CODES.get(gares[0], gares[0])
-    destination = STATION_CODES.get(gares[-1], gares[-1])
+    origine, destination = extremes
+    origine = STATION_CODES.get(origine, origine)
+    destination = STATION_CODES.get(destination, destination)
     return f"{origine} → {destination}"
 
 
 def trajet_origine_destination(trip_id, variantes):
     """Origine et destination d'un trajet en noms complets ('Coutances →
     Caen'), contrairement à trajet_sens ci-dessus (codes abrégés 'COUTA →
-    CAEN', pensés pour le menu déroulant "Sens" compact) — même structure
-    et repli silencieux (chaîne vide) que trajet_sens. Pour "Trajet annulé"
-    dans Travaux/Alertes, où le nom complet doit rester cohérent avec
-    "Arrêt supprimé : {gare}" juste à côté (lui aussi en nom complet) —
-    repéré par l'utilisateur, 2026-08-19."""
-    liste = variantes.get(sans_date_trip_id(trip_id))
-    if not liste:
+    CAEN'). Pour "Trajet annulé" dans Travaux/Alertes, où le nom complet
+    doit rester cohérent avec "Arrêt supprimé : {gare}" juste à côté (lui
+    aussi en nom complet) — repéré par l'utilisateur, 2026-08-19. Chaîne
+    vide si _gares_extremes ne trouve rien (voir son docstring)."""
+    extremes = _gares_extremes(trip_id, variantes)
+    if extremes is None:
         return ""
-    gares = liste[-1]["gares"]
-    if len(gares) < 2:
-        return ""
-    return f"{format_gare(gares[0])} → {format_gare(gares[-1])}"
+    origine, destination = extremes
+    return f"{format_gare(origine)} → {format_gare(destination)}"
 
 
 def load_reference():

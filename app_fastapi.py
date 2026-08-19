@@ -54,6 +54,7 @@ from formatting import (
     format_valeur,
     load_calendrier,
     load_reference,
+    texte_categorie_maximale,
     texte_periode_rapport,
     titre_dynamique_jour_heure,
     trajet_origine_destination,
@@ -1341,32 +1342,6 @@ def _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso):
     )
 
 
-def _texte_categorie_maximale(lignes, mot_singulier, mot_pluriel, formater_nom, formater_valeur):
-    """Motif partagé par Retard max (par train) et Gare la + touchée : parmi
-    `lignes` ([(nom, valeur), ...]), le(s) nom(s) au maximum, avec gestion
-    des égalités (jusqu'à 3 noms listés, "+N autres" au-delà — même
-    plafond que les exemples de verifier_gtfs.py). `mot_singulier`/
-    `mot_pluriel` vides ("") pour omettre le préfixe (Gare la + touchée
-    n'a pas de mot avant les noms de gare, contrairement à "train"/
-    "trains"). Renvoie (texte, pluriel) — ce 2e booléen (≥ 2 catégories à
-    égalité) sert à accorder un label externe au pluriel ("Gare la +
-    touchée" → "Gare les + touchées", demande de l'utilisateur 2026-08-16)
-    quand le mot lui-même vit dans le label plutôt que dans le texte
-    produit ici (mot_singulier/mot_pluriel vides). Même motif que
-    formatting.calculer_stats_bloc (version pandas, structure de données
-    différente — pas factorisé entre les 2)."""
-    if not lignes or max(v for _, v in lignes) <= 0:
-        return "aucun retard significatif", False
-    valeur_max = max(v for _, v in lignes)
-    a_egalite = [n for n, v in lignes if v == valeur_max]
-    noms = [formater_nom(n) for n in a_egalite[:3]]
-    suffixe = f" (+{len(a_egalite) - 3} autres)" if len(a_egalite) > 3 else ""
-    pluriel = len(a_egalite) > 1
-    mot = mot_pluriel if pluriel else mot_singulier
-    debut = f"{mot} {', '.join(noms)}{suffixe}" if mot else f"{', '.join(noms)}{suffixe}"
-    return f"{debut} → {formater_valeur(valeur_max)}", pluriel
-
-
 def _retard_max_et_cumule_sql(
     connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
 ):
@@ -1404,9 +1379,13 @@ def _retard_max_et_cumule_sql(
     # "train"/"trains" (pluriel éventuel) vit déjà dans le texte lui-même
     # (mot_singulier/mot_pluriel non vides ci-dessus) — pas besoin du 2e
     # élément du tuple ici, contrairement à Gare la + touchée plus bas
-    # (voir label_pire_gare, _pire_gare_et_moyenne_sql).
-    retard_max_texte, _ = _texte_categorie_maximale(
-        lignes_train, "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
+    # (voir label_pire_gare, _pire_gare_et_moyenne_sql). dict(lignes_train)
+    # -> Series : GROUP BY garantit des clés (train) uniques, aucun risque
+    # de collision — réutilise formatting.texte_categorie_maximale (version
+    # pandas) au lieu d'une copie locale sur tuples (audit de nettoyage,
+    # 2026-08-19 : les deux étaient identiques à la structure d'entrée près).
+    retard_max_texte, _ = texte_categorie_maximale(
+        pd.Series(dict(lignes_train)), "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
     )
     heures, minutes = divmod(round(somme), 60)
 
@@ -1447,8 +1426,8 @@ def _pire_gare_et_moyenne_sql(
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.releves_filtres")
 
-    pire_gare_texte, pire_gare_pluriel = _texte_categorie_maximale(
-        lignes_gare, "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
+    pire_gare_texte, pire_gare_pluriel = texte_categorie_maximale(
+        pd.Series(dict(lignes_gare)), "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
     )
     label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
     return moyenne, nb_releves, pire_gare_texte, label_pire_gare
@@ -2231,6 +2210,29 @@ def calculer_contexte_rapport_sql_avec_cache(connexion, nom_periode):
     return cache["resultats"][cle]
 
 
+def _construire_lignes_alertes(df, avec_actif=False):
+    """Construit les lignes du tableau d'alertes (depuis/jusqu'à formatés,
+    repli description -> texte) — partagé entre calculer_contexte_travaux et
+    calculer_contexte_rapport_pour_affichage, qui alimentent tous deux
+    templates/_table_alertes.html (déjà factorisé côté template lors d'un
+    audit de nettoyage, 2026-08-18 ; ce code Python qui construisait chaque
+    ligne restait dupliqué à l'identique aux deux endroits, repéré lors d'un
+    2e audit, 2026-08-19). avec_actif : ajoute la clé "actif" (Travaux
+    uniquement — le DataFrame doit alors avoir une colonne "_actif")."""
+    lignes = []
+    for _, ligne in df.iterrows():
+        depuis = ligne["debut"].tz_convert(PARIS_TZ).strftime("%d/%m %Hh%M") if pd.notna(ligne["debut"]) else "-"
+        jusqua = ligne["fin"].tz_convert(PARIS_TZ).strftime("%d/%m %Hh%M") if pd.notna(ligne["fin"]) else "-"
+        entree = {
+            "gares": ligne["gares"], "depuis": depuis, "jusqua": jusqua,
+            "texte": ligne["texte"], "description": ligne["description"] or ligne["texte"],
+        }
+        if avec_actif:
+            entree["actif"] = bool(ligne["_actif"])
+        lignes.append(entree)
+    return lignes
+
+
 def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
     """Reformate calculer_contexte_rapport_sql_avec_cache pour l'affichage
     (texte, JSON Plotly) — séparé du calcul lui-même pour garder celui-ci
@@ -2275,14 +2277,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
     else:
         resultat["rapport_texte_meteo"] = "Météo : non disponible sur cette période."
 
-    lignes_alertes = []
-    for _, ligne in ctx["alertes"].iterrows():
-        depuis = ligne["debut"].tz_convert(PARIS_TZ).strftime("%d/%m %Hh%M") if pd.notna(ligne["debut"]) else "-"
-        jusqua = ligne["fin"].tz_convert(PARIS_TZ).strftime("%d/%m %Hh%M") if pd.notna(ligne["fin"]) else "-"
-        lignes_alertes.append({
-            "gares": ligne["gares"], "depuis": depuis, "jusqua": jusqua,
-            "texte": ligne["texte"], "description": ligne["description"] or ligne["texte"],
-        })
+    lignes_alertes = _construire_lignes_alertes(ctx["alertes"])
     # "lignes_alertes" (pas "rapport_lignes_alertes") : même nom de clé que
     # calculer_contexte_travaux, pour partager templates/_table_alertes.html
     # (audit de nettoyage, 2026-08-18 — les deux onglets avaient un tableau
@@ -2349,15 +2344,7 @@ def calculer_contexte_travaux(alertes_df, alertes_actif):
         resume_travaux = f"⚠ {n_actives} alerte(s) active(s) en ce moment"
 
     ordre = alertes_df.assign(_actif=alertes_actif).sort_values(["_actif", "fin"], ascending=[False, True])
-    lignes_alertes = []
-    for _, ligne in ordre.iterrows():
-        depuis = ligne["debut"].tz_convert(PARIS_TZ).strftime("%d/%m %Hh%M") if pd.notna(ligne["debut"]) else "-"
-        jusqua = ligne["fin"].tz_convert(PARIS_TZ).strftime("%d/%m %Hh%M") if pd.notna(ligne["fin"]) else "-"
-        lignes_alertes.append({
-            "actif": bool(ligne["_actif"]), "gares": ligne["gares"],
-            "depuis": depuis, "jusqua": jusqua,
-            "texte": ligne["texte"], "description": ligne["description"] or ligne["texte"],
-        })
+    lignes_alertes = _construire_lignes_alertes(ordre, avec_actif=True)
 
     evenements_df = charger_evenements(PERTURBATIONS_FILE)
     lignes_evenements = []

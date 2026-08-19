@@ -129,6 +129,13 @@ def load_station_coords():
     return coords
 
 
+# Météo inconnue (échec Open-Meteo, ou gare sans coordonnées connues) —
+# jamais mutée après coup (lue via dict.update() ou renvoyée telle quelle),
+# donc une seule constante partagée suffit (audit de nettoyage, 2026-08-19 :
+# ce dict littéral était dupliqué à l'identique dans fetch_weather et main()).
+METEO_INCONNUE = {"temperature_c": None, "precipitation_mm": None, "wind_speed_kmh": None, "weather_code": None}
+
+
 def fetch_feed():
     feed = gtfs_realtime_pb2.FeedMessage()
     with urllib.request.urlopen(FEED_URL, timeout=30) as response:
@@ -154,7 +161,7 @@ def fetch_weather(latitude, longitude):
             "weather_code": current["weather_code"],
         }
     except Exception:
-        return {"temperature_c": None, "precipitation_mm": None, "wind_speed_kmh": None, "weather_code": None}
+        return METEO_INCONNUE
 
 
 def main():
@@ -238,7 +245,7 @@ def main():
                 lat, lon = station_coords[gare]
                 weather_cache[gare] = fetch_weather(lat, lon)
             else:
-                weather_cache[gare] = {"temperature_c": None, "precipitation_mm": None, "wind_speed_kmh": None, "weather_code": None}
+                weather_cache[gare] = METEO_INCONNUE
         row.update(weather_cache[gare])
 
         row["type_jour"] = calendrier.type_jour(row["start_date"])
