@@ -2007,16 +2007,17 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             finalize_axes(self.ax2, marge_bas=True, marge_x_min=MARGE_X_MIN_TEMPS)
             marquer_maximum(
                 self.ax, moyenne_par_releve, "#1f77b4", " min",
-                "Indique à quel moment la moyenne, tous trains confondus, a été la plus haute. "
-                "C'est différent du \"Retard max\" affiché en haut de l'appli, qui est le "
-                "pire retard d'un seul train à un instant donné, pas une moyenne. Les deux "
-                "se complètent : l'un dit \"le pire cas isolé jamais vu\", l'autre dit "
-                "\"le pire moment pour la ligne dans son ensemble\".",
+                "Indique le pic de tous les relevés à cet instant (selon les filtres actifs). "
+                "C'est différent du \"Retard max\" affiché en haut de l'appli, qui est le pire "
+                "retard d'un seul train à un instant donné, pas une moyenne.",
                 survol=self._survol_graphique,
             )
             marquer_maximum(
                 self.ax2, pct_par_releve, "#c2410c", " %",
-                "Indique le pic de trains simultanément en retard.",
+                "Indique le pic en % de trains simultanément en retard, à cet instant précis. "
+                "C'est différent des « Circulations perturbées » affichées en haut de l'appli, "
+                "qui comptent, sur toute la période, le nombre de circulations ayant eu du "
+                "retard à un moment de leur trajet, même rattrapé ensuite.",
                 survol=self._survol_graphique,
             )
             marquer_moyenne(
