@@ -14,6 +14,13 @@ projet côté VPS est la mémoire, pas la chaleur — voir l'incident OOM du
 import datetime
 import re
 import subprocess
+from zoneinfo import ZoneInfo
+
+# Les dates de rapport (noms de fichier PDF) sont des jours calendaires
+# français, pas des instants UTC — nécessaire pour comparer correctement
+# à "aujourd'hui" dans _rapport_etat ci-dessous, contrairement à l'écart en
+# minutes de _collecte_etat (une durée, insensible au fuseau).
+PARIS_TZ = ZoneInfo("Europe/Paris")
 
 COMMANDE_DISTANTE = (
     "df -h / | tail -1 | awk '{print $5, $4}'; "
@@ -321,9 +328,32 @@ def _gtfs_etat(section):
 
 
 def _rapport_etat(section, type_rapport):
+    """⚠ si le rapport présent n'a pas été régénéré depuis trop longtemps —
+    pas seulement s'il est absent. Avant ce correctif, un cron en échec
+    (ex: coupure réseau pendant la fenêtre 3h30) laissait le rapport de la
+    veille comme dernière ligne du log, et ce voyant l'aurait quand même
+    affiché ✓ (il commence bien par "Envoyé vers le NAS") — repéré par
+    l'utilisateur, 2026-08-20, un rapport quotidien manquant passé inaperçu
+    jusqu'à une vérification manuelle."""
     valeur = _ligne_prefixee(section, type_rapport, "(Pi non interrogé)")
-    voyant = VOYANT_OK if valeur.startswith("Envoyé vers le NAS") else VOYANT_ATTENTION
-    return voyant, valeur
+    if not valeur.startswith("Envoyé vers le NAS"):
+        return VOYANT_ATTENTION, valeur
+    match = re.search(r"(\d{2})-(\d{2})-(\d{4})\.pdf", valeur)
+    if not match:
+        return VOYANT_OK, valeur
+    jour, mois, annee = (int(g) for g in match.groups())
+    date_rapport = datetime.date(annee, mois, jour)
+    maintenant = datetime.datetime.now(PARIS_TZ)
+    if type_rapport == "quotidien":
+        # Cron à 3h30 (crontab du Pi) : avant 4h, le rapport d'hier est
+        # encore normal, celui du jour n'a pas encore eu le temps de tourner.
+        attendu = maintenant.date() if maintenant.hour >= 4 else maintenant.date() - datetime.timedelta(days=1)
+        perime = date_rapport < attendu
+    else:  # hebdomadaire — cadence 7 jours, marge d'une semaine avant d'alerter
+        perime = (maintenant.date() - date_rapport).days > 8
+    if perime:
+        return VOYANT_ATTENTION, f"{valeur}  — le plus récent date du {date_rapport.strftime('%d/%m/%Y')}"
+    return VOYANT_OK, valeur
 
 
 def _backup_etat(section):
