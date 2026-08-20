@@ -512,7 +512,7 @@ def calculer_alertes_actives(alertes_df):
     actif = (alertes_df["debut"].isna() | (alertes_df["debut"] <= maintenant)) & \
             (alertes_df["fin"].isna() | (maintenant <= alertes_df["fin"]))
     n_actives = int(actif.sum())
-    libelle = f"Travaux / Alertes ⚠ ({n_actives})" if n_actives else "Travaux / Alertes"
+    libelle = f"Perturbations ⚠ ({n_actives})" if n_actives else "Perturbations"
     return actif, libelle
 
 
@@ -771,7 +771,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     df, df_avant_retard, df_filtre, alertes_df, alertes_actif) — les trois
     df valent None en cas d'erreur de chargement (voir contexte["erreur"]),
     alertes_df/alertes_actif restent valides même dans ce cas (source
-    indépendante d'observations.csv — voir Travaux/Alertes, qui n'a pas
+    indépendante d'observations.csv — voir Perturbations, qui n'a pas
     besoin des quatre premiers)."""
     limiter_ligne = lire_checkbox(request, "limiter_ligne", True)
     # False par défaut (décoché) — cochée, cette case donne une vue plus
@@ -2282,7 +2282,7 @@ def _construire_lignes_alertes(df, avec_actif=False):
     templates/_table_alertes.html (déjà factorisé côté template lors d'un
     audit de nettoyage, 2026-08-18 ; ce code Python qui construisait chaque
     ligne restait dupliqué à l'identique aux deux endroits, repéré lors d'un
-    2e audit, 2026-08-19). avec_actif : ajoute la clé "actif" (Travaux
+    2e audit, 2026-08-19). avec_actif : ajoute la clé "actif" (Perturbations
     uniquement — le DataFrame doit alors avoir une colonne "_actif")."""
     lignes = []
     for _, ligne in df.iterrows():
@@ -2411,7 +2411,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
 
 def calculer_contexte_travaux(alertes_df, alertes_actif):
     """Porte _render_travaux_tab (viewer.py: 673-724) : les deux tables de
-    l'onglet Travaux / Alertes. alertes_df/alertes_actif proviennent déjà de
+    l'onglet Perturbations. alertes_df/alertes_actif proviennent déjà de
     preparer_contexte_commun (calcul du badge d'onglet) — pas rechargés ici,
     pour ne lire alertes.csv qu'une seule fois par requête."""
     n_actives = int(alertes_actif.sum())

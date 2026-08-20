@@ -1,5 +1,5 @@
 """
-Tout ce qui concerne l'onglet "Travaux / Alertes" de viewer.py : chargement
+Tout ce qui concerne l'onglet "Perturbations" de viewer.py : chargement
 des alertes SNCF officielles (alertes.csv, alimenté par collect_alertes.py)
 et détection des arrêts supprimés / trajets annulés dans le flux temps réel
 (alimenté par collect_realtime.py) — aucune dépendance à Tkinter, testable

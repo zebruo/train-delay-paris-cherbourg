@@ -147,7 +147,7 @@ def generer():
     boite("verifier_gtfs", 14, 30, 11, 11, "verifier_\ngtfs.py\n(cron\n3h15)", COULEUR_VPS, COULEUR_VPS_BORD, fontsize=7.4, fontweight="bold")
     boite("verif_log", 27, 32, 10, 7, "verification_\ngtfs.log", COULEUR_DONNEE, COULEUR_DONNEE_BORD, fontsize=7)
 
-    boite("app_fastapi", 2.5, 5, 34.5, 21, "app_fastapi.py\n(service systemd train-delay,\nderrière nginx + HTTPS)\nsite web public : Tableau, Graphique,\nSuivi d'un train, Par jour/heure,\nTravaux/Alertes, Vérification GTFS",
+    boite("app_fastapi", 2.5, 5, 34.5, 21, "app_fastapi.py\n(service systemd train-delay,\nderrière nginx + HTTPS)\nsite web public : Tableau, Graphique,\nSuivi d'un train, Par jour/heure,\nPerturbations, Vérification GTFS",
           COULEUR_VPS, COULEUR_VPS_BORD, fontsize=8.3, fontweight="bold")
 
     # ================= RASPBERRY PI =================

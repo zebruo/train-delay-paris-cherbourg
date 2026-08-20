@@ -37,7 +37,7 @@ du Pi collecteur, retirés le 2026-08-14) ; viewer.py le rapatrie
 directement depuis la VPS (bouton "Rafraîchir"). charger_journal() et
 lancer_a_distance() sont aussi importés par viewer.py (onglet "Vérification
 GTFS") : ce module fait office d'annexe backend pour cet onglet, comme
-perturbations.py pour Travaux/Alertes — l'UI Tkinter elle-même reste dans
+perturbations.py pour Perturbations — l'UI Tkinter elle-même reste dans
 viewer.py.
 """
 import csv

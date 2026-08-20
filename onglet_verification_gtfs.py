@@ -6,7 +6,7 @@ VPS (Pi jusqu'au 2026-08-13, repointé vers la VPS qui le remplace — voir
 mémoire du projet).
 
 Extrait de viewer.py dans son propre fichier — comme perturbations.py
-sépare déjà la logique métier de Travaux/Alertes, mais ici c'est la
+sépare déjà la logique métier de Perturbations, mais ici c'est la
 construction/le rendu des widgets Tkinter eux-mêmes qui est extrait, pas
 seulement les données. Contrairement à une séparation complète du fichier en
 mixins (mise de côté par l'utilisateur en attendant un dépôt git, vu le

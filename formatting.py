@@ -528,7 +528,7 @@ def trajet_sens(trip_id, variantes):
 def trajet_origine_destination(trip_id, variantes):
     """Origine et destination d'un trajet en noms complets ('Coutances →
     Caen'), contrairement à trajet_sens ci-dessus (codes abrégés 'COUTA →
-    CAEN'). Pour "Trajet annulé" dans Travaux/Alertes, où le nom complet
+    CAEN'). Pour "Trajet annulé" dans Perturbations, où le nom complet
     doit rester cohérent avec "Arrêt supprimé : {gare}" juste à côté (lui
     aussi en nom complet) — repéré par l'utilisateur, 2026-08-19. Chaîne
     vide si _gares_extremes ne trouve rien (voir son docstring)."""

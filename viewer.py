@@ -193,7 +193,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         self._build_jour_heure_tab(self.jour_heure_tab)
 
         self.travaux_tab = ttk.Frame(notebook)
-        notebook.add(self.travaux_tab, text="Travaux / Alertes")
+        notebook.add(self.travaux_tab, text="Perturbations")
         self._build_travaux_tab(self.travaux_tab)
 
         self.verification_gtfs_tab = ttk.Frame(notebook)
@@ -791,7 +791,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
             self._travaux_descriptions[item] = ligne["description"] or ligne["texte"]
 
         # Badge sur l'onglet lui-même : visible même sans être dessus.
-        libelle = f"Travaux / Alertes ⚠ ({n_actives})" if n_actives else "Travaux / Alertes"
+        libelle = f"Perturbations ⚠ ({n_actives})" if n_actives else "Perturbations"
         self.notebook.tab(self.travaux_tab, text=libelle)
 
         self.evenements_tree.delete(*self.evenements_tree.get_children())
@@ -1233,7 +1233,7 @@ class App(tk.Tk, OngletVerificationGTFSMixin):
         self.render()
 
     def load_local_perturbations(self):
-        """Charge les deux sources de l'onglet Travaux/Alertes (voir
+        """Charge les deux sources de l'onglet Perturbations (voir
         perturbations.py) : alertes.csv (perturbations SNCF officielles,
         collect_alertes.py) et perturbations_detectees.csv (arrêts
         supprimés/trajets annulés détectés dans le flux temps réel,
