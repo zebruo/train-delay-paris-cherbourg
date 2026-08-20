@@ -26,6 +26,12 @@ rsync -az -e "ssh $SSH_OPTS_VPS" "$VPS_HOST:train-delay-paris-cherbourg/observat
 # VPS) ne doit pas empêcher la génération du rapport — generer_rapport.py
 # gère déjà lui-même son absence (charger_donnees()).
 rsync -az -e "ssh $SSH_OPTS_VPS" "$VPS_HOST:train-delay-paris-cherbourg/alertes.csv" alertes.csv || true
+# Même best-effort qu'alertes.csv ci-dessus — oublié lors de l'ajout du
+# compteur "Circulations annulées" (2026-08-20), repéré tout de suite après
+# coup : le fichier local du Pi datait du 14/08, jamais rapatrié depuis la
+# VPS avant ce correctif, donnant "aucune" annulation quel que soit l'état
+# réel de la VPS.
+rsync -az -e "ssh $SSH_OPTS_VPS" "$VPS_HOST:train-delay-paris-cherbourg/perturbations_detectees.csv" perturbations_detectees.csv || true
 
 SORTIE=$(.venv/bin/python generer_rapport.py "$PERIODE")
 echo "$SORTIE"
