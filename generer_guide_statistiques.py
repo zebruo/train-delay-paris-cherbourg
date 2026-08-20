@@ -489,6 +489,24 @@ GUIDE_PAGES = [
                 ),
             ),
             dict(
+                titre="Circulations annulées",
+                definition=(
+                    "Nombre de trains entièrement annulés sur la période, parmi ceux qui\n"
+                    "desservent au moins une des 11 gares de la ligne — invisibles de toutes\n"
+                    "les autres statistiques ci-dessus (un train annulé n'atteint jamais son\n"
+                    "terminus, donc jamais considéré « arrivé »)."
+                ),
+                exemple_lignes=[
+                    "→ Affiché : « Circulations annulées sur la période (sur la ligne) :",
+                    "  2 (852610, 853430). »",
+                ],
+                utilite=(
+                    "voir d'un coup d'œil si des trains ont été purement et simplement "
+                    "supprimés — une perturbation plus grave qu'un simple retard, mais "
+                    "invisible du reste du rapport."
+                ),
+            ),
+            dict(
                 titre="Rupture de collecte le 31/07/2026",
                 definition=(
                     "Un bug de collecte, corrigé ce jour-là, faisait manquer jusqu'à ~1 train\n"
