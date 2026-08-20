@@ -239,7 +239,7 @@ def stats_perturbees_periode(df, variantes, calendrier, debut_utc, fin_utc):
     return en_retard, total
 
 
-def charger_donnees():
+def charger_donnees(borne_debut_utc, fin_utc):
     """Même construction que viewer.App.load_local_data(), réduite à ce dont
     le rapport a besoin (pas d'heure théorique). Contrairement à avant,
     retourne le df complet, *non* filtré aux 11 gares de la ligne : les
@@ -248,16 +248,35 @@ def charger_donnees():
     "retard gare par gare" ont besoin du trajet réel complet d'une
     circulation, jonctions hors ligne comprises (ex: Coutances, Granville,
     Rennes) — même logique que "Suivi d'un train" dans viewer.py, qui
-    ignore volontairement ce filtre pour la même raison."""
+    ignore volontairement ce filtre pour la même raison.
+
+    borne_debut_utc/fin_utc bornent la lecture SQL — [debut_utc, fin_utc)
+    de la période du rapport, ou [debut_mois_precedent_utc, fin_utc) pour un
+    rapport mensuel (voir l'appelant) : sans cette borne, la lecture
+    chargeait TOUT l'historique de la base à chaque génération, quelle que
+    soit la période demandée (mesuré 2026-08-20 : 1,46 Go de RAM au pic pour
+    708 Mo de base — sur une VPS/un Pi qui n'ont que 3,8 Go chacun — alors
+    qu'un rapport quotidien n'a besoin que d'1 jour de données). Renvoie
+    aussi premiere_donnee (vraie date de début de collecte, requête séparée
+    et bon marché) : indispensable à la comparaison "mois précédent" du
+    rapport mensuel (voir generer()), qui doit savoir si la collecte remonte
+    vraiment avant borne_debut_utc — un simple df["poll_time"].min() sur les
+    données déjà bornées donnerait toujours ~borne_debut_utc, qu'il y ait ou
+    non de vraies données plus anciennes."""
     ref = load_reference()
     stop_names = build_stop_names(ref)
     variantes = build_trip_data(ref)
     calendrier = load_calendrier()
     connexion = sqlite3.connect(OBSERVATIONS_DB)
     try:
-        df = pd.read_sql_query("SELECT * FROM observations ORDER BY poll_time", connexion)
+        df = pd.read_sql_query(
+            "SELECT * FROM observations WHERE poll_time >= ? AND poll_time < ? ORDER BY poll_time",
+            connexion, params=(borne_debut_utc.isoformat(), fin_utc.isoformat()),
+        )
+        premiere_donnee = connexion.execute("SELECT MIN(poll_time) FROM observations").fetchone()[0]
     finally:
         connexion.close()
+    premiere_donnee = pd.to_datetime(premiere_donnee, utc=True) if premiere_donnee else pd.NaT
     df["gare"] = df["stop_id"].map(stop_names).fillna(df["stop_id"])
     df["train"] = df["trip_id"].str.split(":").str[0]
     df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
@@ -277,7 +296,7 @@ def charger_donnees():
         evenements["poll_time"] = pd.to_datetime(evenements["poll_time"], utc=True, errors="coerce")
     except (FileNotFoundError, pd.errors.EmptyDataError):
         evenements = pd.DataFrame(columns=["poll_time", "type", "trip_id", "start_date", "train", "gare"])
-    return df, alertes, evenements, variantes, calendrier
+    return df, alertes, evenements, variantes, calendrier, premiere_donnee
 
 
 def generer(nom_periode, maintenant=None):
@@ -287,12 +306,18 @@ def generer(nom_periode, maintenant=None):
     laquelle le rapport aurait dû être généré plutôt que de dépendre de
     l'heure système actuelle."""
     titre = PERIODES[nom_periode]
-    df, alertes, evenements, variantes, calendrier = charger_donnees()
 
     if maintenant is None:
         maintenant = pd.Timestamp.now(tz="UTC")
     debut_local, fin_local = calculer_periode(nom_periode, maintenant)
     debut_utc, fin_utc = debut_local.tz_convert("UTC"), fin_local.tz_convert("UTC")
+    # Mensuel a besoin du mois précédent en plus de la période du rapport
+    # (comparaison "% ce mois-ci / le mois précédent", plus bas) — seul
+    # endroit du fichier qui regarde en dehors de [debut_utc, fin_utc).
+    borne_debut_utc = (
+        (debut_local - pd.DateOffset(months=1)).tz_convert("UTC") if nom_periode == "mensuel" else debut_utc
+    )
+    df, alertes, evenements, variantes, calendrier, premiere_donnee = charger_donnees(borne_debut_utc, fin_utc)
 
     # Le rapport ne porte que sur des circulations arrivées à destination
     # (voir mémoire du projet, 2026-07-27) : sinon un "retard max" ou une
@@ -507,7 +532,6 @@ def generer(nom_periode, maintenant=None):
         # couvert par la collecte — sinon (ex: tout premier rapport mensuel,
         # données commencées en cours de mois précédent) la comparaison
         # serait faussée par un mois partiel, pas vraiment comparable.
-        premiere_donnee = df["poll_time"].min()
         if moyenne_mois is not None and pd.notna(premiere_donnee) and premiere_donnee <= debut_mois_precedent:
             en_retard_prec, total_prec = stats_perturbees_periode(
                 df, variantes, calendrier, debut_mois_precedent.tz_convert("UTC"), debut_utc,
