@@ -32,7 +32,7 @@ Communes aux deux interfaces :
 - **Tableau** — dernier relevé par gare/train, code couleur (rouge/orange/doré) selon le retard à l'arrivée et au départ.
 - **Graphique / Par jour-heure** — vue d'ensemble des retards sur la période.
 - **Suivi d'un train** — évolution du retard relevé par relevé pour une circulation donnée.
-- **Travaux / Alertes** — perturbations SNCF en cours et passées (annulations, arrêts supprimés).
+- **Perturbations** — alertes SNCF officielles et trajets annulés/arrêts supprimés détectés en temps réel.
 - **Vérification GTFS** — écart entre le référentiel utilisé par l'appli et les horaires SNCF actuellement publiés (disparus/modifiés/nouveaux/renommés).
 
 Propre à `viewer.py` :
