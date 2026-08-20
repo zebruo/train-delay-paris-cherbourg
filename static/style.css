@@ -707,7 +707,7 @@ de l'utilisateur, 2026-08-14. */
 }
 
 .info {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: var(--texte-attenue);
     text-align:center;
 }
