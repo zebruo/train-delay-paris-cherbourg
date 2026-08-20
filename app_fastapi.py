@@ -952,19 +952,16 @@ def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens, lim
 
     explication_max_retard = (
         "Indique le pic de tous les relevés à cet instant (selon les filtres actifs). "
-        "C'est différent du \"Retard max\" affiché en haut de l'appli, qui est le plus grand "
-        "retard d'un seul train à un instant donné, pas une moyenne."
+        "C'est différent du « Retard max » affiché juste au-dessus de ce graphique, qui est "
+        "le plus grand retard d'un seul train à un instant donné, pas une moyenne."
     )
     explication_max_pct = (
         "Indique le pic en % de trains simultanément en retard, à cet instant précis. "
-        "C'est différent des « Circulations perturbées » affichées en haut de l'appli, "
-        "qui comptent, sur toute la période, le nombre de circulations ayant eu du "
-        "retard à un moment de leur trajet, même rattrapé ensuite."
+        "C'est différent des « circulations perturbées » affichées juste au-dessus de ce "
+        "graphique, qui comptent, sur toute la période, le nombre de circulations ayant eu "
+        "du retard à un moment de leur trajet, même rattrapé ensuite."
     )
-    explication_moyenne = (
-        "Moyenne sur la période actuellement affichée — sert de repère pour juger si un "
-        "point de la courbe est au-dessus ou en dessous de la tendance générale de cette période."
-    )
+    explication_moyenne = "Moyenne sur la période affichée, pour repérer si un point est au-dessus ou en dessous de la tendance."
 
     elements_filtres = []
     if _gare_est_filtree(gare):
