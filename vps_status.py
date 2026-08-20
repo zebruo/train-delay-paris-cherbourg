@@ -96,10 +96,16 @@ sudo ufw status | head -1
 sudo fail2ban-client status sshd | grep -E 'Currently banned|Total banned'
 echo @HTTPS
 sudo certbot certificates 2>&1 | grep 'Expiry Date'
+# grep 'Vérification GTFS' | tail -1, PAS tail -1 seul (bug repéré par
+# l'utilisateur, 2026-08-20) : verifier_gtfs.py termine toujours chaque
+# entrée par une ligne d'astuce ("Vérifier si une régénération...") suivie
+# d'une ligne vide — un simple tail -1 ne récupérait donc jamais que cette
+# ligne vide, et _gtfs_etat (ci-dessous) tombait systématiquement dans son
+# cas "aucune correspondance" (toujours ⚠, quel que soit l'état réel).
 echo @GTFS
 cat ~/train-delay-paris-cherbourg/verification_gtfs_etat.json 2>/dev/null | tr '\n' ' '
 echo
-tail -1 ~/train-delay-paris-cherbourg/verification_gtfs.log 2>/dev/null
+grep 'Vérification GTFS' ~/train-delay-paris-cherbourg/verification_gtfs.log 2>/dev/null | tail -1
 """
 
 # Le Pi n'est plus qu'un relais rapports/NAS depuis le 2026-08-14 (voir
@@ -291,18 +297,27 @@ def _https_etat(section):
 
 
 def _gtfs_etat(section):
+    """Écart = disparus + modifiés + nouveaux + renommés, même définition
+    que verifier_gtfs.py (voir son "ecart" et ligne_resume) — avant ce
+    correctif, seuls disparus/nouveaux comptaient ici, donc des services
+    modifiés (horaires changés, pas disparus) laissaient ce voyant à ✓ même
+    plusieurs jours d'affilée (repéré par l'utilisateur, 2026-08-20)."""
     etat_ligne, log_ligne = _ligne(section, 0), _ligne(section, 1)
     match_ref = re.search(r'"reference":\s*"([\d-]+)"', etat_ligne)
     reference = match_ref.group(1) if match_ref else "?"
-    match_ecarts = re.search(r"(\d+) disparus, (\d+) nouveaux", log_ligne)
-    if match_ecarts and match_ecarts.group(1) == "0" and match_ecarts.group(2) == "0":
-        return VOYANT_OK, f"régularisé — référentiel du {reference}, 0 disparu/nouveau"
-    if match_ecarts:
-        return (
-            VOYANT_ATTENTION,
-            f"référentiel du {reference} — {match_ecarts.group(1)} disparu(s), {match_ecarts.group(2)} nouveau(x)",
-        )
-    return VOYANT_ATTENTION, f"référentiel du {reference}"
+    match_ecarts = re.search(
+        r"(\d+) identiques, (\d+) modifiés\), (\d+) disparus, (\d+) nouveaux, (\d+) renommés", log_ligne,
+    )
+    if not match_ecarts:
+        return VOYANT_ATTENTION, f"référentiel du {reference}"
+    modifies, disparus, nouveaux, renommes = (int(g) for g in match_ecarts.groups()[1:])
+    if modifies == disparus == nouveaux == renommes == 0:
+        return VOYANT_OK, f"régularisé — référentiel du {reference}, 0 disparu/modifié/nouveau/renommé"
+    return (
+        VOYANT_ATTENTION,
+        f"référentiel du {reference} — {disparus} disparu(s), {modifies} modifié(s), "
+        f"{nouveaux} nouveau(x), {renommes} renommé(s)",
+    )
 
 
 def _rapport_etat(section, type_rapport):
