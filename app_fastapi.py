@@ -994,6 +994,22 @@ def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens, lim
         if duree is not None:
             plot_df = plot_df[plot_df["poll_time"] >= plot_df["poll_time"].max() - duree]
 
+    # Exclut les circulations avec un événement "trajet_annule" (voir
+    # perturbations_detectees.csv) — le flux GTFS-RT peut publier une
+    # prévision d'arrivée au terminus (avec un retard) quelques minutes
+    # avant que l'annulation officielle ne soit propagée (train 851116,
+    # 2026-08-20 : 45 min prévus au terminus, annulé 5 min plus tard) :
+    # sans cette exclusion, cette circulation polluerait aussi bien la
+    # courbe que Retard max/cumulé de ce bloc, alors qu'elle n'est jamais
+    # réellement arrivée.
+    if not plot_df.empty:
+        annulations = charger_evenements(PERTURBATIONS_FILE)
+        annulations = annulations[annulations["type"] == "trajet_annule"]
+        circulations_annulees = set(zip(annulations["trip_id"], annulations["start_date"].astype(str)))
+        if circulations_annulees:
+            cles = pd.MultiIndex.from_frame(plot_df[["trip_id", "start_date"]].astype(str))
+            plot_df = plot_df[~cles.isin(circulations_annulees)]
+
     if plot_df.empty:
         return {"graphique_vide": True}
 
@@ -1319,6 +1335,31 @@ def _cte_dernier_par_passage_complet(where):
     """
 
 
+def _materialiser_circulations_annulees(connexion):
+    """Construit la table temporaire `circulations_annulees(cle)` — les
+    circulations avec un événement "trajet_annule" (perturbations_
+    detectees.csv), sans restriction de période (une circulation annulée
+    l'est indépendamment de la fenêtre de stats calculée). Référencée à la
+    fois par _materialiser_circulations_arrivees_periode (onglet Rapports)
+    et _retard_max_et_cumule_sql (barre de stats globale, non bornée à une
+    période) : dans les deux cas, le flux GTFS-RT peut publier une
+    prévision d'arrivée au terminus (avec un retard) quelques minutes avant
+    que l'annulation officielle ne soit propagée (train 851116, 2026-08-20 :
+    45 min prévus au terminus, annulé 5 min plus tard) — sans cette
+    exclusion, "dernier connu par passage" prendrait cette prévision pour
+    un vrai retard final, alors que la circulation n'est jamais arrivée.
+    Appelant responsable du DROP TABLE ensuite."""
+    evenements = charger_evenements(PERTURBATIONS_FILE)
+    annulations = evenements[evenements["type"] == "trajet_annule"]
+    cles = (annulations["trip_id"] + "|" + annulations["start_date"].astype(str)).unique()
+    connexion.execute("DROP TABLE IF EXISTS temp.circulations_annulees")
+    connexion.execute("CREATE TEMP TABLE circulations_annulees (cle TEXT PRIMARY KEY)")
+    connexion.executemany(
+        "INSERT OR IGNORE INTO circulations_annulees (cle) VALUES (?)",
+        [(cle,) for cle in cles],
+    )
+
+
 def _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso):
     """Construit la table temporaire `circulations_arrivees_periode(cle)`
     référencée par _construire_where_sql(debut_iso=..., fin_iso=...) —
@@ -1347,14 +1388,19 @@ def _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso):
     Nombre de circulations distinctes en jeu : petit vis-à-vis de la RAM
     même sur un mois complet (voir le plan — jamais chargé en pandas sur
     tout l'historique, seulement joint à la table déjà matérialisée par
-    la CTE ci-dessus). Appelant responsable du DROP TABLE ensuite."""
+    la CTE ci-dessus). Appelant responsable du DROP TABLE ensuite.
+
+    Exclut aussi toute circulation présente dans circulations_annulees (voir
+    _materialiser_circulations_annulees, que l'appelant DOIT avoir déjà
+    matérialisée), même si le calcul ci-dessous la considérerait arrivée."""
     where = "(arrival_delay_s IS NOT NULL OR departure_delay_s IS NOT NULL) AND poll_time >= ? AND poll_time < ?"
     params = [debut_iso, fin_iso]
     cte = _cte_dernier_par_passage_complet(where)
     connexion.execute("DROP TABLE IF EXISTS temp.derniers_complet_periode")
     connexion.execute(
         "CREATE TEMP TABLE derniers_complet_periode AS " + cte
-        + "SELECT trip_id, start_date, gare, poll_time, retard_min FROM derniers",
+        + "SELECT trip_id, start_date, gare, poll_time, retard_min FROM derniers "
+        + "WHERE (trip_id || '|' || start_date) NOT IN (SELECT cle FROM circulations_annulees)",
         params,
     )
     lignes = connexion.execute(
@@ -1402,7 +1448,14 @@ def _retard_max_et_cumule_sql(
     par passage sur un filtre Gare, doublé inutilement par les 2 requêtes
     initiales — passage plus filtre Gare gare="Caen" : ~500ms -> ~200ms).
     Nom de table fixe car une seule requête HTTP == un seul connexion.execute
-    à la fois sur cette connexion (pas de risque de collision concurrente)."""
+    à la fois sur cette connexion (pas de risque de collision concurrente).
+
+    Exclut aussi les circulations de circulations_annulees (voir
+    _materialiser_circulations_annulees, que l'appelant DOIT avoir déjà
+    matérialisée) : sans cette exclusion, une circulation annulée dont le
+    flux GTFS-RT a publié une prévision d'arrivée au terminus juste avant
+    l'annulation officielle (train 851116, 2026-08-20) apparaîtrait comme
+    arrivée avec un vrai retard, alors qu'elle n'est jamais arrivée."""
     where, params = _construire_where_sql(
         gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
     )
@@ -1412,7 +1465,8 @@ def _retard_max_et_cumule_sql(
     try:
         connexion.execute(
             "CREATE TEMP TABLE derniers_par_passage AS "
-            + cte + "SELECT substr(trip_id, 1, instr(trip_id, ':') - 1) AS train, retard_min FROM derniers",
+            + cte + "SELECT substr(trip_id, 1, instr(trip_id, ':') - 1) AS train, retard_min FROM derniers "
+            + "WHERE (trip_id || '|' || start_date) NOT IN (SELECT cle FROM circulations_annulees)",
             params,
         )
         lignes_train = connexion.execute(
@@ -1539,6 +1593,13 @@ def calculer_stats_globales_sql(
     d'autres calculs du rapport en dehors des stats globales (voir
     _construire_where_sql).
 
+    circulations_annulees (voir _retard_max_et_cumule_sql) : matérialisée
+    ici UNIQUEMENT quand debut_iso est None (barre de stats globale, hors
+    Rapports) — sur l'onglet Rapports, calculer_contexte_rapport_sql l'a
+    déjà matérialisée une fois pour tout son traitement (y compris
+    _materialiser_circulations_arrivees_periode, appelé avant cette
+    fonction), pas la peine de la recalculer ici.
+
     Calcul intrinsèquement coûteux (2026-08-16, mesuré sur observations.db
     réel, ~950k lignes) : "dernier retard connu par passage" (Retard max/
     cumulé) nécessite un vrai passage sur toutes les lignes du périmètre
@@ -1554,6 +1615,8 @@ def calculer_stats_globales_sql(
         _materialiser_circulations_retard(
             connexion, gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
         )
+    if debut_iso is None:
+        _materialiser_circulations_annulees(connexion)
     try:
         return _calculer_stats_globales_sql_interne(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
@@ -1562,6 +1625,8 @@ def calculer_stats_globales_sql(
     finally:
         if limiter_retard:
             connexion.execute("DROP TABLE IF EXISTS temp.circulations_retard")
+        if debut_iso is None:
+            connexion.execute("DROP TABLE IF EXISTS temp.circulations_annulees")
 
 
 # Cache des RÉSULTATS déjà calculés (pas des données brutes, contrairement à
@@ -2165,7 +2230,7 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
     (par défaut l'heure réelle) : paramétrable pour les tests, comme les
     autres fonctions calculer_periode-dépendantes.
 
-    Purge ses 3 tables temporaires dans un bloc finally, y compris en cas
+    Purge ses 4 tables temporaires dans un bloc finally, y compris en cas
     d'erreur en cours de route — jamais laissées sales pour l'appel
     suivant sur cette même connexion."""
     maintenant_utc = maintenant_utc if maintenant_utc is not None else pd.Timestamp.now(tz="UTC")
@@ -2175,6 +2240,12 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
 
     contexte = {"nom_periode": nom_periode, "debut_local": debut_local, "fin_local": fin_local}
     try:
+        # AVANT tout appel à _materialiser_circulations_arrivees_periode
+        # (mois précédent inclus ci-dessous) : cette table ne dépend ni de
+        # la période ni du mois précédent/courant, une seule matérialisation
+        # suffit pour tout calculer_contexte_rapport_sql.
+        _materialiser_circulations_annulees(connexion)
+
         if nom_periode == "mensuel":
             # AVANT la matérialisation de la période courante ci-dessous
             # (_moyenne_mois_precedent_sql matérialise circulations_
@@ -2247,6 +2318,7 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
         connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
         connexion.execute("DROP TABLE IF EXISTS temp.derniers_complet_periode")
         connexion.execute("DROP TABLE IF EXISTS temp.rapport_filtre")
+        connexion.execute("DROP TABLE IF EXISTS temp.circulations_annulees")
 
     return contexte
 

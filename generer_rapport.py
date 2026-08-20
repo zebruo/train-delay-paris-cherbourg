@@ -207,19 +207,37 @@ def circulation_est_arrivee(circ, trip_id, start_date, variantes, calendrier):
     return passage_estime is not None and passage_estime <= dernier_poll
 
 
-def filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc):
+def filtrer_periode_arrivees(df, evenements, variantes, calendrier, debut_utc, fin_utc):
     """(df_periode_complet, df_periode) sur [debut_utc, fin_utc) : toutes
     gares confondues, puis restreint aux 11 gares de la ligne — circulations
     non-arrivées exclues des deux (voir circulation_est_arrivee). Factorisé
     entre stats_perturbees_periode() et le corps de generer(), qui avaient
-    ce même filtre dupliqué presque à l'identique."""
+    ce même filtre dupliqué presque à l'identique.
+
+    evenements (perturbations_detectees.csv, pas restreint à la période :
+    une circulation annulée l'est indépendamment de la fenêtre de stats
+    qu'on calcule) sert à exclure les circulations avec un événement
+    "trajet_annule", même quand circulation_est_arrivee les considère
+    arrivées — le flux GTFS-RT peut publier une prévision d'arrivée au
+    terminus (avec un retard) quelques minutes avant que l'annulation
+    officielle ne soit propagée (train 851116, 2026-08-20, 45 min prévus au
+    terminus puis annulé 5 min plus tard) : sans cette exclusion, Retard
+    max/Top5/Retard cumulé comptaient une circulation qui n'est en réalité
+    jamais arrivée, en contradiction avec "Circulations annulées" (qui la
+    listait déjà correctement, via evenements directement — voir plus bas
+    dans generer())."""
+    circulations_annulees = set(zip(
+        evenements.loc[evenements["type"] == "trajet_annule", "trip_id"],
+        evenements.loc[evenements["type"] == "trajet_annule", "start_date"].astype(str),
+    ))
     sous_df = df[
         (df["poll_time"] >= debut_utc) & (df["poll_time"] < fin_utc)
     ].dropna(subset=["retard_min"]).copy()
     circulations_arrivees = {
         (trip_id, start_date)
         for (trip_id, start_date), circ in sous_df.groupby(["trip_id", "start_date"])
-        if circulation_est_arrivee(circ, trip_id, start_date, variantes, calendrier)
+        if (trip_id, start_date) not in circulations_annulees
+        and circulation_est_arrivee(circ, trip_id, start_date, variantes, calendrier)
     }
     idx = pd.MultiIndex.from_frame(sous_df[["trip_id", "start_date"]])
     df_periode_complet = sous_df[idx.isin(circulations_arrivees)]
@@ -238,12 +256,12 @@ def _compte_perturbees(df_periode):
     return en_retard, total
 
 
-def stats_perturbees_periode(df, variantes, calendrier, debut_utc, fin_utc):
+def stats_perturbees_periode(df, evenements, variantes, calendrier, debut_utc, fin_utc):
     """(en_retard, total) circulations perturbées sur [debut_utc, fin_utc) —
     factorisé pour être réutilisable sur une période différente de celle du
     rapport (ex: le mois précédent, pour la comparaison du rapport
     mensuel)."""
-    _, df_periode = filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc)
+    _, df_periode = filtrer_periode_arrivees(df, evenements, variantes, calendrier, debut_utc, fin_utc)
     return _compte_perturbees(df_periode)
 
 
@@ -343,7 +361,7 @@ def generer(nom_periode, maintenant=None):
     # utilisé pour les stats globales (retard moyen, gare la + touchée,
     # sélection du top 5...) — même périmètre par défaut que l'appli
     # (limiter_ligne_var coché).
-    df_periode_complet, df_periode = filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc)
+    df_periode_complet, df_periode = filtrer_periode_arrivees(df, evenements, variantes, calendrier, debut_utc, fin_utc)
 
     en_retard, total = _compte_perturbees(df_periode)
     # Une seule valeur par passage réel (dernier relevé connu), pas par
@@ -553,7 +571,7 @@ def generer(nom_periode, maintenant=None):
         # fois — audit de nettoyage, 2026-08-20.
         if moyenne_mois is not None and pd.notna(premiere_donnee) and premiere_donnee <= borne_debut_utc:
             en_retard_prec, total_prec = stats_perturbees_periode(
-                df, variantes, calendrier, borne_debut_utc, debut_utc,
+                df, evenements, variantes, calendrier, borne_debut_utc, debut_utc,
             )
             moyenne_mois_precedent = 100 * en_retard_prec / total_prec if total_prec else None
         else:
