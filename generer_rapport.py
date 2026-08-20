@@ -227,16 +227,24 @@ def filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc):
     return df_periode_complet, df_periode
 
 
+def _compte_perturbees(df_periode):
+    """(en_retard, total) à partir d'un df_periode déjà filtré (voir
+    filtrer_periode_arrivees) — factorisé entre stats_perturbees_periode()
+    et le corps de generer(), qui dupliquaient ce même calcul à l'identique
+    (audit de nettoyage, 2026-08-20)."""
+    circulation = cle_circulation(df_periode)
+    total = circulation.nunique()
+    en_retard = circulation[df_periode["retard_min"] > 0].nunique() if total else 0
+    return en_retard, total
+
+
 def stats_perturbees_periode(df, variantes, calendrier, debut_utc, fin_utc):
     """(en_retard, total) circulations perturbées sur [debut_utc, fin_utc) —
     factorisé pour être réutilisable sur une période différente de celle du
     rapport (ex: le mois précédent, pour la comparaison du rapport
     mensuel)."""
     _, df_periode = filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc)
-    circulation = cle_circulation(df_periode)
-    total = circulation.nunique()
-    en_retard = circulation[df_periode["retard_min"] > 0].nunique() if total else 0
-    return en_retard, total
+    return _compte_perturbees(df_periode)
 
 
 def charger_donnees(borne_debut_utc, fin_utc):
@@ -337,9 +345,7 @@ def generer(nom_periode, maintenant=None):
     # (limiter_ligne_var coché).
     df_periode_complet, df_periode = filtrer_periode_arrivees(df, variantes, calendrier, debut_utc, fin_utc)
 
-    circulation = cle_circulation(df_periode)
-    total = circulation.nunique()
-    en_retard = circulation[df_periode["retard_min"] > 0].nunique() if total else 0
+    en_retard, total = _compte_perturbees(df_periode)
     # Une seule valeur par passage réel (dernier relevé connu), pas par
     # relevé — même dédoublonnement que "Retard cumulé" dans viewer.py (voir
     # mémoire du projet, 2026-07-28), sinon un même retard vu 20-40 fois par
@@ -404,7 +410,10 @@ def generer(nom_periode, maintenant=None):
     retard_max_par_circulation = derniers_par_passage(df_periode_complet).groupby(
         level=["trip_id", "start_date"]
     ).max().rename("retard_max")
-    retard_max_ligne_par_circulation = derniers_par_passage(df_periode).groupby(
+    # derniers (pas un nouvel appel derniers_par_passage(df_periode)) : même
+    # résultat déjà calculé plus haut pour Retard cumulé/max — audit de
+    # nettoyage, 2026-08-20.
+    retard_max_ligne_par_circulation = derniers.groupby(
         level=["trip_id", "start_date"]
     ).max().rename("retard_max_ligne")
     infos = infos.merge(retard_max_par_circulation, on=["trip_id", "start_date"], how="left")
@@ -441,7 +450,11 @@ def generer(nom_periode, maintenant=None):
     ]
 
     def _touche_la_ligne(ligne):
-        variante = choisir_variante(variantes, calendrier, ligne["trip_id"], str(ligne["start_date"]))
+        # Pas de str(...) sur start_date : choisir_variante le normalise
+        # déjà en interne (str(int(start_date))), comme partout ailleurs
+        # dans ce fichier (ex. lignes 195, 836) — audit de nettoyage,
+        # 2026-08-20.
+        variante = choisir_variante(variantes, calendrier, ligne["trip_id"], ligne["start_date"])
         return variante is not None and any(g in GARES_LIGNE for g in variante["gares"])
 
     # Garde explicite sur .empty avant .apply(axis=1) : sur un DataFrame
@@ -527,14 +540,20 @@ def generer(nom_periode, maintenant=None):
             cumule_par_jour_h = cumule_par_jour_min.reindex(jours_periode, fill_value=0.0).astype(float).cumsum() / 60
 
         moyenne_mois = 100 * en_retard / total if total else None
-        debut_mois_precedent = debut_local - pd.DateOffset(months=1)
         # Comparaison affichée seulement si le mois précédent est entièrement
         # couvert par la collecte — sinon (ex: tout premier rapport mensuel,
         # données commencées en cours de mois précédent) la comparaison
         # serait faussée par un mois partiel, pas vraiment comparable.
-        if moyenne_mois is not None and pd.notna(premiere_donnee) and premiere_donnee <= debut_mois_precedent:
+        # premiere_donnee vient de charger_donnees() (requête SQL séparée,
+        # pas df["poll_time"].min()) : df est maintenant borné à partir de
+        # borne_debut_utc, donc son minimum collerait toujours à cette borne
+        # même si la collecte remonte moins loin en réalité. borne_debut_utc
+        # réutilisé tel quel ici (déjà égal à "1 mois avant debut_local" pour
+        # un rapport mensuel, voir plus haut) plutôt que recalculé une 2e
+        # fois — audit de nettoyage, 2026-08-20.
+        if moyenne_mois is not None and pd.notna(premiere_donnee) and premiere_donnee <= borne_debut_utc:
             en_retard_prec, total_prec = stats_perturbees_periode(
-                df, variantes, calendrier, debut_mois_precedent.tz_convert("UTC"), debut_utc,
+                df, variantes, calendrier, borne_debut_utc, debut_utc,
             )
             moyenne_mois_precedent = 100 * en_retard_prec / total_prec if total_prec else None
         else:
@@ -964,6 +983,11 @@ def generer(nom_periode, maintenant=None):
     numero = numero_suivant(nom_periode)
     chemin = f"{dossier_periode}/{numero:04d}_rapport_{nom_periode}_{fin_local.strftime('%d-%m-%Y')}.pdf"
     fig.savefig(chemin)
+    # generer() est rappelable en boucle dans le même process (voir son
+    # docstring, réédition d'un rapport passé pour un backfill) — sans
+    # cette fermeture, chaque figure matplotlib resterait en mémoire d'un
+    # appel à l'autre. Audit de nettoyage, 2026-08-20.
+    plt.close(fig)
     print(f"Rapport généré : {chemin}")
 
 
