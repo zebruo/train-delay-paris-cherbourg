@@ -23,7 +23,7 @@
                 {% else %}
                     <tr class="{{ ligne.css_class or '' }}">
                         {% for cellule in ligne.cellules %}
-                            <td>{{ cellule }}{% if loop.index0 == 1 and ligne.annule %} <span class="badge-annule">ANNULÉ</span>{% endif %}{% if loop.index0 == 3 and ligne.arret_supprime %} <span class="badge-annule">ARRÊT SUPPRIMÉ</span>{% endif %}{% if loop.index0 == 3 and ligne.arret_ajoute %} <span class="badge-ajoute">ARRÊT AJOUTÉ</span>{% endif %}</td>
+                            <td{% if cellule == "–" %} class="vide"{% endif %}>{{ cellule }}{% if loop.index0 == 1 and ligne.annule %} <span class="badge-annule">ANNULÉ</span>{% endif %}{% if loop.index0 == 3 and ligne.arret_supprime %} <span class="badge-annule">ARRÊT SUPPRIMÉ</span>{% endif %}{% if loop.index0 == 3 and ligne.arret_ajoute %} <span class="badge-ajoute">ARRÊT AJOUTÉ</span>{% endif %}</td>
                         {% endfor %}
                     </tr>
                 {% endif %}

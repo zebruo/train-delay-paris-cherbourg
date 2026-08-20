@@ -1249,14 +1249,20 @@ couleurs de perturbation ne ciblent que les colonnes Arr. (min)/Dép. (min)
 l'utilisateur, 2026-08-10 : le reste de la ligne (train, gare, météo...)
 n'a pas besoin d'être coloré pour signaler un retard. tr.hors-ligne
 ci-dessous reste sur toute la ligne : ce n'est pas une perturbation, c'est
-un indicateur de gare hors ligne. */
-tr.retard-fort td:nth-child(6),
-tr.retard-fort td:nth-child(7) {
+un indicateur de gare hors ligne.
+
+:not(.vide) : une cellule vide ("–", VALEUR_MANQUANTE) n'a par définition
+aucun retard à signaler — sans cette exclusion, la première/dernière gare
+du trajet (Arr./Dép. absente par nature, pas juste inconnue) héritait quand
+même la couleur de la ligne, donnant un tiret rouge ou orange sans aucune
+valeur derrière. Repéré par l'utilisateur, 2026-08-20. */
+tr.retard-fort td:nth-child(6):not(.vide),
+tr.retard-fort td:nth-child(7):not(.vide) {
     color: #ef4444;
 }
 
-tr.retard-moyen td:nth-child(6),
-tr.retard-moyen td:nth-child(7) {
+tr.retard-moyen td:nth-child(6):not(.vide),
+tr.retard-moyen td:nth-child(7):not(.vide) {
     color: #f97316;
 }
 
@@ -1266,7 +1272,7 @@ deux règles ci-dessus : couleur_ligne() (app_fastapi.py) ne renvoie
 (< SEUIL_RETARD_MOYEN ou inconnu) — colorer aussi Arr. afficherait un "0.0"
 bénin en doré, comme si l'arrivée posait aussi problème. Repéré par
 l'utilisateur, 2026-08-12. */
-tr.depart-retard td:nth-child(7) {
+tr.depart-retard td:nth-child(7):not(.vide) {
     color: #ccb531;
 }
 
