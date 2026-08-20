@@ -32,4 +32,13 @@
             <div class="stat-valeur">{{ stats.pire_gare_texte }}</div>
         </div>
     {% endif %}
+    {% if vue == "rapports" %}
+        <div class="stat">
+            <div class="stat-label">Circulations annulées <span class="icone-info" title="Nombre de circulations annulées sur cette période (voir aussi onglet Travaux / Alertes), touchant au moins une des 11 gares de la ligne — invisibles des autres stats, un trajet annulé n'atteignant jamais son terminus dans les données (donc jamais considéré comme « arrivé »).">ℹ</span></div>
+            <div class="stat-valeur">
+                {{ annulations|length }}
+                {% if annulations %}<span class="pastille">{{ annulations|join(", ") }}</span>{% endif %}
+            </div>
+        </div>
+    {% endif %}
 {% endif %}

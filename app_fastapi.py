@@ -533,6 +533,57 @@ def alertes_periode(alertes_df, debut_local, fin_local):
     ]
 
 
+def annulations_periode(evenements_df, debut_local, fin_local, variantes, calendrier):
+    """Numéros des trains annulés (événement "trajet_annule", voir
+    perturbations.detecter_evenements) détectées dans [debut_local,
+    fin_local) ET dont le trajet théorique touche au moins une des 11 gares
+    de la ligne — même définition "sur la ligne" que retard_max_ligne
+    (_construire_donnees_top5_sql), pour rester cohérent avec le reste du
+    rapport (Retard max, Top5, moyennes...) : sans ce filtre, une
+    annulation sur une branche jamais reliée à l'axe (ex: un aller-retour
+    Rennes) aurait compté de la même façon qu'une vraie perturbation de
+    l'axe Paris-Cherbourg — repéré par l'utilisateur, 2026-08-20 (trains
+    852610/853430, qui ne croisent la ligne qu'à Lison/Bayeux/Caen, sans
+    jamais aller côté Cherbourg ni côté Paris — restent comptés malgré
+    tout, cette règle n'exclut que les branches qui ne croisent la ligne
+    nulle part).
+
+    Un trajet annulé n'atteint jamais son terminus dans les données, donc
+    circulation_est_arrivee (generer_rapport.py) l'exclut de toutes les
+    stats de retard (Top5, moyennes...) : sans ce compteur à part, une
+    annulation restait invisible dans le rapport alors que c'est la pire
+    forme de perturbation possible — repéré par l'utilisateur sur le train
+    851116, 2026-08-20. enregistrer_evenements (perturbations.py)
+    dédoublonne déjà à l'écriture (une ligne par (type, trip_id,
+    start_date)), pas besoin de re-dédoublonner ici.
+
+    Renvoie la liste des numéros de train formatés (format_numero_train),
+    triés — pas juste un compte : demande explicite de l'utilisateur,
+    2026-08-20, pour voir directement QUELS trains plutôt qu'un chiffre nu."""
+    debut_utc = debut_local.tz_convert("UTC")
+    fin_utc = fin_local.tz_convert("UTC")
+    annules = evenements_df[
+        (evenements_df["type"] == "trajet_annule")
+        & (evenements_df["poll_time"] >= debut_utc)
+        & (evenements_df["poll_time"] < fin_utc)
+    ]
+
+    def touche_la_ligne(ligne):
+        variante = choisir_variante(variantes, calendrier, ligne["trip_id"], str(ligne["start_date"]))
+        return variante is not None and any(g in GARES_LIGNE for g in variante["gares"])
+
+    # Garde explicite sur .empty avant .apply(axis=1) : sur un DataFrame
+    # filtré à 0 ligne, .apply(axis=1) renvoie parfois un DataFrame (pas une
+    # Series) selon la version de pandas installée, ce qui casse tout
+    # calcul en aval sur son résultat — confirmé en pratique sur
+    # generer_rapport.py (pandas 3.0.5 sur le Pi, pas 3.0.3 en local),
+    # 2026-08-20.
+    if annules.empty:
+        return []
+    annules = annules[annules.apply(touche_la_ligne, axis=1)]
+    return sorted({format_numero_train(t) for t in annules["train"]})
+
+
 # Système de coordonnées fixe pour la frise (#pied-de-page) : contrairement
 # au tk.Canvas de viewer.py, qui recalculait les positions à chaque
 # redimensionnement (largeur réelle en pixels), le SVG se redimensionne
@@ -2148,6 +2199,10 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
         temp_moy, vent_moy, pluie_totale = _meteo_periode_sql(connexion)
         contexte["meteo"] = {"temp_moy": temp_moy, "vent_moy": vent_moy, "pluie_totale": pluie_totale}
         contexte["alertes"] = alertes_periode(charger_alertes(LOCAL_ALERTES), debut_local, fin_local)
+        contexte["annulations"] = annulations_periode(
+            charger_evenements(PERTURBATIONS_FILE), debut_local, fin_local,
+            reference_donnees["variantes"], reference_donnees["calendrier"],
+        )
 
         if nom_periode == "mensuel":
             # _pct_perturbees_sql (PAS contexte["pct_perturbe"] ci-dessus,
@@ -2272,7 +2327,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
         if cle in (
             "stats", "stats_ratio", "pct_perturbe", "format_min_sans_zero",
             "tooltip_ratio_retard", "tooltip_cumule", "tooltip_moyen",
-            "tooltip_retard_max", "tooltip_pire_gare",
+            "tooltip_retard_max", "tooltip_pire_gare", "annulations",
         )
     }
     resultat["rapport_periode_texte"] = texte_periode_rapport(nom_periode, ctx["debut_local"], ctx["fin_local"])

@@ -54,6 +54,7 @@ SEUIL_FIABLE_MENSUEL = 30
 
 OBSERVATIONS_DB = "observations.db"
 ALERTES_FILE = "alertes.csv"
+PERTURBATIONS_FILE = "perturbations_detectees.csv"
 RAPPORTS_DIR = "rapports"
 COMPTEUR_FILE = f"{RAPPORTS_DIR}/.compteur.json"
 
@@ -270,7 +271,13 @@ def charger_donnees():
         alertes["fin"] = pd.to_datetime(alertes["fin"], utc=True, errors="coerce")
     except (FileNotFoundError, pd.errors.EmptyDataError):
         alertes = pd.DataFrame(columns=["gares", "texte", "debut", "fin"])
-    return df, alertes, variantes, calendrier
+
+    try:
+        evenements = pd.read_csv(PERTURBATIONS_FILE)
+        evenements["poll_time"] = pd.to_datetime(evenements["poll_time"], utc=True, errors="coerce")
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        evenements = pd.DataFrame(columns=["poll_time", "type", "trip_id", "start_date", "train", "gare"])
+    return df, alertes, evenements, variantes, calendrier
 
 
 def generer(nom_periode, maintenant=None):
@@ -280,7 +287,7 @@ def generer(nom_periode, maintenant=None):
     laquelle le rapport aurait dû être généré plutôt que de dépendre de
     l'heure système actuelle."""
     titre = PERIODES[nom_periode]
-    df, alertes, variantes, calendrier = charger_donnees()
+    df, alertes, evenements, variantes, calendrier = charger_donnees()
 
     if maintenant is None:
         maintenant = pd.Timestamp.now(tz="UTC")
@@ -389,6 +396,43 @@ def generer(nom_periode, maintenant=None):
         (alertes["debut"].isna() | (alertes["debut"] <= fin_utc))
         & (alertes["fin"].isna() | (alertes["fin"] >= debut_utc))
     ]
+
+    # Nombre de circulations distinctes annulées (événement "trajet_annule",
+    # voir perturbations.detecter_evenements) détectées sur la période ET
+    # dont le trajet théorique touche au moins une des 11 gares de la ligne
+    # — même définition "sur la ligne" que retard_max_ligne (top5 plus
+    # haut), pour rester cohérent avec le reste du rapport ; un trajet
+    # annulé n'atteint jamais son terminus dans les données, donc
+    # circulation_est_arrivee ci-dessus l'exclut de toutes les stats de
+    # retard (Top5, moyennes...) : sans ce compteur à part, une annulation
+    # restait invisible dans le rapport alors que c'est la pire forme de
+    # perturbation possible — repéré par l'utilisateur sur le train 851116,
+    # 2026-08-20. Même compteur que app_fastapi.annulations_periode (web),
+    # dupliqué ici plutôt qu'importé — même convention que alertes_periode
+    # juste au-dessus (ce script ne dépend jamais de app_fastapi.py).
+    annulations_periode = evenements[
+        (evenements["type"] == "trajet_annule")
+        & (evenements["poll_time"] >= debut_utc) & (evenements["poll_time"] < fin_utc)
+    ]
+
+    def _touche_la_ligne(ligne):
+        variante = choisir_variante(variantes, calendrier, ligne["trip_id"], str(ligne["start_date"]))
+        return variante is not None and any(g in GARES_LIGNE for g in variante["gares"])
+
+    # Garde explicite sur .empty avant .apply(axis=1) : sur un DataFrame
+    # filtré à 0 ligne, .apply(axis=1) renvoie parfois un DataFrame (pas une
+    # Series) selon la version de pandas installée — .sum() tombe alors sur
+    # la colonne poll_time (datetime64), qui ne supporte pas sum() ("'Date
+    # timeArray' ... does not support operation 'sum'") — confirmé en
+    # pratique : reproductible avec pandas 3.0.5 (Pi), pas avec 3.0.3 (PC),
+    # même DataFrame vide en entrée. Repéré au premier déploiement de ce
+    # compteur, 2026-08-20 (aucune annulation "sur la ligne" ce jour-là).
+    if annulations_periode.empty:
+        noms_annulations = []
+    else:
+        annulations_periode = annulations_periode[annulations_periode.apply(_touche_la_ligne, axis=1)]
+        noms_annulations = sorted({format_numero_train(t) for t in annulations_periode["train"]})
+    nb_annulations = len(noms_annulations)
 
     # Météo : une valeur par (poll_time, gare) dans les données sources (une
     # requête par gare distincte, voir collect_realtime.py), mais répétée sur
@@ -585,14 +629,15 @@ def generer(nom_periode, maintenant=None):
     ax_stats.add_artist(AnnotationBbox(
         boite_stats, (0, 0.97), xycoords="axes fraction", box_alignment=(0, 1), frameon=False,
     ))
-    # Répartition régulière sur les 4 lignes (0.97 → 0.15, 3 intervalles
-    # égaux) — l'ajout de "Gare la + touchée" (sa propre ligne, voir plus
-    # haut) les avait tassées vers le haut (0.97/0.78/0.55) sans retoucher
-    # l'espacement d'origine, pensé pour seulement 3 lignes : interligne
-    # visiblement plus serré qu'entre météo et alertes — repéré par
-    # l'utilisateur, 2026-08-18.
+    # Répartition régulière sur les 5 lignes (0.97 → 0.11, 4 intervalles
+    # égaux de 0.215, légèrement plus espacés que les 0.205 d'origine —
+    # demande explicite de l'utilisateur, 2026-08-20) — l'ajout de "Gare la
+    # + touchée" (sa propre ligne, 2026-08-18) avait déjà appris cette
+    # leçon (les avait tassées vers le haut sans retoucher l'espacement
+    # d'origine) : "Circulations annulées" (2026-08-20) reprend le même
+    # espacement complet plutôt que de s'ajouter sans y toucher.
     if texte_pire_gare:
-        ax_stats.text(0, 0.70, texte_pire_gare, fontsize=8, color="#555", va="top", ha="left")
+        ax_stats.text(0, 0.755, texte_pire_gare, fontsize=8, color="#555", va="top", ha="left")
     if pd.notna(temp_moy):
         texte_meteo = (
             f"Météo sur la période : {temp_moy:.1f}°C en moyenne · "
@@ -600,12 +645,20 @@ def generer(nom_periode, maintenant=None):
         )
     else:
         texte_meteo = "Météo : non disponible sur cette période."
-    ax_stats.text(0, 0.43, texte_meteo, fontsize=8, color="#555", va="top", ha="left")
+    ax_stats.text(0, 0.54, texte_meteo, fontsize=8, color="#555", va="top", ha="left")
     texte_alertes = (
         f"Travaux / alertes sur la période : {len(alertes_periode)} alerte(s) active(s) (détail ci-dessous)."
         if has_alertes else "Travaux / alertes sur la période : aucune alerte connue."
     )
-    ax_stats.text(0, 0.15, texte_alertes, fontsize=8, color="#555", va="top", ha="left")
+    ax_stats.text(0, 0.325, texte_alertes, fontsize=8, color="#555", va="top", ha="left")
+    # Invisible des stats de retard ci-dessus (voir circulation_est_arrivee)
+    # — d'où sa propre ligne, plutôt qu'un chiffre de plus noyé dans ligne2.
+    texte_annulations = (
+        f"Circulations annulées sur la période (sur la ligne) : {nb_annulations} "
+        f"({', '.join(noms_annulations)})."
+        if nb_annulations else "Circulations annulées sur la période (sur la ligne) : aucune."
+    )
+    ax_stats.text(0, 0.11, texte_annulations, fontsize=8, color="#555", va="top", ha="left")
     ax_stats.set_xlim(0, 1)
     ax_stats.set_ylim(0, 1)
 
