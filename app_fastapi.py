@@ -2167,13 +2167,25 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
             pct_par_jour, cumule_par_jour_h = _pct_et_cumule_par_jour_sql(connexion, debut_local, fin_local)
             contexte["graph_pct_jour"] = pct_par_jour
             contexte["graph_cumule_jour"] = cumule_par_jour_h
+            stats_gare_mois = _moyenne_retard_par_categorie_sql(connexion, "gare", GARES_LIGNE_ORDRE)
             contexte["graph_gare"] = _construire_barre(
-                _moyenne_retard_par_categorie_sql(connexion, "gare", GARES_LIGNE_ORDRE),
-                "moyenne", GARES_LIGNE_ORDRE, " min", avec_moyenne=True,
+                stats_gare_mois, "moyenne", GARES_LIGNE_ORDRE, " min", avec_moyenne=True,
             )
+            # Titres dynamiques ("— max : ..."), même principe que l'onglet
+            # Par jour/heure (titre_dynamique_jour_heure ci-dessus) —
+            # demande explicite de l'utilisateur, 2026-08-20, pour que le
+            # rapport mensuel donne la même précision.
+            contexte["graph_gare"]["titre"] = titre_dynamique_jour_heure(
+                "Retard moyen par gare", stats_gare_mois, "moyenne", GARES_LIGNE_ORDRE, str,
+                lambda v: f"{v:.1f} min", SEUIL_FIABLE,
+            )
+            stats_jour_mois = _moyenne_retard_par_categorie_sql(connexion, "jour_semaine", JOURS_ORDRE)
             contexte["graph_jour_semaine"] = _construire_barre(
-                _moyenne_retard_par_categorie_sql(connexion, "jour_semaine", JOURS_ORDRE),
-                "moyenne", JOURS_ORDRE, " min", avec_moyenne=True,
+                stats_jour_mois, "moyenne", JOURS_ORDRE, " min", avec_moyenne=True,
+            )
+            contexte["graph_jour_semaine"]["titre"] = titre_dynamique_jour_heure(
+                "Retard moyen par jour", stats_jour_mois, "moyenne", JOURS_ORDRE, str.lower,
+                lambda v: f"{v:.1f} min", SEUIL_FIABLE,
             )
         else:
             contexte["top5"] = _construire_donnees_top5_sql(

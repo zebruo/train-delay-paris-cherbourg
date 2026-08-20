@@ -44,7 +44,13 @@ from formatting import (
     cle_circulation, derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel,
     format_gare, format_heure_avec_arret, format_min_sans_zero, format_numero_train,
     load_calendrier, load_reference, texte_categorie_maximale, texte_periode_rapport,
+    titre_dynamique_jour_heure,
 )
+
+# Même seuil que SEUIL_FIABLE (app_fastapi.py) — pas d'import direct, ce
+# script ne dépend jamais de app_fastapi.py (sens inverse : le Pi n'exécute
+# que generer_rapport.py, pas l'appli web).
+SEUIL_FIABLE_MENSUEL = 30
 
 OBSERVATIONS_DB = "observations.db"
 ALERTES_FILE = "alertes.csv"
@@ -673,7 +679,17 @@ def generer(nom_periode, maintenant=None):
             ax_c.bar(range(len(GARES_LIGNE_ORDRE)), moyennes_par_gare_mois.values, color="#8a5cb5")
             ax_c.set_xticks(range(len(GARES_LIGNE_ORDRE)))
             ax_c.set_xticklabels([format_gare(g) for g in GARES_LIGNE_ORDRE], fontsize=6.5, rotation=30, ha="right")
-            ax_c.set_title("Retard moyen par gare, sur le mois", fontsize=9, fontweight="bold", loc="left")
+            # Titre dynamique ("— max : ..."), même principe que l'onglet
+            # web Par jour/heure (titre_dynamique_jour_heure) — demande
+            # explicite de l'utilisateur, 2026-08-20, pour la même
+            # précision dans le rapport mensuel PDF.
+            comptes_par_gare_mois = df_periode.groupby("gare")["retard_min"].count().reindex(GARES_LIGNE_ORDRE)
+            stats_gare_mois = pd.DataFrame({"moyenne": moyennes_par_gare_mois, "n": comptes_par_gare_mois})
+            titre_gare_mois = titre_dynamique_jour_heure(
+                "Retard moyen par gare", stats_gare_mois, "moyenne", GARES_LIGNE_ORDRE, str,
+                lambda v: f"{v:.1f} min", SEUIL_FIABLE_MENSUEL,
+            )
+            ax_c.set_title(titre_gare_mois, fontsize=9, fontweight="bold", loc="left")
             ax_c.set_ylabel("min", fontsize=8)
             ax_c.tick_params(axis="y", labelsize=7)
             ax_c.axhline(0, color="gray", linewidth=0.6)
@@ -687,7 +703,13 @@ def generer(nom_periode, maintenant=None):
             ax_e.bar(range(len(JOURS_SEMAINE_ORDRE)), moyennes_par_jour_mois.values, color="#5ba58c")
             ax_e.set_xticks(range(len(JOURS_SEMAINE_ORDRE)))
             ax_e.set_xticklabels([j[:3] for j in JOURS_SEMAINE_ORDRE], fontsize=7)
-            ax_e.set_title("Retard moyen par jour de semaine, sur le mois", fontsize=9, fontweight="bold", loc="left")
+            comptes_par_jour_mois = df_periode.groupby(jour_semaine)["retard_min"].count().reindex(JOURS_SEMAINE_ORDRE)
+            stats_jour_mois = pd.DataFrame({"moyenne": moyennes_par_jour_mois, "n": comptes_par_jour_mois})
+            titre_jour_mois = titre_dynamique_jour_heure(
+                "Retard moyen par jour", stats_jour_mois, "moyenne", JOURS_SEMAINE_ORDRE, str.lower,
+                lambda v: f"{v:.1f} min", SEUIL_FIABLE_MENSUEL,
+            )
+            ax_e.set_title(titre_jour_mois, fontsize=9, fontweight="bold", loc="left")
             ax_e.set_ylabel("min", fontsize=8)
             ax_e.tick_params(axis="y", labelsize=7)
             ax_e.axhline(0, color="gray", linewidth=0.6)
