@@ -2020,7 +2020,7 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
     ).fetchall()
 
     top5 = []
-    for trip_id, start_date, retard_max, _retard_max_ligne in lignes:
+    for trip_id, start_date, retard_max, retard_max_ligne in lignes:
         variante = choisir_variante(variantes, calendrier, trip_id, start_date)
         ordre_gares = variante["gares"] if variante else []
         train = trip_id.split(":", 1)[0]
@@ -2034,6 +2034,7 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
             "trip_id": trip_id, "start_date": start_date,
             "train": format_numero_train(train), "sens": sens,
             "retard_max": round(float(retard_max), 1) if retard_max is not None else None,
+            "retard_max_ligne": round(float(retard_max_ligne), 1) if retard_max_ligne is not None else None,
             "releve": None, "labels": [format_gare(g) for g in ordre_gares],
             # Gares hors des 11 de la ligne (trains de jonction, ex: Rennes,
             # Granville, Rouen) grisées côté JS — même traitement que Suivi
@@ -2316,9 +2317,23 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
         # 120 min".
         resultat["rapport_top5"] = [
             {
+                # Suffixe "(X sur la ligne)" quand le pic toutes gares
+                # confondues (retard_max) et celui restreint aux 11 gares de
+                # la ligne (retard_max_ligne, même chiffre que le "Retard
+                # max" affiché dans la barre de stats) diffèrent une fois
+                # arrondis — évite qu'un pic hors ligne (ex: St-Lô) semble
+                # contredire le "Retard max" de l'en-tête sans explication,
+                # repéré par l'utilisateur sur le rapport hebdomadaire,
+                # 2026-08-19.
                 "titre": (
                     f"train {e['train']} ({e['sens']}) — {_format_start_date(e['start_date'])} — "
-                    f"max {e['retard_max']:.0f} min"
+                    f"max {round(e['retard_max'])} min"
+                    + (
+                        f" ({round(e['retard_max_ligne'])} min sur la ligne)"
+                        if e["retard_max_ligne"] is not None
+                        and round(e["retard_max_ligne"]) != round(e["retard_max"])
+                        else ""
+                    )
                 ),
                 "releve_json": (
                     json_pour_script({"labels": e["labels"], "hors_ligne": e["hors_ligne"], **e["releve"]})

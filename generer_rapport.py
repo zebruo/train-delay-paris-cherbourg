@@ -802,9 +802,25 @@ def generer(nom_periode, maintenant=None):
                         tick.set_color("#999999")
 
                 date_str = pd.to_datetime(str(start_date), format="%Y%m%d").strftime("%d/%m/%Y")
+                # Suffixe "(X sur la ligne)" quand le pic toutes gares
+                # confondues (retard_max) et celui restreint aux 11 gares de
+                # la ligne (retard_max_ligne, le chiffre utilisé pour le
+                # classement top5 ci-dessus et pour le "Retard max" de la
+                # barre de stats) diffèrent une fois arrondis — même fix que
+                # app_fastapi.py (rapport_top5), pour garder les deux titres
+                # identiques, 2026-08-19.
+                retard_max_arrondi = round(ligne["retard_max"])
+                retard_max_ligne_arrondi = (
+                    round(ligne["retard_max_ligne"]) if pd.notna(ligne["retard_max_ligne"]) else None
+                )
+                suffixe_ligne = (
+                    f" ({retard_max_ligne_arrondi} min sur la ligne)"
+                    if retard_max_ligne_arrondi is not None and retard_max_ligne_arrondi != retard_max_arrondi
+                    else ""
+                )
                 ax_g.set_title(
                     f"train {format_numero_train(ligne['train'])} ({ligne['sens']}) — {date_str} — "
-                    f"max {ligne['retard_max']:.0f} min",
+                    f"max {retard_max_arrondi} min{suffixe_ligne}",
                     fontsize=8, fontweight="bold", loc="center",
                 )
                 ax_g.set_ylabel("min", fontsize=7)
