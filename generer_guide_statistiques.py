@@ -124,16 +124,30 @@ def section(ax, y, titre, definition, exemple_lignes, utilite, pourquoi=None, so
     seulement ce qu'elle mesure — demande explicite de l'utilisateur,
     2026-07-28. "sous_titre" (optionnel) s'affiche à la suite du titre, en
     plus petit et plus clair, pour donner en un mot ce que reflète la
-    statistique (ex: "reflète l'état final réel")."""
+    statistique (ex: "reflète l'état final réel") — sauf si titre+sous_titre
+    ne tiennent pas sur la largeur de la page (mesuré en pixels réels via le
+    renderer, pas estimé), auquel cas le sous-titre bascule sur sa propre
+    ligne juste en dessous plutôt que de déborder hors de la page — repéré
+    par l'utilisateur, 2026-08-20, sur « Régénérer » et « Déployer vers la
+    VPS », le titre le plus long du guide combiné à un sous-titre déjà
+    conséquent."""
     ax.text(0, y, titre, fontsize=13, fontweight="bold", color=COULEUR_ACCENT, va="top")
     if sous_titre:
         fig = ax.figure
         renderer = fig.canvas.get_renderer()
         fp_titre = FontProperties(size=13, weight="bold")
+        fp_sous_titre = FontProperties(size=10)
         largeur_titre_px = renderer.get_text_width_height_descent(titre, fp_titre, False)[0]
+        largeur_sous_titre_px = renderer.get_text_width_height_descent(sous_titre, fp_sous_titre, False)[0]
         x0_px, x1_px = ax.transData.transform([(0, 0), (1, 0)])[:, 0]
-        largeur_titre_data = largeur_titre_px / (x1_px - x0_px)
-        ax.text(largeur_titre_data + 0.012, y, sous_titre, fontsize=10, color=COULEUR_GRIS, va="top")
+        largeur_disponible_px = x1_px - x0_px
+        largeur_titre_data = largeur_titre_px / largeur_disponible_px
+        espace_px = 0.012 * largeur_disponible_px
+        if largeur_titre_px + espace_px + largeur_sous_titre_px <= largeur_disponible_px:
+            ax.text(largeur_titre_data + 0.012, y, sous_titre, fontsize=10, color=COULEUR_GRIS, va="top")
+        else:
+            y -= 0.032
+            ax.text(0, y, sous_titre, fontsize=10, color=COULEUR_GRIS, va="top")
     y -= 0.045
 
     ax.text(0, y, definition, fontsize=10, color=COULEUR_TITRE, va="top", linespacing=1.5)
