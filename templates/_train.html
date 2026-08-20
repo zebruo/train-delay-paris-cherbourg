@@ -35,7 +35,9 @@
             </select>
         </div>
     </div>
-    <p class="info">{{ aide_vue_train }}</p>
+    {% if not train_vide and not erreur_trajet %}
+        <p class="info">{{ aide_vue_train }}</p>
+    {% endif %}
     {% if train_vide %}
         <p class="info">Aucun trajet ne correspond aux filtres actuels.</p>
     {% elif erreur_trajet %}
