@@ -58,7 +58,7 @@
         rapatrier depuis un serveur distant), donc l'auto-refresh se
         contente de recharger la vue actuelle pour afficher les données
         déjà à jour localement. -->
-        <div id="auto-refresh-trigger" hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+        <div id="auto-refresh-trigger" hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres, #filtres-train, #filtres-gtfs"
              hx-trigger="every 300s [document.getElementById('auto-refresh').checked]"
              style="display:none"></div>
         {% include "_dialogue_aide.html" %}
