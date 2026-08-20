@@ -491,7 +491,7 @@ permanence, plus de vrai bascule ouvert/fermé (repéré par l'utilisateur,
    l'écran, et position: relative pour ancrer la croix de fermeture. */
 dialog#dialogue-aide {
     position: relative;
-    max-width: 42rem;
+    max-width: 52rem;
     max-height: 85vh;
     overflow-y: auto;
     border: 2px solid var(--bordure);
