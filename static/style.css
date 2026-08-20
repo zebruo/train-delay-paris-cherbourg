@@ -176,6 +176,60 @@ côte à côte, .modebar-btn/.modebar-btn svg leur mise en forme individuelle
     top: 2px;
 }
 
+/* Toujours la même classe wipée : Plotly scope aussi le tooltip natif des
+boutons ("data-title", ex: "Download plot as a png", affiché au survol via
+[data-title]:hover:after{content:attr(data-title)...}) sous .js-plotly-plot
+— sans ce palliatif, un rafraîchissement htmx (ex: changer de Trajet sur
+Suivi d'un train, ou de Période sur Graphique) faisait disparaître ce
+tooltip au survol jusqu'au prochain rechargement complet de la page.
+Reproduit et corrigé après signalement de l'utilisateur, 2026-08-20. Règles
+copiées à l'identique depuis la feuille injectée par Plotly
+(plotly-basic.min.js), juste rescopées sur l'id plutôt que la classe. */
+#graphique-plot [data-title]:before,
+#graphique-plot [data-title]:after,
+#train-plot [data-title]:before,
+#train-plot [data-title]:after {
+    position: absolute;
+    display: none;
+    opacity: 0;
+    z-index: 1001;
+    pointer-events: none;
+    top: 110%;
+    right: 50%;
+}
+
+#graphique-plot [data-title]:hover:before,
+#graphique-plot [data-title]:hover:after,
+#train-plot [data-title]:hover:before,
+#train-plot [data-title]:hover:after {
+    display: block;
+    opacity: 1;
+}
+
+#graphique-plot [data-title]:before,
+#train-plot [data-title]:before {
+    content: "";
+    background: rgba(0, 0, 0, 0);
+    border: 6px solid rgba(0, 0, 0, 0);
+    z-index: 1002;
+    margin-top: -12px;
+    border-bottom-color: #69738a;
+    margin-right: -6px;
+}
+
+#graphique-plot [data-title]:after,
+#train-plot [data-title]:after {
+    content: attr(data-title);
+    background: #69738a;
+    color: #fff;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 12px;
+    white-space: nowrap;
+    margin-right: -18px;
+    border-radius: 2px;
+}
+
 /* La page elle-même ne défile jamais (voir #zone-contenu plus bas, qui
 distribue la hauteur restante à la zone active) : sans ça, une zone qui
 déborde un peu (entête sur plusieurs lignes à cause d'un message de statut
