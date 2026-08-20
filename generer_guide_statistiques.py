@@ -255,7 +255,7 @@ GUIDE_PAGES = [
                     "en gare (un même train peut être en retard à plusieurs gares).",
                     "Ces 90 passages cumulent 15 h de retard au total.",
                     "→ Affiché : « Retard cumulé : 15 h 00 min »",
-                    "(le détail « 90 passages impactés » n'apparaît que sous le graphique",
+                    "(le détail « 90 passages impactés » n'apparaît qu'au-dessus du graphique",
                     "de l'onglet Graphique, pas dans cette barre de stats du haut)",
                 ],
                 utilite=(
