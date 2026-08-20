@@ -50,7 +50,8 @@ function traceMax(serie, couleur, axeX, axeY) {
         type: "scatter", mode: "markers",
         marker: { symbol: "star", size: 12, color: couleur, line: { color: "black", width: 0.5 } },
         xaxis: axeX, yaxis: axeY, showlegend: false,
-        hovertemplate: serie.max.texte_repere + "<br><br>" + serie.max.texte_explication + "<extra></extra>",
+        hovertemplate: serie.max.texte_repere + "<br>" + serie.max.texte_explication + "<extra></extra>",
+        hoverlabel: { align: "left" },
     };
 }
 
@@ -66,7 +67,8 @@ function traceMoyenne(serie, couleur, axeX, axeY) {
         type: "scatter", mode: "lines",
         line: { color: couleur, width: 1, dash: "dot" },
         xaxis: axeX, yaxis: axeY, showlegend: false,
-        hovertemplate: serie.moyenne.texte_repere + "<br><br>" + serie.moyenne.texte_explication + "<extra></extra>",
+        hovertemplate: serie.moyenne.texte_repere + "<br>" + serie.moyenne.texte_explication + "<extra></extra>",
+        hoverlabel: { align: "left" },
     };
 }
 
