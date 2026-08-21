@@ -77,7 +77,10 @@ Puis renseigner `PI_HOST`, `VPS_HOST`, `NAS_HOST`, `CHEMIN_DISTANT_PI` et
 `CHEMIN_DISTANT_VPS` dans `config.py`, et `NAS_HOST`/`SSH_KEY_NAS`/
 `VPS_HOST`/`SSH_KEY_VPS` dans `config.sh` (utilisé par les scripts bash
 tournant sur le Pi, notamment `executer_rapport_pi.sh`), avec tes propres
-valeurs.
+valeurs. `FREE_MOBILE_USER`/`FREE_MOBILE_PASS` dans `config.py` sont
+optionnels — uniquement sur la VPS, pour l'alerte SMS de `verifier_gtfs.py`
+quand « Nouveaux » reste > 0 plusieurs jours de suite (identifiants dans
+l'Espace Abonné Free -> Notifications par SMS).
 
 ### Référentiel initial
 

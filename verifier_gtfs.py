@@ -29,6 +29,21 @@ après avoir téléchargé/extrait le nouveau zip dans gtfs/), pas un
 remplacement silencieux d'une donnée utilisée dans tout le projet
 (collect_realtime.py, viewer.py, generer_rapport.py).
 
+À propos de "X trains différents parmi les Y du référentiel" (tooltip de la
+barre de stats globale, app_fastapi.py) : ce chiffre peut légitimement
+dépasser Y (2026-08-21 : 536 observés pour 503 dans le référentiel actuel)
+sans que ce soit le signe d'un problème en cours. Il porte sur TOUTE la
+collecte depuis le début ("depuis le début de la collecte") : un train
+observé un jour donné, quand la référence d'alors ne le connaissait pas
+encore, y reste compté même après une régénération qui l'a depuis intégré.
+Vérifié le 2026-08-21 : sur les ~183 trains ainsi "manquants" par rapport
+au référentiel actuel, aucune observation postérieure au 17/08 — cohérent
+avec de la dérive accumulée AVANT les dernières régénérations, pas un écart
+qui continue à se produire aujourd'hui. Ne pas conclure trop vite à un
+défaut structurel sur la seule foi de ce chiffre (erreur faite une première
+fois en investiguant ce point) — vérifier la date des dernières
+observations "manquantes" avant de conclure.
+
 Usage : python verifier_gtfs.py >> verification_gtfs.log 2>&1
 Cron quotidien sur la VPS (3h15, heure de Paris depuis le passage du
 fuseau système à Europe/Paris) — verification_gtfs.log n'est plus remonté
@@ -45,6 +60,7 @@ import io
 import json
 import re
 import subprocess
+import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -55,6 +71,9 @@ from formatting import PARIS_TZ, sans_date_trip_id
 
 META_FILE = "reference_paris_cherbourg.meta.json"
 ETAT_FILE = "verification_gtfs_etat.json"
+# Nombre de jours consécutifs avec "Nouveaux" > 0 avant l'alerte SMS (voir
+# envoyer_sms_free_mobile) — demande explicite de l'utilisateur, 2026-08-21.
+SEUIL_JOURS_ALERTE_SMS = 3
 REFERENCE_FILE = "reference_paris_cherbourg.csv"
 LOG_FILE = "verification_gtfs.log"
 
@@ -277,6 +296,29 @@ def lancer_a_distance(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=30):
         return False
 
 
+def envoyer_sms_free_mobile(message):
+    """Best-effort (même philosophie que fetch_weather, collect_realtime.py) :
+    un échec d'envoi ne doit jamais faire planter la vérification GTFS
+    elle-même. urllib.request, comme le reste de ce fichier (pas requests).
+    FREE_MOBILE_USER/FREE_MOBILE_PASS : voir config.example.py — jamais
+    logués en clair ici, même en cas d'échec."""
+    try:
+        from config import FREE_MOBILE_USER, FREE_MOBILE_PASS
+    except ImportError:
+        print(f"[{horodatage()}] Alerte SMS : FREE_MOBILE_USER/FREE_MOBILE_PASS "
+              f"absents de config.py, SMS non envoyé.")
+        return
+    params = urllib.parse.urlencode({"user": FREE_MOBILE_USER, "pass": FREE_MOBILE_PASS, "msg": message})
+    try:
+        with urllib.request.urlopen(f"https://smsapi.free-mobile.fr/sendmsg?{params}", timeout=15) as r:
+            if r.status == 200:
+                print(f"[{horodatage()}] Alerte SMS envoyée.")
+            else:
+                print(f"[{horodatage()}] Alerte SMS : réponse inattendue (code {r.status}).")
+    except Exception as e:
+        print(f"[{horodatage()}] Alerte SMS : échec d'envoi ({e}).")
+
+
 def main():
     ancien_version = charger_json(META_FILE).get("feed_version", "inconnue")
 
@@ -317,35 +359,63 @@ def main():
         f"{resultat['renommes']} renommés."
     )
 
+    # Compteur de jours consécutifs avec "Nouveaux" > 0 + garde-fou d'envoi
+    # unique par épisode — indépendant du seuil mobile ci-dessus (ecart peut
+    # ne pas empirer un jour donné tout en ayant "Nouveaux" > 0 depuis
+    # plusieurs jours). Recalculé et réécrit à CHAQUE exécution, contrairement
+    # à dernier_ecart_signale (voir plus bas, écriture unique en fin de
+    # fonction) — sinon ce compteur ne persisterait pas les jours "calmes"
+    # (ecart <= dernier_ecart_signale), qui sortaient auparavant par un
+    # `return` précoce avant toute réécriture de ETAT_FILE.
+    if resultat["nouveaux"] > 0:
+        jours_consecutifs_nouveaux = etat.get("jours_consecutifs_nouveaux", 0) + 1
+    else:
+        jours_consecutifs_nouveaux = 0
+
+    alerte_sms_envoyee = etat.get("alerte_sms_envoyee", False)
+    if jours_consecutifs_nouveaux == 0:
+        alerte_sms_envoyee = False  # réarme pour un futur épisode
+    elif jours_consecutifs_nouveaux >= SEUIL_JOURS_ALERTE_SMS and not alerte_sms_envoyee:
+        envoyer_sms_free_mobile(
+            f"Vérification GTFS : « Nouveaux » > 0 depuis {jours_consecutifs_nouveaux} "
+            f"jours consécutifs ({resultat['nouveaux']} aujourd'hui) — référentiel "
+            f"probablement à régénérer."
+        )
+        alerte_sms_envoyee = True
+
     if ecart <= dernier_ecart_signale:
         print(f"{ligne_resume} Pas d'aggravation depuis la dernière alerte, "
               f"régénération toujours en attente si tu veux la faire.")
-        return
-
-    print(ligne_resume)
-    if resultat["exemples_modifies"]:
-        print("  Exemples de services modifiés :")
-        for s in resultat["exemples_modifies"]:
-            print(f"    {s}")
-    if resultat["exemples_renommes"]:
-        print("  Exemples de services renommés (mêmes arrêts/horaires, identifiant changé) :")
-        for ancien, nouveau in resultat["exemples_renommes"]:
-            print(f"    {ancien}")
-            print(f"    -> {nouveau}")
-    if resultat["exemples_disparus"]:
-        print("  Exemples de services disparus :")
-        for s in resultat["exemples_disparus"]:
-            print(f"    {s}")
-    if resultat["exemples_nouveaux"]:
-        print("  Exemples de services nouveaux :")
-        for s in resultat["exemples_nouveaux"]:
-            print(f"    {s}")
-    print("  Vérifier si une régénération est nécessaire (voir comparaison ci-dessus) : "
-          "télécharger le nouveau GTFS puis python3 build_reference.py")
-    print()
+    else:
+        print(ligne_resume)
+        if resultat["exemples_modifies"]:
+            print("  Exemples de services modifiés :")
+            for s in resultat["exemples_modifies"]:
+                print(f"    {s}")
+        if resultat["exemples_renommes"]:
+            print("  Exemples de services renommés (mêmes arrêts/horaires, identifiant changé) :")
+            for ancien, nouveau in resultat["exemples_renommes"]:
+                print(f"    {ancien}")
+                print(f"    -> {nouveau}")
+        if resultat["exemples_disparus"]:
+            print("  Exemples de services disparus :")
+            for s in resultat["exemples_disparus"]:
+                print(f"    {s}")
+        if resultat["exemples_nouveaux"]:
+            print("  Exemples de services nouveaux :")
+            for s in resultat["exemples_nouveaux"]:
+                print(f"    {s}")
+        print("  Vérifier si une régénération est nécessaire (voir comparaison ci-dessus) : "
+              "télécharger le nouveau GTFS puis python3 build_reference.py")
+        print()
+        dernier_ecart_signale = ecart
 
     with open(ETAT_FILE, "w", encoding="utf-8") as f:
-        json.dump({"dernier_ecart_signale": ecart, "reference": ancien_version}, f, indent=2)
+        json.dump({
+            "dernier_ecart_signale": dernier_ecart_signale, "reference": ancien_version,
+            "jours_consecutifs_nouveaux": jours_consecutifs_nouveaux,
+            "alerte_sms_envoyee": alerte_sms_envoyee,
+        }, f, indent=2)
 
 
 if __name__ == "__main__":
