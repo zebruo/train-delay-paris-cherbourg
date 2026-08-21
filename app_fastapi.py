@@ -1475,6 +1475,17 @@ def _retard_max_et_cumule_sql(
         somme = connexion.execute(
             "SELECT SUM(retard_min) FROM derniers_par_passage WHERE retard_min > 0",
         ).fetchone()[0] or 0
+        # % de relevés (dernier connu par gare, PAS par circulation — un
+        # même train à l'heure sur 10 gares et en retard sur une seule
+        # compte pour 10 relevés "à l'heure" ici) à 0 min pile — même table
+        # déjà construite ci-dessus (circulations annulées déjà exclues),
+        # pas de scan supplémentaire. Demande explicite de l'utilisateur,
+        # 2026-08-21 ("88,2 % des relevés du flux temps réel SNCF indiquent
+        # un train à l'heure").
+        nb_releves, nb_a_lheure = connexion.execute(
+            "SELECT COUNT(*), SUM(CASE WHEN retard_min = 0 THEN 1 ELSE 0 END) FROM derniers_par_passage",
+        ).fetchone()
+        pct_a_lheure = 100 * nb_a_lheure / nb_releves if nb_releves else None
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.derniers_par_passage")
 
@@ -1491,7 +1502,7 @@ def _retard_max_et_cumule_sql(
     )
     heures, minutes = divmod(round(somme), 60)
 
-    return retard_max_texte, heures, minutes
+    return retard_max_texte, heures, minutes, pct_a_lheure
 
 
 def _pire_gare_et_moyenne_sql(
@@ -1551,7 +1562,17 @@ def _circulations_et_trains_stats_sql(
     pandas), regroupés en une seule requête plutôt que 2 scans séparés du
     même ~520k lignes. Le GLOB isole les trip_id se terminant bien par le
     suffixe date avant de le retirer (SUBSTR aveugle aurait tronqué à tort
-    les trip_id ne le portant pas, cas rare mais existant en pratique)."""
+    les trip_id ne le portant pas, cas rare mais existant en pratique).
+
+    Une circulation annulée (circulations_annulees, que l'appelant DOIT
+    avoir déjà matérialisée) compte aussi comme "en retard" même sans
+    aucune ligne à retard > 0 — contrairement à Retard max/cumulé (où une
+    annulation est exclue entièrement, faute de valeur de retard finale
+    exploitable), ici la question posée est "cette circulation a-t-elle
+    posé un problème", et une annulation en est un, pire qu'un simple
+    retard. Sans ce OR, la majorité des annulations connues (10 sur 12,
+    2026-08-21 : celles jamais vues avec un retard positif avant leur
+    annulation) tombaient à tort du côté "sans problème"."""
     where, params = _construire_where_sql(
         gare, train, sens, limiter_ligne, exiger_retard_connu=False,
         debut_iso=debut_iso, fin_iso=fin_iso,
@@ -1561,10 +1582,11 @@ def _circulations_et_trains_stats_sql(
         "CASE WHEN trip_id GLOB '*:[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' "
         "THEN SUBSTR(trip_id, 1, LENGTH(trip_id) - 9) ELSE trip_id END"
     )
+    expr_annulee = "(trip_id || '|' || start_date) IN (SELECT cle FROM circulations_annulees)"
     ligne = connexion.execute(
         f"""
         SELECT COUNT(DISTINCT trip_id || '|' || start_date) AS total,
-               COUNT(DISTINCT CASE WHEN {expr_retard} > 0 THEN trip_id || '|' || start_date END) AS en_retard,
+               COUNT(DISTINCT CASE WHEN {expr_retard} > 0 OR {expr_annulee} THEN trip_id || '|' || start_date END) AS en_retard,
                COUNT(DISTINCT {expr_sans_date}) AS nb_trains
         FROM observations WHERE {where}
         """,
@@ -1669,6 +1691,13 @@ def _calculer_stats_globales_sql_interne(
         connexion, gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
     )
     pct_perturbe = 100 * en_retard / total if total else None
+    # Complément de "Circulations perturbées" (barre de stats générale
+    # uniquement, PAS l'onglet Rapports — voir templates/_stats.html) :
+    # demande explicite de l'utilisateur, 2026-08-21.
+    sans_perturbation = total - en_retard
+    pct_sans_perturbation_texte = (
+        f"{100 * sans_perturbation / total:.1f}".replace(".", ",") if total else None
+    )
 
     debut_collecte = connexion.execute("SELECT MIN(poll_time) FROM observations").fetchone()[0]
     fin_collecte = connexion.execute("SELECT MAX(poll_time) FROM observations").fetchone()[0]
@@ -1713,19 +1742,27 @@ def _calculer_stats_globales_sql_interne(
     if total:
         tooltip_ratio_retard = (
             f"{en_retard} circulations perturbées (retard à un moment de "
-            f"leur trajet, même rattrapé ensuite) sur {total} déjà observées "
-            f"{portee_texte} (issues de {nb_trains_observes} trains "
+            f"leur trajet, même rattrapé ensuite, ou annulation) sur {total} déjà "
+            f"observées {portee_texte} (issues de {nb_trains_observes} trains "
             f"différents parmi les {len(reference_donnees['variantes'])} du référentiel), "
             f"soit {100 * en_retard / total:.0f} %."
         )
+        tooltip_sans_perturbation = (
+            f"{sans_perturbation} circulations n'ayant eu aucun retard ni "
+            f"annulation sur leur trajet, sur {total} déjà observées {portee_texte} "
+            f"(issues de {nb_trains_observes} trains différents parmi les "
+            f"{len(reference_donnees['variantes'])} du référentiel), soit "
+            f"{pct_sans_perturbation_texte} %."
+        )
     else:
         tooltip_ratio_retard = ""
+        tooltip_sans_perturbation = ""
 
     moyen, nb_releves, pire_gare_texte, label_pire_gare = _pire_gare_et_moyenne_sql(
         connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
     )
     if nb_releves:
-        retard_max_texte, heures, minutes = _retard_max_et_cumule_sql(
+        retard_max_texte, heures, minutes, pct_a_lheure = _retard_max_et_cumule_sql(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
             debut_iso=debut_iso, fin_iso=fin_iso,
         )
@@ -1733,6 +1770,7 @@ def _calculer_stats_globales_sql_interne(
             "heures": heures, "minutes": minutes, "moyen": moyen,
             "retard_max_texte": retard_max_texte, "pire_gare_texte": pire_gare_texte,
             "label_pire_gare": label_pire_gare,
+            "pct_a_lheure_texte": f"{pct_a_lheure:.1f}".replace(".", ",") if pct_a_lheure is not None else None,
         }
         # "filtres actifs ci-dessus"/"300 dernières lignes affichées dans le
         # tableau" n'ont de sens que pour la barre de stats globale — sur
@@ -1784,11 +1822,13 @@ def _calculer_stats_globales_sql_interne(
     return {
         "resume_collecte": resume_collecte,
         "tooltip_resume_collecte": tooltip_resume_collecte,
-        "stats_ratio": {"total": total, "en_retard": en_retard},
+        "stats_ratio": {"total": total, "en_retard": en_retard, "sans_perturbation": sans_perturbation},
         "pct_perturbe": pct_perturbe,
+        "pct_sans_perturbation_texte": pct_sans_perturbation_texte,
         "stats": stats,
         "format_min_sans_zero": format_min_sans_zero,
         "tooltip_ratio_retard": tooltip_ratio_retard,
+        "tooltip_sans_perturbation": tooltip_sans_perturbation,
         "tooltip_moyen": tooltip_moyen,
         "tooltip_pire_gare": tooltip_pire_gare,
         "tooltip_cumule": tooltip_cumule,

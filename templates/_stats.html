@@ -3,15 +3,25 @@
 {% elif stats is none %}
     <p class="info">Aucun relevé avec retard exploitable pour l'instant.</p>
 {% else %}
-    <div class="stat">
-        <div class="stat-label">Circulations perturbées <span class="icone-info" title="{{ tooltip_ratio_retard }}">ℹ</span></div>
-        <div class="stat-valeur">
-            {{ stats_ratio.en_retard }} / {{ stats_ratio.total }}
-            {% if pct_perturbe is not none %}
-                <span class="pastille">{{ "%.0f"|format(pct_perturbe) }} %</span>
-            {% endif %}
+    {% if vue == "rapports" %}
+        <div class="stat">
+            <div class="stat-label">Circulations perturbées <span class="icone-info" title="{{ tooltip_ratio_retard }}">ℹ</span></div>
+            <div class="stat-valeur">
+                {{ stats_ratio.en_retard }} / {{ stats_ratio.total }}
+                {% if pct_perturbe is not none %}
+                    <span class="pastille">{{ "%.0f"|format(pct_perturbe) }} %</span>
+                {% endif %}
+            </div>
         </div>
-    </div>
+    {% elif pct_sans_perturbation_texte %}
+        <div class="stat">
+            <div class="stat-label">Trajets sans perturbation <span class="icone-info" title="{{ tooltip_sans_perturbation }}">ℹ</span></div>
+            <div class="stat-valeur">
+                {{ stats_ratio.sans_perturbation }} / {{ stats_ratio.total }}
+                <span class="pastille">{{ pct_sans_perturbation_texte }} %</span>
+            </div>
+        </div>
+    {% endif %}
     <div class="stat">
         <div class="stat-label">Retard cumulé <span class="icone-info" title="{{ tooltip_cumule }}">ℹ</span></div>
         <div class="stat-valeur">{{ stats.heures }} h {{ "%02d"|format(stats.minutes) }} min</div>
