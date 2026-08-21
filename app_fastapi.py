@@ -2879,6 +2879,7 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
         "depart_arrivee": "",
         "erreur_trajet": None,
         "train_vide": not options_trajet,
+        "fenetre_jours": FENETRE_CACHE_JOURS,
     }
     if not trajet_choisi:
         return contexte

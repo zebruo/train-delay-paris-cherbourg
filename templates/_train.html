@@ -11,7 +11,8 @@
                        {% if filtre_jour_retard %}checked{% endif %}
                        hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change"
                        hx-include="#filtres, #filtres-train" hx-vals='{"vue": "train"}'>
-                Trains du jour en retard uniquement ({{ options_trajet|length }} trajets)
+                Trains du jour en retard uniquement
+                ({{ options_trajet|length }} trajets{% if not filtre_jour_retard %}, {{ fenetre_jours }} derniers jours{% endif %})
             </label>
         </div>
         <div class="champ">
