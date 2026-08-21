@@ -12,6 +12,7 @@ projet côté VPS est la mémoire, pas la chaleur — voir l'incident OOM du
 2026-08-13 (mémoire du projet).
 """
 import datetime
+import json
 import re
 import subprocess
 from zoneinfo import ZoneInfo
@@ -132,6 +133,8 @@ L=$(grep 'Envoyé vers le NAS.*quotidien' ~/train-delay-paris-cherbourg/rapports
 L=$(grep 'Envoyé vers le NAS.*hebdomadaire' ~/train-delay-paris-cherbourg/rapports.log 2>/dev/null | tail -1); echo "hebdomadaire: ${L:-(aucun)}"
 echo @BACKUP_NAS
 tail -1 ~/train-delay-paris-cherbourg/backup_observations.log 2>/dev/null
+echo @COMPTEURS
+cat ~/train-delay-paris-cherbourg/rapports/.compteur.json 2>/dev/null
 """
 
 
@@ -362,6 +365,23 @@ def _backup_etat(section):
     return voyant, valeur
 
 
+def _compteurs_etat(section):
+    """Affiche rapports/.compteur.json (Pi) tel quel — numéro du prochain
+    rapport à générer par type. Purement informatif (aucun seuil d'alerte,
+    contrairement aux autres voyants du bilan) : utile pour vérifier d'un
+    coup d'œil, après une intervention manuelle sur la numérotation des
+    PDF (renommage, comblement d'un trou...), que le compteur correspond
+    bien au dernier fichier réellement généré — sans avoir à se connecter
+    au Pi à la main (repéré utile le 2026-08-21, après un doublon de
+    numéro sur le rapport quotidien corrigé manuellement)."""
+    brut = _ligne(section, 0, "")
+    try:
+        compteurs = json.loads(brut)
+    except (json.JSONDecodeError, ValueError):
+        return VOYANT_ATTENTION, "(Pi non interrogé)" if not brut else "?"
+    return VOYANT_OK, ", ".join(f"{cle}: {valeur}" for cle, valeur in compteurs.items())
+
+
 def lignes_bilan(sections):
     """Sections brutes (generer_bilan) -> [(label, voyant, texte), ...],
     voyant valant VOYANT_OK/VOYANT_ATTENTION/VOYANT_ECHEC — structuré plutôt
@@ -386,6 +406,7 @@ def lignes_bilan(sections):
         ("Référentiel GTFS", *_gtfs_etat(sections.get("GTFS", []))),
         ("Rapport quotidien (Pi)", *_rapport_etat(rapports, "quotidien")),
         ("Rapport hebdomadaire (Pi)", *_rapport_etat(rapports, "hebdomadaire")),
+        ("Compteurs de rapports (Pi)", *_compteurs_etat(sections.get("COMPTEURS", []))),
         ("Backup NAS (Pi)", *_backup_etat(sections.get("BACKUP_NAS", []))),
     ]
 
