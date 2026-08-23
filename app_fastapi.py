@@ -1851,6 +1851,11 @@ def _calculer_stats_globales_sql_interne(
         "réel et compté."
     )
 
+    tooltip_pct_a_lheure = (
+        "% des derniers relevés connus (un train à une gare précise) à exactement 0 min "
+        "de retard, parmi les filtres actifs, circulations annulées exclues."
+    )
+
     return {
         "resume_collecte": resume_collecte,
         "tooltip_resume_collecte": tooltip_resume_collecte,
@@ -1865,6 +1870,7 @@ def _calculer_stats_globales_sql_interne(
         "tooltip_pire_gare": tooltip_pire_gare,
         "tooltip_cumule": tooltip_cumule,
         "tooltip_retard_max": tooltip_retard_max,
+        "tooltip_pct_a_lheure": tooltip_pct_a_lheure,
     }
 
 

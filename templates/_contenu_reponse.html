@@ -8,7 +8,7 @@
 {% if resume_collecte is defined %}
     <span id="resume-collecte" hx-swap-oob="true" class="info">{{ resume_collecte }} <span class="icone-info" title="{{ tooltip_resume_collecte }}">ℹ</span></span>
 {% endif %}
-<span id="pct-a-lheure-releves" hx-swap-oob="true" class="info">{% if stats and stats.pct_a_lheure_texte %}{{ stats.pct_a_lheure_texte }} % des relevés du flux temps réel SNCF indiquent un train à l'heure (0 min de retard).{% endif %}</span>
+<span id="pct-a-lheure-releves" hx-swap-oob="true" class="info">{% if stats and stats.pct_a_lheure_texte %}{{ stats.pct_a_lheure_texte }} % des relevés du flux temps réel SNCF indiquent un train à l'heure. <span class="icone-info" title="{{ tooltip_pct_a_lheure }}">ℹ</span>{% endif %}</span>
 {% if libelle_travaux is defined %}
     <span id="badge-travaux" hx-swap-oob="true">{{ libelle_travaux }}</span>
 {% endif %}

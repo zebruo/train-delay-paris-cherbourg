@@ -51,7 +51,7 @@
             </label>
             <a href="/">Réinitialiser</a>
             <span id="resume-collecte" class="info">{{ resume_collecte or "" }} {% if resume_collecte %}<span class="icone-info" title="{{ tooltip_resume_collecte }}">ℹ</span>{% endif %}</span>
-            <span id="pct-a-lheure-releves" class="info">{% if stats and stats.pct_a_lheure_texte %}{{ stats.pct_a_lheure_texte }} % des relevés du flux temps réel SNCF indiquent un train à l'heure (0 min de retard).{% endif %}</span>
+            <span id="pct-a-lheure-releves" class="info">{% if stats and stats.pct_a_lheure_texte %}{{ stats.pct_a_lheure_texte }} % des relevés du flux temps réel SNCF indiquent un train à l'heure. <span class="icone-info" title="{{ tooltip_pct_a_lheure }}">ℹ</span>{% endif %}</span>
         </div>
         <!-- Élément invisible dédié au polling automatique — la collecte
         tourne sur cette même machine (plus de bouton "Rafraîchir depuis le
