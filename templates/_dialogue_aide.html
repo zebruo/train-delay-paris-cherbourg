@@ -305,7 +305,7 @@
         </p>
         <div class="aide-exemple">
             Une ligne du tableau : « 589 communs (546 identiques, 43 modifiés), 160 disparus,<br>
-            4 nouveaux » — comparé à la référence actuellement utilisée.
+            4 nouveaux, 2 renommés » — comparé à la référence actuellement utilisée.
         </div>
         <p class="aide-utilite">
             Utile pour : savoir si les trains suivis par l'application correspondent encore aux
@@ -349,6 +349,31 @@
             jour, mais surveiller si « Nouveaux » reste supérieur à zéro plusieurs jours de suite
             dans le tableau — c'est ce qui distingue un vrai changement durable d'un simple effet
             de la fenêtre glissante.
+        </p>
+    </section>
+
+    <section class="aide-section">
+        <h4>La colonne « Renommés »</h4>
+        <p>
+            Un service dont les arrêts et les horaires sont restés exactement identiques, mais
+            dont l'identifiant technique a changé — ni vraiment disparu, ni vraiment nouveau.
+        </p>
+        <div class="aide-exemple">
+            La SNCF réattribue parfois un service à une route légèrement différente (ex: un car<br>
+            de substitution détaché de la ligne principale vers une route ad hoc) sans toucher ni<br>
+            aux arrêts ni aux horaires. Sans traitement particulier, ce même service apparaîtrait<br>
+            à la fois comme « disparu » et « nouveau ».
+        </div>
+        <p class="aide-utilite">
+            Utile pour : ne pas confondre un simple changement d'identifiant (sans conséquence
+            réelle) avec un vrai changement de desserte — « Renommés » reste un signal plus faible
+            que « Nouveaux »/« Disparus » distincts.
+        </p>
+        <p class="aide-pourquoi">
+            Détecté par rapprochement strict : seuls les services ayant exactement les mêmes
+            arrêts et les mêmes horaires des deux côtés sont comptés en « renommé » — un service
+            remplacé par un autre proche mais pas identique (quelques minutes d'écart) reste compté
+            en disparu + nouveau distinct, pas noyé ici.
         </p>
     </section>
 

@@ -564,7 +564,7 @@ GUIDE_PAGES = [
                 ),
                 exemple_lignes=[
                     "Une ligne du tableau : « 589 communs (546 identiques, 43 modifiés),",
-                    "160 disparus, 4 nouveaux » — comparé à la référence actuellement utilisée.",
+                    "160 disparus, 4 nouveaux, 2 renommés » — comparé à la référence actuelle.",
                 ],
                 utilite=(
                     "savoir si les trains suivis par l'application correspondent encore aux "
@@ -615,6 +615,38 @@ GUIDE_PAGES = [
                     "sur un seul jour, mais surveiller si « Nouveaux » reste supérieur à "
                     "zéro plusieurs jours de suite dans le tableau — c'est ce qui distingue "
                     "un vrai changement durable d'un simple effet de la fenêtre glissante."
+                ),
+            ),
+        ],
+    ),
+    dict(
+        titre_page="4. L'onglet « Vérification GTFS » (suite)",
+        blocs=[
+            dict(
+                titre="La colonne « Renommés »",
+                definition=(
+                    "Un service dont les arrêts et les horaires sont restés exactement\n"
+                    "identiques, mais dont l'identifiant technique a changé — ni vraiment\n"
+                    "disparu, ni vraiment nouveau."
+                ),
+                exemple_lignes=[
+                    "La SNCF réattribue parfois un service à une route légèrement différente",
+                    "(ex: un car de substitution détaché de la ligne principale vers une route",
+                    "ad hoc) sans toucher ni aux arrêts ni aux horaires. Sans traitement",
+                    "particulier, ce même service apparaîtrait à la fois comme « disparu »",
+                    "et « nouveau ».",
+                ],
+                utilite=(
+                    "ne pas confondre un simple changement d'identifiant (sans conséquence "
+                    "réelle) avec un vrai changement de desserte — « Renommés » reste un "
+                    "signal plus faible que « Nouveaux »/« Disparus » distincts."
+                ),
+                pourquoi=(
+                    "Détecté par rapprochement strict : seuls les services ayant exactement "
+                    "les mêmes arrêts et les mêmes horaires des deux côtés sont comptés en "
+                    "« renommé » — un service remplacé par un autre proche mais pas identique "
+                    "(quelques minutes d'écart) reste compté en disparu + nouveau distinct, "
+                    "pas noyé ici."
                 ),
             ),
         ],
