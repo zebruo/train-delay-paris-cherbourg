@@ -178,6 +178,25 @@ function dessinerBarre(cle, donnees) {
     }
 
     requestAnimationFrame(() => {
+        // Remplace le conteneur par un élément vierge avant de dessiner —
+        // un redessin (rafraîchissement auto, 300s) sur le MÊME div qu'un
+        // précédent Plotly.newPlot ne réapplique pas la classe
+        // "js-plotly-plot" sur le conteneur (constaté : ni Plotly.purge()
+        // seul, ni purge() + reflow forcé, ni purge() + requestAnimationFrame
+        // supplémentaire n'ont suffi à le corriger de façon fiable — cause
+        // exacte non identifiée côté Plotly.js, seul un DOM vraiment neuf
+        // fonctionne systématiquement). Sans cette classe, la règle CSS
+        // globale injectée par Plotly (.js-plotly-plot .main-svg{position:
+        // absolute}) ne matche plus, les 3 couches SVG internes de Plotly
+        // retombent en position:static (empilées en flux normal au lieu
+        // d'être superposées) — gonfle la hauteur réelle du graphique de ~3x
+        // et casse l'alignement des graphiques suivants dans la grille. Bug
+        // réel, repéré par l'utilisateur au rafraîchissement automatique de
+        // l'onglet "Par jour/heure", 2026-08-24.
+        const ancien = document.getElementById("jh-" + cle);
+        const conteneur = document.createElement("div");
+        conteneur.id = ancien.id;
+        ancien.replaceWith(conteneur);
         // showTips: false — désactive l'info-bulle native de Plotly
         // ("double-click on legend to isolate one trace"), demande explicite
         // de l'utilisateur, 2026-08-09.
@@ -187,14 +206,24 @@ function dessinerBarre(cle, donnees) {
         // haut sur un format aussi compact (repéré en testant l'activation
         // partout, 2026-08-18 — contrairement à Suivi d'un train, un seul
         // grand graphique où ça ne pose pas ce problème).
-        Plotly.newPlot("jh-" + cle, [trace], layout, { responsive: true, displaylogo: false, displayModeBar: false, showTips: false });
+        Plotly.newPlot(conteneur, [trace], layout, { responsive: true, displaylogo: false, displayModeBar: false, showTips: false });
     });
 }
+
+// Les 6 clés propres à l'onglet "Par jour / heure" — CONFIG_JOUR_HEURE en
+// contient aussi 3 de plus (rapport_gare/rapport_jour_semaine/rapport_heure,
+// onglet Rapports, dessinées directement par _rapports.html) : boucler sur
+// Object.keys(CONFIG_JOUR_HEURE) entier plantait ici (donnees["rapport_gare"]
+// etc. absent des données de cet onglet, "Cannot read properties of
+// undefined (reading 'barres')" dans dessinerBarre), juste après avoir lancé
+// le dessin de type_jour/vacances — laissait ces 2 graphiques dans un état
+// visuellement incohérent au rafraîchissement (bug réel, 2026-08-24).
+const CLES_JOUR_HEURE = ["jour_moyenne", "jour_pct", "heure_moyenne", "heure_pct", "type_jour", "vacances"];
 
 function dessinerJourHeure(donnees) {
     // Mémorisé pour pouvoir redessiner avec les couleurs à jour au bascule
     // clair/sombre (basculerTheme, base.html) — voir le commentaire
     // équivalent dans graphique.js/train.js.
     window._donneesJourHeure = donnees;
-    Object.keys(CONFIG_JOUR_HEURE).forEach((cle) => dessinerBarre(cle, donnees[cle]));
+    CLES_JOUR_HEURE.forEach((cle) => dessinerBarre(cle, donnees[cle]));
 }
