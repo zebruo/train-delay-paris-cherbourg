@@ -455,10 +455,10 @@ def formater_bilan(sections):
 
 if __name__ == "__main__":
     import sys
-    from config import PI_HOST, VPS_HOST
+    from config import PI4_HOST, VPS_HOST
 
     if len(sys.argv) > 1 and sys.argv[1] == "bilan":
-        print(formater_bilan(generer_bilan(VPS_HOST, PI_HOST)))
+        print(formater_bilan(generer_bilan(VPS_HOST, PI4_HOST)))
     else:
         hote = sys.argv[1] if len(sys.argv) > 1 else VPS_HOST
         print(recuperer_etat_vps(hote))

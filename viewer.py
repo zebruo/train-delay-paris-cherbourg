@@ -77,7 +77,7 @@ matplotlib.rcParams["font.size"] = 9  # même taille que le tableau
 # voyant d'état dans la barre du haut a suivi le même mouvement le
 # 2026-08-14 : il affichait la santé matérielle du Pi (via pi_status.py,
 # resté disponible en outil autonome), il affiche maintenant celle de la
-# VPS (voir vps_status.py) — PI_HOST n'est donc plus importé du tout ici.
+# VPS (voir vps_status.py) — PI4_HOST n'est donc plus importé du tout ici.
 VPS_OBSERVATIONS_DB_PATH = "~/train-delay-paris-cherbourg/observations.db"
 LOCAL_OBSERVATIONS_DB = "observations.db"
 VPS_ALERTES_PATH = "~/train-delay-paris-cherbourg/alertes.csv"
