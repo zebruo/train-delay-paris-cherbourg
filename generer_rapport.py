@@ -49,8 +49,10 @@ from formatting import (
 
 # Même seuil que SEUIL_FIABLE (app_fastapi.py) — pas d'import direct, ce
 # script ne dépend jamais de app_fastapi.py (sens inverse : le Pi n'exécute
-# que generer_rapport.py, pas l'appli web).
-SEUIL_FIABLE_MENSUEL = 30
+# que generer_rapport.py, pas l'appli web). Exprimé en CIRCULATIONS
+# DISTINCTES, pas en relevés bruts, depuis le 2026-08-23 — voir le
+# commentaire de SEUIL_FIABLE côté app_fastapi.py pour le raisonnement.
+SEUIL_FIABLE_MENSUEL = 10
 
 OBSERVATIONS_DB = "observations.db"
 ALERTES_FILE = "alertes.csv"
@@ -798,7 +800,15 @@ def generer(nom_periode, maintenant=None):
             # explicite de l'utilisateur, 2026-08-20, pour la même
             # précision dans le rapport mensuel PDF.
             comptes_par_gare_mois = df_periode.groupby("gare")["retard_min"].count().reindex(GARES_LIGNE_ORDRE)
-            stats_gare_mois = pd.DataFrame({"moyenne": moyennes_par_gare_mois, "n": comptes_par_gare_mois})
+            # n_circulations (PAS comptes_par_gare_mois, des relevés bruts) :
+            # utilisé par titre_dynamique_jour_heure pour la fiabilité, voir
+            # SEUIL_FIABLE_MENSUEL ci-dessus.
+            circulations_par_gare_mois = df_periode.assign(_cle=cle_circulation(df_periode)) \
+                .groupby("gare")["_cle"].nunique().reindex(GARES_LIGNE_ORDRE)
+            stats_gare_mois = pd.DataFrame({
+                "moyenne": moyennes_par_gare_mois, "n": comptes_par_gare_mois,
+                "n_circulations": circulations_par_gare_mois,
+            })
             titre_gare_mois = titre_dynamique_jour_heure(
                 "Retard moyen par gare", stats_gare_mois, "moyenne", GARES_LIGNE_ORDRE, str,
                 lambda v: f"{v:.1f} min", SEUIL_FIABLE_MENSUEL,
@@ -818,7 +828,12 @@ def generer(nom_periode, maintenant=None):
             ax_e.set_xticks(range(len(JOURS_SEMAINE_ORDRE)))
             ax_e.set_xticklabels([j[:3] for j in JOURS_SEMAINE_ORDRE], fontsize=7)
             comptes_par_jour_mois = df_periode.groupby(jour_semaine)["retard_min"].count().reindex(JOURS_SEMAINE_ORDRE)
-            stats_jour_mois = pd.DataFrame({"moyenne": moyennes_par_jour_mois, "n": comptes_par_jour_mois})
+            circulations_par_jour_mois = df_periode.assign(_cle=cle_circulation(df_periode)) \
+                .groupby(jour_semaine)["_cle"].nunique().reindex(JOURS_SEMAINE_ORDRE)
+            stats_jour_mois = pd.DataFrame({
+                "moyenne": moyennes_par_jour_mois, "n": comptes_par_jour_mois,
+                "n_circulations": circulations_par_jour_mois,
+            })
             titre_jour_mois = titre_dynamique_jour_heure(
                 "Retard moyen par jour", stats_jour_mois, "moyenne", JOURS_SEMAINE_ORDRE, str.lower,
                 lambda v: f"{v:.1f} min", SEUIL_FIABLE_MENSUEL,

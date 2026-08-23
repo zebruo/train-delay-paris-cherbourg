@@ -84,7 +84,20 @@ GTFS_LOG_FILE = "verification_gtfs.log"
 
 SEUIL_RETARD_FORT = 10  # minutes
 SEUIL_RETARD_MOYEN = 5  # minutes
-SEUIL_FIABLE = 30  # nb minimal de relevés pour considérer une barre fiable (viewer.py:1868)
+# nb minimal de CIRCULATIONS DISTINCTES (pas de relevés bruts) pour
+# considérer une barre fiable. Était à l'origine 30 relevés (viewer.py:1868)
+# — abandonné, 2026-08-23 : un relevé n'est pas un train, et un train
+# unique très en retard, repollé toutes les 5 min sur plusieurs gares,
+# franchissait facilement ce seuil à lui seul (cas réel trouvé : heure_
+# locale=1h, 2 circulations distinctes seulement sur tout l'historique,
+# mais 152 relevés bruts — largement au-dessus de l'ancien seuil de 30,
+# donnant une barre "fiable" reposant sur un seul incident). 10
+# circulations distinctes, calibré sur observations.db réel : la catégorie
+# la plus faible après les cas quasi-vides (heures 1h/2h, 1-2 circulations)
+# en compte déjà 28 (3h) — 10 laisse une marge confortable sous ce palier
+# tout en réduisant le poids qu'un train isolé peut avoir (décision
+# utilisateur, 2026-08-23 : 5 jugé encore trop fragile statistiquement).
+SEUIL_FIABLE = 10
 
 # Mêmes 11 gares que viewer.py/generer_rapport.py/app_streamlit.py — copie
 # locale volontaire, GARES_LIGNE existe déjà sous plusieurs formes
@@ -1087,16 +1100,25 @@ def _stats_par_categorie(df, colonne, ordre=None):
 
 def _construire_barre(stats, colonne_valeur, labels, unite, avec_moyenne):
     """Porte _tracer_barres_fiabilite (viewer.py:1885-1927), version JSON :
-    une entrée par catégorie (valeur, n, fiable), plus un repère "moy."
-    optionnel — le tracé (couleurs/hachures/annotation) est fait côté JS
-    (jour_heure.js), comme serie_avec_trous le fait déjà pour Graphique."""
+    une entrée par catégorie (valeur, n, n_circulations, fiable), plus un
+    repère "moy." optionnel — le tracé (couleurs/hachures/annotation) est
+    fait côté JS (jour_heure.js), comme serie_avec_trous le fait déjà pour
+    Graphique. "fiable" est basé sur n_circulations (circulations
+    distinctes), pas n (relevés bruts) — voir le commentaire de
+    SEUIL_FIABLE ; n reste affiché tel quel (tooltip "X relevés"), la
+    colonne stats["n_circulations"] doit exister (voir _stats_par_
+    categorie_sql/_moyenne_retard_par_categorie_sql)."""
     ns = stats["n"].fillna(0)
+    ns_circulations = stats["n_circulations"].fillna(0)
     barres = [
         {"label": label, "valeur": None if pd.isna(v) else round(float(v), 1),
-         "n": int(n), "fiable": bool(n >= SEUIL_FIABLE)}
-        for label, v, n in zip(labels, stats[colonne_valeur], ns)
+         "n": int(n), "n_circulations": int(nc), "fiable": bool(nc >= SEUIL_FIABLE)}
+        for label, v, n, nc in zip(labels, stats[colonne_valeur], ns, ns_circulations)
     ]
-    donnees = {"barres": barres, "unite": unite}
+    # seuil_fiable transmis au JS (pas recopié en dur dans jour_heure.js) :
+    # le tooltip d'une barre peu fiable cite ce nombre, il doit rester en
+    # phase avec SEUIL_FIABLE sans édition manuelle des deux côtés.
+    donnees = {"barres": barres, "unite": unite, "seuil_fiable": SEUIL_FIABLE}
     if avec_moyenne:
         valides = stats[colonne_valeur].dropna()
         if not valides.empty:
@@ -1261,18 +1283,22 @@ def _materialiser_jour_heure(connexion, gare, train, sens, limiter_ligne):
 
 
 def _stats_par_categorie_sql(connexion, nom_colonne_categorie, ordre):
-    """Équivalent SQL de _stats_par_categorie (moyenne/n/pct par catégorie)
-    — interroge la table temporaire déjà matérialisée par
+    """Équivalent SQL de _stats_par_categorie (moyenne/n/n_circulations/pct
+    par catégorie) — interroge la table temporaire déjà matérialisée par
     _materialiser_jour_heure (voir son docstring) plutôt que observations
     directement. moyenne/n en une requête (moyenne simple par ligne, comme
-    groupes["retard_min"].mean() + groupes.size()) ; pct en une seconde
-    (proportion de circulations distinctes avec au moins une ligne en
-    retard dans le groupe, comme _pct_en_retard — PAS une simple moyenne,
-    nécessite un regroupement à deux niveaux). ROUND(...,1) sans risque de
-    divergence avec l'arrondi pandas (.round(1)) : les retards sont
-    toujours des multiples exacts de 5 minutes (voir mémoire du projet),
-    donc jamais de cas à mi-chemin où les conventions d'arrondi de SQLite
-    et pandas pourraient diverger."""
+    groupes["retard_min"].mean() + groupes.size()) ; pct/n_circulations en
+    une seconde, sur le même regroupement à deux niveaux (par circulation
+    distincte dans chaque catégorie, comme _pct_en_retard) : pct est la
+    proportion de circulations avec au moins une ligne en retard,
+    n_circulations leur nombre total — utilisé par _construire_barre pour
+    la fiabilité (voir SEUIL_FIABLE), n (relevés bruts) resterait trompeur
+    ici (un seul train très en retard, repollé sur plusieurs gares, peut
+    à lui seul dépasser un seuil exprimé en relevés). ROUND(...,1) sans
+    risque de divergence avec l'arrondi pandas (.round(1)) : les retards
+    sont toujours des multiples exacts de 5 minutes (voir mémoire du
+    projet), donc jamais de cas à mi-chemin où les conventions d'arrondi
+    de SQLite et pandas pourraient diverger."""
     lignes_moyenne = connexion.execute(
         f"""
         SELECT {nom_colonne_categorie} AS categorie, AVG(retard_min) AS moyenne, COUNT(*) AS n
@@ -1282,7 +1308,7 @@ def _stats_par_categorie_sql(connexion, nom_colonne_categorie, ordre):
     ).fetchall()
     lignes_pct = connexion.execute(
         f"""
-        SELECT categorie, AVG(en_retard) * 100 AS pct FROM (
+        SELECT categorie, AVG(en_retard) * 100 AS pct, COUNT(*) AS n_circulations FROM (
             SELECT {nom_colonne_categorie} AS categorie, trip_id, start_date,
                    MAX(CASE WHEN retard_min > 0 THEN 1 ELSE 0 END) AS en_retard
             FROM jour_heure_filtre WHERE {nom_colonne_categorie} IS NOT NULL
@@ -1292,11 +1318,17 @@ def _stats_par_categorie_sql(connexion, nom_colonne_categorie, ordre):
         """,
     ).fetchall()
 
-    pct_par_categorie = dict(lignes_pct)
+    stats_pct = {ligne[0]: ligne[1:] for ligne in lignes_pct}
     stats = pd.DataFrame(
-        [{"categorie": cat, "moyenne": moyenne, "n": n, "pct": pct_par_categorie.get(cat)}
-         for cat, moyenne, n in lignes_moyenne],
-        columns=["categorie", "moyenne", "n", "pct"],
+        [
+            {
+                "categorie": cat, "moyenne": moyenne, "n": n,
+                "pct": stats_pct.get(cat, (None, 0))[0],
+                "n_circulations": stats_pct.get(cat, (None, 0))[1],
+            }
+            for cat, moyenne, n in lignes_moyenne
+        ],
+        columns=["categorie", "moyenne", "n", "pct", "n_circulations"],
     ).set_index("categorie")
     return stats.reindex(ordre) if ordre is not None else stats
 
@@ -2036,19 +2068,24 @@ def _meteo_periode_sql(connexion):
 
 
 def _moyenne_retard_par_categorie_sql(connexion, colonne_categorie, ordre):
-    """Moyenne de retard_min + n par catégorie, sur rapport_filtre — porte
-    df_periode.groupby(colonne)["retard_min"].mean() de generer_rapport.py
-    (graphiques mensuels "retard moyen par gare"/"par jour de semaine",
-    colonne_categorie = "gare" ou "jour_semaine"). Plus simple que
-    _stats_par_categorie_sql (onglet Par jour/heure) : pas de calcul de
-    pourcentage en retard ici, generer_rapport.py n'affiche que la moyenne
-    pour ces 2 graphiques. Suppose rapport_filtre déjà matérialisée
+    """Moyenne de retard_min + n/n_circulations par catégorie, sur
+    rapport_filtre — porte df_periode.groupby(colonne)["retard_min"].mean()
+    de generer_rapport.py (graphiques mensuels "retard moyen par gare"/
+    "par jour de semaine", colonne_categorie = "gare" ou "jour_semaine").
+    Plus simple que _stats_par_categorie_sql (onglet Par jour/heure) : pas
+    de calcul de pourcentage en retard ici, generer_rapport.py n'affiche
+    que la moyenne pour ces 2 graphiques. n_circulations (circulations
+    distinctes, PAS relevés bruts) : utilisé par _construire_barre pour la
+    fiabilité, voir SEUIL_FIABLE. Suppose rapport_filtre déjà matérialisée
     (_materialiser_rapport_filtre)."""
     lignes = connexion.execute(
-        f"SELECT {colonne_categorie} AS categorie, AVG(retard_min) AS moyenne, COUNT(*) AS n "
+        f"SELECT {colonne_categorie} AS categorie, AVG(retard_min) AS moyenne, COUNT(*) AS n, "
+        f"COUNT(DISTINCT trip_id || '|' || start_date) AS n_circulations "
         f"FROM rapport_filtre GROUP BY categorie",
     ).fetchall()
-    stats = pd.DataFrame(lignes, columns=["categorie", "moyenne", "n"]).set_index("categorie")
+    stats = pd.DataFrame(
+        lignes, columns=["categorie", "moyenne", "n", "n_circulations"],
+    ).set_index("categorie")
     return stats.reindex(ordre) if ordre is not None else stats
 
 

@@ -307,15 +307,18 @@ def cle_circulation(df):
 
 
 def titre_dynamique_jour_heure(base, stats, colonne_valeur, labels, formater_label, formater_valeur, seuil_fiable):
-    """Titre dynamique "{base} — max : {label} ({valeur})" pour les 4
-    graphiques concernés de l'onglet "Par jour / heure" (retard moyen/%
-    en retard, jour et heure) — ignore les catégories peu fiables (moins de
-    seuil_fiable relevés), mêmes hachures grisées que les barres elles-mêmes,
-    pour ne pas mettre en avant une catégorie non représentative. Reste sur
-    le titre statique `base` si aucune catégorie n'est fiable."""
+    """Titre dynamique "{base} — max : {label} ({valeur})" pour les
+    graphiques par catégorie (onglets "Par jour / heure" et "Rapports"
+    mensuel — retard moyen/% en retard par jour/heure/gare) — ignore les
+    catégories peu fiables (moins de seuil_fiable CIRCULATIONS DISTINCTES,
+    colonne stats["n_circulations"] — PAS de relevés bruts, voir le
+    commentaire de SEUIL_FIABLE dans app_fastapi.py), mêmes hachures
+    grisées que les barres elles-mêmes, pour ne pas mettre en avant une
+    catégorie non représentative. Reste sur le titre statique `base` si
+    aucune catégorie n'est fiable."""
     candidats = [
         (label, valeur)
-        for label, valeur, n in zip(labels, stats[colonne_valeur], stats["n"])
+        for label, valeur, n in zip(labels, stats[colonne_valeur], stats["n_circulations"])
         if pd.notna(valeur) and n >= seuil_fiable
     ]
     if not candidats:

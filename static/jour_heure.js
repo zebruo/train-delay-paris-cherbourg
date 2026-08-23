@@ -32,9 +32,15 @@ function calculerTicksYJourHeure(maxY) {
 // (finalize_axes appelé SANS marge_bas=True pour _tracer_barres_fiabilite,
 // viewer.py:1920) — rangemode:"tozero" suffit, sans risque de graduation
 // négative puisque la plage ne descend jamais sous 0.
-function texteBarre(barre, unite) {
+function texteBarre(barre, unite, seuilFiable) {
     if (barre.valeur === null) return barre.label + " : aucun relevé";
-    return barre.label + " : " + barre.valeur + unite + " (n=" + barre.n + " relevés)";
+    let texte = barre.label + " : " + barre.valeur + unite + " (" + barre.n_circulations +
+        " train" + (barre.n_circulations > 1 ? "s" : "") + ", " + barre.n + " relevés)";
+    if (!barre.fiable) {
+        texte += "<br>Donnée peu fiable : moins de " + seuilFiable + " trains distincts observés" +
+            " — un seul train inhabituel peut fausser la moyenne.";
+    }
+    return texte;
 }
 
 const CONFIG_JOUR_HEURE = {
@@ -71,14 +77,14 @@ function dessinerBarre(cle, donnees) {
         y: barres.map((b) => b.valeur),
         type: "bar",
         marker: {
-            // Barres peu fiables (n < SEUIL_FIABLE) grisées et hachurées,
+            // Barres peu fiables (n_circulations < SEUIL_FIABLE) grisées et hachurées,
             // comme _tracer_barres_fiabilite (viewer.py:1903-1908) — une
             // seule circulation matinale peut donner un % en retard de 0
             // ou 100 %, pas représentatif.
             color: barres.map((b) => (b.fiable ? config.couleur : "#dddddd")),
             pattern: { shape: barres.map((b) => (b.fiable ? "" : "/")), fgcolor: "#999999", size: 6, solidity: 0.3 },
         },
-        text: barres.map((b) => texteBarre(b, donnees.unite)),
+        text: barres.map((b) => texteBarre(b, donnees.unite, donnees.seuil_fiable)),
         // "none" : text n'est utilisé que pour l'info-bulle (%{text} dans
         // hovertemplate) — sans ça, Plotly affiche ce texte en permanence
         // à l'intérieur de chaque barre par défaut pour un trace "bar".
