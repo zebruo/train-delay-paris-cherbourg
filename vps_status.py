@@ -83,12 +83,18 @@ def recuperer_etat_vps(vps_host, timeout=8):
 # numéro de ligne vu le nombre de sections). journalctl ne nécessite pas
 # sudo ici (accès lecture déjà ouvert sur cette VPS) ; ufw/fail2ban/certbot
 # si (via NOPASSWD:ALL, voir mémoire du projet — accepté par l'utilisateur).
+# Le compte d'erreurs/24h cherche ": ERROR:"/": CRITICAL:" (format uvicorn
+# "process[pid]: NIVEAU:") ou "Traceback (most recent call last)", PAS un
+# simple "error" en sous-chaîne : un scanner automatisé testant des chemins
+# du type "/error/.env" (recherche de fichiers .env exposés, requêtes 404
+# bénignes) faisait sinon compter ces lignes comme des erreurs applicatives
+# — faux positif repéré par l'utilisateur, 2026-08-22.
 COMMANDE_BILAN_VPS = r"""
 echo @SERVICE
 systemctl status train-delay --no-pager | grep 'Active:'
 systemctl show train-delay -p MemoryCurrent --value
 systemctl show train-delay -p MemoryPeak --value
-journalctl -u train-delay --since '24 hours ago' --no-pager | grep -icE 'error|traceback'
+journalctl -u train-delay --since '24 hours ago' --no-pager | grep -icE ': (ERROR|CRITICAL):|Traceback \(most recent call last\)'
 echo @RAM
 free -m | awk '/^Mem:/ {print $3, $2}'
 echo @DISQUE
