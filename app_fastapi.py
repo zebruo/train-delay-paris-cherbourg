@@ -1956,17 +1956,17 @@ def calculer_contexte_jour_heure_sql_avec_cache(connexion, gare, train, sens, li
 def _materialiser_rapport_filtre(connexion, debut_iso, fin_iso):
     """Construit la table temporaire `rapport_filtre` — un seul scan
     d'observations.db pour le périmètre commun à plusieurs morceaux de
-    l'onglet Rapports (météo, graphique "retard moyen par gare", graphique
-    "retard moyen par jour de semaine") : période + circulations arrivées
-    + restreint aux 11 gares de la ligne (limiter_ligne=True, comme
-    df_periode dans generer_rapport.py — PAS df_periode_complet, ces
-    3 usages portent bien sur le périmètre restreint à la ligne).
-    L'appelant DOIT avoir déjà matérialisé circulations_arrivees_periode
-    (voir _materialiser_circulations_arrivees_periode) avant cet appel.
-    ligne_id (= rowid d'observations) : sert de départage déterministe à
-    _meteo_periode_sql (voir son docstring) pour reproduire exactement
-    l'ordre de lignes que pandas trouve "en premier". Appelant responsable
-    du DROP TABLE ensuite."""
+    l'onglet Rapports (météo, graphiques "retard moyen par gare"/"par jour
+    de semaine"/"par heure") : période + circulations arrivées + restreint
+    aux 11 gares de la ligne (limiter_ligne=True, comme df_periode dans
+    generer_rapport.py — PAS df_periode_complet, ces usages portent bien
+    sur le périmètre restreint à la ligne). L'appelant DOIT avoir déjà
+    matérialisé circulations_arrivees_periode (voir _materialiser_
+    circulations_arrivees_periode) avant cet appel. ligne_id (= rowid
+    d'observations) : sert de départage déterministe à _meteo_periode_sql
+    (voir son docstring) pour reproduire exactement l'ordre de lignes que
+    pandas trouve "en premier". Appelant responsable du DROP TABLE
+    ensuite."""
     where, params = _construire_where_sql(
         "Toutes", "Tous", "Tous", limiter_ligne=True, debut_iso=debut_iso, fin_iso=fin_iso,
     )
@@ -1977,7 +1977,7 @@ def _materialiser_rapport_filtre(connexion, debut_iso, fin_iso):
         SELECT rowid AS ligne_id, poll_time, gare, trip_id, start_date,
                ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min,
                temperature_c, precipitation_mm, wind_speed_kmh,
-               {_EXPR_JOUR_SEMAINE} AS jour_semaine
+               {_EXPR_JOUR_SEMAINE} AS jour_semaine, heure_locale
         FROM observations WHERE {where}
         """,
         params,
@@ -2387,6 +2387,18 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
                 "Retard moyen par jour", stats_jour_mois, "moyenne", JOURS_ORDRE, str.lower,
                 lambda v: f"{v:.1f} min", SEUIL_FIABLE,
             )
+            # 3e graphique "vue d'ensemble du mois" — même donnée que l'onglet
+            # Par jour/heure, aligné sur le rapport mensuel PDF (generer_
+            # rapport.py) — demande explicite de l'utilisateur, 2026-08-23.
+            labels_heure = [f"{h}h" for h in range(24)]
+            stats_heure_mois = _moyenne_retard_par_categorie_sql(connexion, "heure_locale", list(range(24)))
+            contexte["graph_heure"] = _construire_barre(
+                stats_heure_mois, "moyenne", labels_heure, " min", avec_moyenne=True,
+            )
+            contexte["graph_heure"]["titre"] = titre_dynamique_jour_heure(
+                "Retard moyen par heure", stats_heure_mois, "moyenne", labels_heure, lambda l: f"à {l}",
+                lambda v: f"{v:.1f} min", SEUIL_FIABLE,
+            )
         else:
             contexte["top5"] = _construire_donnees_top5_sql(
                 connexion, reference_donnees["variantes"], reference_donnees["calendrier"],
@@ -2521,6 +2533,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
             }),
             "rapport_graph_gare_json": json_pour_script(ctx["graph_gare"]),
             "rapport_graph_jour_semaine_json": json_pour_script(ctx["graph_jour_semaine"]),
+            "rapport_graph_heure_json": json_pour_script(ctx["graph_heure"]),
         })
     else:
         resultat["rapport_mensuel"] = False

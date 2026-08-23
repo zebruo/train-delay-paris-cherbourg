@@ -1029,6 +1029,18 @@ rapport au texte autour, pour ressortir un peu sans être criarde. */
     min-height: 260px;
 }
 
+/* Rapports mensuel (5 graphiques : %perturbées/jour, cumulé, gare, jour de
+semaine, heure) : 1 seule colonne plutôt que la grille 2 colonnes ci-dessus
+— sinon le 5e graphique se retrouverait seul sur une ligne à moitié vide.
+Modificateur .pile sur .grille-jour-heure (templates/_rapports.html) plutôt
+qu'une classe séparée, pour garder .grille-jour-heure > div (hauteur)
+partagée entre les deux dispositions — aligné sur la pile pleine largeur du
+rapport mensuel PDF (generer_rapport.py), demande explicite de
+l'utilisateur, 2026-08-23. */
+.grille-jour-heure.pile {
+    grid-template-columns: 1fr;
+}
+
 /* Onglet Rapports — disposition en ligne partagée avec #stats (voir plus
 haut) ; .stat/.stat-label/.stat-valeur (réutilisées telles quelles par
 _stats.html) restent inchangées, simplement pas accrochée à l'id #stats

@@ -71,6 +71,10 @@ GARES_LIGNE_ORDRE = (
 # graphique).
 GARES_LIGNE = set(GARES_LIGNE_ORDRE)
 JOURS_SEMAINE_ORDRE = ("Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche")
+# Même heure_locale que l'onglet web "Par jour / heure" (app_fastapi.py) —
+# heure de COLLECTE (poll_time en local Paris), pas l'heure théorique du
+# passage. 0-23 : mêmes libellés "0h".."23h" que labels_heure côté web.
+HEURES_ORDRE = list(range(24))
 PERIODES = {
     "quotidien": "Rapport quotidien",
     "hebdomadaire": "Rapport hebdomadaire",
@@ -604,15 +608,19 @@ def generer(nom_periode, maintenant=None):
     # (voir plus bas) — les 2 dernières rangées (espaceur + liste détaillée)
     # ne sont donc réservées que s'il y a vraiment des alertes à détailler.
     has_alertes = not alertes_periode.empty
-    # 5 rangées de plus pour "Vue d'ensemble du mois" (comparaison texte + 4
+    # 6 rangées de plus pour "Vue d'ensemble du mois" (comparaison texte + 5
     # graphiques : % perturbées/jour, retard cumulé croissant, retard moyen
-    # par gare, retard moyen par jour de semaine), uniquement pour le
-    # rapport mensuel — voir plus haut.
-    lignes_mensuel = 5 if nom_periode == "mensuel" else 0
+    # par gare, par jour de semaine, par heure), uniquement pour le rapport
+    # mensuel — voir plus haut. Retard moyen par heure ajouté le 2026-08-23
+    # (même correctif de fiabilité que gare/jour de semaine, voir
+    # SEUIL_FIABLE_MENSUEL) — empilé en pleine largeur comme les 4 autres,
+    # même principe que les mini-graphiques du top 5 (quotidien/hebdomadaire,
+    # gs[..., :] plus bas) plutôt qu'une grille à 2 colonnes.
+    lignes_mensuel = 6 if nom_periode == "mensuel" else 0
     gs = GridSpec(
         3 + lignes_mensuel + lignes_entete_top5 + n_graphiques + (2 if has_alertes else 0), 2, figure=fig,
         height_ratios=(
-            [0.6, 0.75] + ([0.4, 1.3, 1.3, 1.1, 1.1] if nom_periode == "mensuel" else [])
+            [0.6, 0.75] + ([0.4, 1.3, 1.3, 1.1, 1.1, 1.1] if nom_periode == "mensuel" else [])
             + ([0.35] if afficher_top5 else [])
             + [1.3] * n_graphiques + ([0.3, 1.1] if has_alertes else []) + [0.4]
         ),
@@ -750,15 +758,22 @@ def generer(nom_periode, maintenant=None):
 
         ax_a = fig.add_subplot(gs[3, :])
         ax_b = fig.add_subplot(gs[4, :])
-        ax_c = fig.add_subplot(gs[5, :])
-        ax_e = fig.add_subplot(gs[6, :])
+        # Ordre d'affichage (pas de calcul) : "par heure" remonté juste après
+        # le retard cumulé, avant gare/jour de semaine — demande explicite de
+        # l'utilisateur, 2026-08-23, jugé le plus parlant des 3 répartitions
+        # (motif de dégradation en fin de soirée, plus actionnable que les
+        # variations gare/jour). Seule la ligne gs[N, :] de chaque ax change
+        # ici — les blocs de calcul/tracé plus bas, eux, restent à leur place.
+        ax_f = fig.add_subplot(gs[5, :])
+        ax_c = fig.add_subplot(gs[6, :])
+        ax_e = fig.add_subplot(gs[7, :])
         if df_periode.empty:
             # Rien à tracer (mois entièrement sans donnée) : un axe avec
             # uniquement des valeurs manquantes n'a pas de bornes valides
             # pour matplotlib (set_xlim/set_ylim refusent NaN) — même
             # traitement "message de repli" que le top 5 vide plus bas,
             # plutôt que de forcer un graphique sans contenu réel.
-            for ax in (ax_a, ax_b, ax_c, ax_e):
+            for ax in (ax_a, ax_b, ax_c, ax_e, ax_f):
                 ax.axis("off")
             ax_a.text(0, 0.5, "Aucune donnée sur ce mois.", fontsize=9, color="#555", va="center")
         else:
@@ -844,6 +859,34 @@ def generer(nom_periode, maintenant=None):
             ax_e.axhline(0, color="gray", linewidth=0.6)
             marquer_moyenne(ax_e, moyennes_par_jour_mois, "#5ba58c", " min")
             finaliser_axes(ax_e)
+
+            # 3e vue "vue d'ensemble" (heure de collecte) — même donnée que
+            # l'onglet web "Par jour / heure" (calculer_contexte_jour_heure_
+            # sql), demande explicite de l'utilisateur, 2026-08-23, à la
+            # suite du correctif de fiabilité (1h/2h grisées à tort par un
+            # seul train très en retard, repollé sur plusieurs gares).
+            labels_heure_mois = [f"{h}h" for h in HEURES_ORDRE]
+            moyennes_par_heure_mois = df_periode.groupby("heure_locale")["retard_min"].mean().reindex(HEURES_ORDRE)
+            ax_f.bar(range(len(HEURES_ORDRE)), moyennes_par_heure_mois.values, color="#2a8f8f")
+            ax_f.set_xticks(range(len(HEURES_ORDRE)))
+            ax_f.set_xticklabels(labels_heure_mois, fontsize=6)
+            comptes_par_heure_mois = df_periode.groupby("heure_locale")["retard_min"].count().reindex(HEURES_ORDRE)
+            circulations_par_heure_mois = df_periode.assign(_cle=cle_circulation(df_periode)) \
+                .groupby("heure_locale")["_cle"].nunique().reindex(HEURES_ORDRE)
+            stats_heure_mois = pd.DataFrame({
+                "moyenne": moyennes_par_heure_mois, "n": comptes_par_heure_mois,
+                "n_circulations": circulations_par_heure_mois,
+            })
+            titre_heure_mois = titre_dynamique_jour_heure(
+                "Retard moyen par heure", stats_heure_mois, "moyenne", labels_heure_mois, lambda l: f"à {l}",
+                lambda v: f"{v:.1f} min", SEUIL_FIABLE_MENSUEL,
+            )
+            ax_f.set_title(titre_heure_mois, fontsize=9, fontweight="bold", loc="left")
+            ax_f.set_ylabel("min", fontsize=8)
+            ax_f.tick_params(axis="y", labelsize=7)
+            ax_f.axhline(0, color="gray", linewidth=0.6)
+            marquer_moyenne(ax_f, moyennes_par_heure_mois, "#2a8f8f", " min")
+            finaliser_axes(ax_f)
 
     if afficher_top5:
         ax_entete_circulations = fig.add_subplot(gs[2 + lignes_mensuel, :])

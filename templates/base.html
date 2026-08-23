@@ -329,6 +329,9 @@
             if (document.getElementById("jh-rapport_jour_semaine") && window._donneesRapportJourSemaine) {
                 dessinerBarre("rapport_jour_semaine", window._donneesRapportJourSemaine);
             }
+            if (document.getElementById("jh-rapport_heure") && window._donneesRapportHeure) {
+                dessinerBarre("rapport_heure", window._donneesRapportHeure);
+            }
             if (window._donneesRapportTop5) {
                 Object.keys(window._donneesRapportTop5).forEach((indice) => {
                     if (document.getElementById("top5-plot-" + indice)) {

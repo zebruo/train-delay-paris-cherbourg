@@ -45,9 +45,14 @@
                 {% endif %}
             </p>
         {% endif %}
-        <div class="grille-jour-heure">
+        <div class="grille-jour-heure pile">
             <div id="rapport-pct-jour"></div>
             <div id="rapport-cumule-jour"></div>
+            <!-- "heure" remonté avant gare/jour de semaine — demande
+            explicite de l'utilisateur, 2026-08-23, jugé le plus parlant des
+            3 répartitions (motif de dégradation en fin de soirée), même
+            ordre que le rapport mensuel PDF (generer_rapport.py). -->
+            <div id="jh-rapport_heure"></div>
             <div id="jh-rapport_gare"></div>
             <div id="jh-rapport_jour_semaine"></div>
         </div>
@@ -56,13 +61,16 @@
             dessinerCumuleJour({{ rapport_graph_cumule_jour_json | safe }});
             // Mémorisées explicitement (contrairement à dessinerJourHeure,
             // qui le fait elle-même sous window._donneesJourHeure) : Rapports
-            // appelle dessinerBarre directement pour ces 2-là (voir
+            // appelle dessinerBarre directement pour ces 3-là (voir
             // jour_heure.js), basculerTheme (base.html) a besoin de ces
             // données pour redessiner au changement de thème.
+            window._donneesRapportHeure = {{ rapport_graph_heure_json | safe }};
             window._donneesRapportGare = {{ rapport_graph_gare_json | safe }};
             window._donneesRapportJourSemaine = {{ rapport_graph_jour_semaine_json | safe }};
+            dessinerBarre("rapport_heure", window._donneesRapportHeure);
             dessinerBarre("rapport_gare", window._donneesRapportGare);
             dessinerBarre("rapport_jour_semaine", window._donneesRapportJourSemaine);
+            dessinerBarre("rapport_heure", window._donneesRapportHeure);
         </script>
     {% else %}
         {% if rapport_top5 %}

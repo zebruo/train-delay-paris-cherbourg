@@ -63,6 +63,11 @@ const CONFIG_JOUR_HEURE = {
     rapport_jour_semaine: {
         titre: "Retard moyen par jour de semaine, sur le mois", ylabel: "Retard (min)", couleur: "#5ba58c",
     },
+    // Même couleur que le graphique équivalent du rapport PDF (#2a8f8f,
+    // generer_rapport.py, ax_f) — cohérence visuelle entre les deux formats.
+    rapport_heure: {
+        titre: "Retard moyen par heure, sur le mois", ylabel: "Retard (min)", couleur: "#2a8f8f",
+    },
 };
 
 function dessinerBarre(cle, donnees) {
