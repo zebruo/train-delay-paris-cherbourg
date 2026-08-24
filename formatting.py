@@ -668,3 +668,154 @@ def build_trip_data(ref):
             "arrets_par_stop": dict(zip(stop_ids, arrets)),
         })
     return variantes
+
+
+def _minutes_gtfs(horaire):
+    """'HH:MM:SS' (éventuellement >= 24:00:00, voir build_trip_data) ->
+    minutes depuis minuit local, ramenées dans [0, 1440) par modulo. None si
+    horaire est None/vide/mal formé — un trou dans l'horaire théorique
+    (arrêt jamais desservi en pratique) ne doit pas faire planter l'index
+    gare->heure (construire_index_gare_heure), juste être ignoré pour cette
+    gare précise."""
+    if not isinstance(horaire, str):
+        return None
+    try:
+        h, m, _s = horaire.split(":")
+        return (int(h) * 60 + int(m)) % 1440
+    except ValueError:
+        return None
+
+
+def _minutes_hhmm(heure_hhmm):
+    """'HH:MM' (saisie utilisateur, ou valeur d'un <select> Départ peuplé
+    par heures_disponibles_pour_gare) -> minutes depuis minuit."""
+    h, m = heure_hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _distance_circulaire(a, b):
+    """Écart en minutes entre deux instants de la journée, en tenant compte
+    du passage minuit (ex: 23h55 et 00h05 -> 10 min, pas 1430) — sans quoi
+    un train juste avant/après minuit ne matcherait jamais un horaire proche
+    de l'autre côté de la frontière minuit, alors que ce sont bien 10 min
+    d'écart réel."""
+    d = abs(a - b)
+    return min(d, 1440 - d)
+
+
+def construire_index_gare_heure(variantes):
+    """gare (nom complet, ex: 'Caen', même valeur que stop_name/GARES_LIGNE_
+    ORDRE) -> liste de (train, minutes, destination), une entrée PAR VARIANTE
+    d'horaire connue à cette gare (pas dédoublonnée par train — le
+    dédoublonnage se fait à la résolution, voir resoudre_trains_pour_gare_
+    heure, pour garder la variante la plus proche de l'heure demandée plutôt
+    qu'une variante arbitraire parmi plusieurs, ex: horaire vacances vs
+    normal). train = sans_date_trip_id.split(':')[0], identique à la clé
+    'train' déjà utilisée partout ailleurs pour le filtre Train/format_
+    numero_train — permet de réutiliser directement les fonctions de stats
+    existantes (_construire_where_sql) une fois un train résolu.
+
+    Construit UNE SEULE FOIS au démarrage (voir lifespan, app_fastapi.py) à
+    partir de reference_donnees['variantes'] — un seul passage sur toutes
+    les variantes déjà en mémoire, pas recalculé à chaque requête mobile.
+
+    N'indexe QUE les gares[:-1] (tout sauf le terminus) : à une gare
+    intermédiaire/d'origine, `horaires` contient l'heure de DÉPART
+    (build_trip_data : scheduled_departure en priorité) — au terminus,
+    faute de départ, c'est l'heure d'ARRIVÉE qui s'y trouve à la place (repli
+    scheduled_arrival). Sans cette exclusion, un train qui TERMINE à la gare
+    demandée apparaissait à tort comme candidat pour 'un train au départ de
+    cette gare à telle heure' (repéré en testant en direct : rechercher
+    'Caen, 07h42' retournait un train dont Caen est le terminus, donc sans
+    aucun départ possible à cette heure depuis Caen)."""
+    index = {}
+    for sans_date_id, liste_variantes in variantes.items():
+        train = sans_date_id.split(":")[0]
+        for variante in liste_variantes:
+            gares = variante["gares"]
+            if len(gares) < 2:
+                continue  # trajet à 0-1 arrêt connu : rien d'exploitable pour une résolution gare+heure
+            destination = gares[-1]
+            for nom_gare, horaire in zip(gares[:-1], variante["horaires"][:-1]):
+                minutes = _minutes_gtfs(horaire)
+                if minutes is not None:
+                    index.setdefault(nom_gare, []).append((train, minutes, destination))
+    return index
+
+
+def destinations_disponibles_pour_gare(gare, index_gare_heure):
+    """Destinations distinctes (noms bruts du référentiel, PAS formatées
+    via format_gare — la valeur doit rester comparable telle quelle au
+    'destination' brut stocké dans index_gare_heure, réutilisé ensuite par
+    heures_disponibles_pour_trajet/resoudre_trains_pour_gare_heure) triées
+    alphabétiquement — alimente le <select> 'Gare d'arrivée' de l'écran
+    Accueil/Favoris mobile, une fois la gare de départ choisie."""
+    return sorted({destination for _, _, destination in index_gare_heure.get(gare, [])})
+
+
+def heures_disponibles_pour_trajet(gare, destination, index_gare_heure):
+    """Heures théoriques ('HH:MM') triées et dédoublonnées pour le couple
+    (gare de départ, gare d'arrivée) — alimente le <select> 'Départ' une
+    fois les deux gares choisies : une heure de cette liste correspond
+    garanti à un train qui dessert bien cette destination précise, pas
+    seulement cette gare de départ (sinon la liste mélangerait des trains
+    partant vers des destinations complètement différentes, ex: à Caen,
+    des départs vers Cherbourg/Rennes/Granville tous ensemble)."""
+    minutes_vues = sorted({m for _, m, d in index_gare_heure.get(gare, []) if d == destination})
+    return [f"{m // 60:02d}:{m % 60:02d}" for m in minutes_vues]
+
+
+def resoudre_trains_pour_gare_heure(gare, heure_hhmm, index_gare_heure, destination=None, tolerance_min=0, max_candidats=3):
+    """Résout (gare, heure[, destination]) -> jusqu'à max_candidats trains
+    candidats, triés par proximité horaire, DÉDOUBLONNÉS PAR TRAIN (une
+    seule entrée par train, la variante la plus proche de heure_hhmm
+    l'emporte — plusieurs variantes du même train, ex: horaire vacances vs
+    normal, ne doivent jamais compter comme 2 candidats distincts).
+
+    destination (nom brut du référentiel, comme renvoyé par
+    destinations_disponibles_pour_gare — PAS formaté via format_gare) :
+    filtre optionnel, exact. Le menu 'Départ' est déjà scopé au trajet
+    (gare, destination) choisi via heures_disponibles_pour_trajet, donc ce
+    filtre ne change quasiment jamais le résultat en pratique — gardé
+    explicite plutôt qu'implicite pour rester correct même dans le rare
+    cas d'une collision exacte même gare+minute+destination (2 variantes
+    du même trajet, ex: un service normal et un bus de substitution).
+
+    tolerance_min=0 (exact) par défaut : le seul appelant (route /mobile/
+    resoudre_train) reçoit toujours une heure_hhmm choisie dans le menu
+    déroulant "Départ" — donc déjà un horaire théorique réel et précis,
+    jamais une saisie approximative. Une tolérance > 0 ferait ressortir des
+    trains à d'autres horaires déjà proposés séparément dans ce même menu
+    (source de confusion constatée en usage réel). Ambiguïté encore réelle
+    et conservée : 2 trains DIFFÉRENTS peuvent partager l'exacte même
+    minute à la même gare, même vers la même destination (rare mais
+    possible : service normal + substitution) — c'est pourquoi ceci
+    renvoie une LISTE, pas un train unique ; l'appelant (app_fastapi.py)
+    affiche tous les candidats pour que l'utilisateur confirme lui-même,
+    plutôt que de deviner arbitrairement.
+
+    Pas de filtrage par calendrier/service_id ici (choisir_variante existe
+    pour ça mais demande une date précise) : un résolveur 'train habituel' à
+    partir d'une gare et d'une heure seules n'a pas de date cible —
+    limitation assumée, documentée plutôt que cachée. En pratique, un train
+    annulé ou hors saison ce jour précis reste proposé ; ses stats
+    historiques restent correctes (elles portent sur les VRAIS relevés
+    passés), seule la disponibilité du jour même n'est pas garantie."""
+    candidats_par_train = {}
+    cible = _minutes_hhmm(heure_hhmm)
+    for train, minutes, dest in index_gare_heure.get(gare, []):
+        if destination is not None and dest != destination:
+            continue
+        delta = _distance_circulaire(cible, minutes)
+        if delta > tolerance_min:
+            continue
+        existant = candidats_par_train.get(train)
+        if existant is None or delta < existant["delta_min"]:
+            candidats_par_train[train] = {
+                "train": train,
+                "train_affiche": format_numero_train(train),
+                "heure_theorique": f"{minutes // 60:02d}h{minutes % 60:02d}",
+                "destination": format_gare(dest),
+                "delta_min": delta,
+            }
+    return sorted(candidats_par_train.values(), key=lambda c: c["delta_min"])[:max_candidats]

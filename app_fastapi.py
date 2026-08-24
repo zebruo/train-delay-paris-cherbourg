@@ -26,7 +26,7 @@ from datetime import datetime
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -38,8 +38,10 @@ from formatting import (
     calculer_stats_bloc,
     choisir_variante,
     cle_circulation,
+    construire_index_gare_heure,
     derniers_par_passage,
     derniers_par_passage_avec_date,
+    destinations_disponibles_pour_gare,
     duree_theorique,
     estimer_passage_reel,
     format_bool_oui_non,
@@ -52,8 +54,10 @@ from formatting import (
     format_poll_time,
     format_retard,
     format_valeur,
+    heures_disponibles_pour_trajet,
     load_calendrier,
     load_reference,
+    resoudre_trains_pour_gare_heure,
     texte_categorie_maximale,
     texte_periode_rapport,
     titre_dynamique_jour_heure,
@@ -98,6 +102,20 @@ SEUIL_RETARD_MOYEN = 5  # minutes
 # tout en réduisant le poids qu'un train isolé peut avoir (décision
 # utilisateur, 2026-08-23 : 5 jugé encore trop fragile statistiquement).
 SEUIL_FIABLE = 10
+
+# Carte "Train N" mobile (Accueil/Favoris) : nb max de retards listés dans
+# "Retards des 90 derniers jours" avant de résumer le reste en "+N autres"
+# — calibré sur observations.db réel (2026-08-24) : parmi les trains ayant
+# eu au moins un retard sur 30 jours, médiane 3, 75e centile 5, seuls
+# 16/237 dépassent 8 (max observé 14) — la grande majorité des trains
+# n'est donc jamais tronquée.
+MAX_RETARDS_AFFICHES_MOBILE = 8
+
+# Borne basse "depuis toujours" pour calculer_stats_globales_sql_avec_cache
+# (voir son docstring, 2026-08-24) : un simple repère antérieur à toute
+# collecte possible, PAS la vraie date de début — inutile de la requêter
+# (MIN(poll_time)), seule chose qui compte : n'exclure aucune ligne réelle.
+BORNE_DEBUT_COLLECTE_ISO = "2000-01-01T00:00:00+00:00"
 
 # Mêmes 11 gares que viewer.py/generer_rapport.py/app_streamlit.py — copie
 # locale volontaire, GARES_LIGNE existe déjà sous plusieurs formes
@@ -176,6 +194,11 @@ async def lifespan(app: FastAPI):
     # demandée (voir formatting.py, correctif du 2026-08-12).
     reference_donnees["variantes"] = build_trip_data(reference)
     reference_donnees["calendrier"] = load_calendrier()
+    # Index gare -> trains desservant cette gare (mobile, écran Accueil/
+    # Favoris — résolution "gare + heure habituelle" -> train) — construit
+    # une seule fois ici, pas recalculé à chaque requête (voir formatting.
+    # construire_index_gare_heure).
+    reference_donnees["index_gare_heure"] = construire_index_gare_heure(reference_donnees["variantes"])
     yield
 
 
@@ -438,14 +461,37 @@ def options_gare(df):
     "— ... —" sont de simples séparateurs visuels, jamais un vrai filtre
     (voir filtrer_df)."""
     gares_vues = df["gare"].dropna().unique().tolist()
-    gares_de_la_ligne = sorted(g for g in gares_vues if g in GARES_LIGNE)
-    gares_hors_ligne = sorted(g for g in gares_vues if g not in GARES_LIGNE)
-    options = ["Toutes"]
+    return ["Toutes"] + _regrouper_gares_ligne(gares_vues)
+
+
+def _regrouper_gares_ligne(gares):
+    """Sépare `gares` en "— Gares de la ligne —" / "— Autres gares
+    (jonction) —" (même convention que options_gare, desktop), chaque
+    groupe trié alphabétiquement — factorisé pour être réutilisé à la fois
+    par gares_options_mobile (départ) et la route /mobile/destinations_gare
+    (arrivée), pour que les 2 sélecteurs de l'écran Accueil/Favoris mobile
+    partagent le même regroupement visuel."""
+    gares = sorted(gares)
+    gares_de_la_ligne = [g for g in gares if g in GARES_LIGNE]
+    gares_hors_ligne = [g for g in gares if g not in GARES_LIGNE]
+    options = []
     if gares_de_la_ligne:
         options += ["— Gares de la ligne —"] + gares_de_la_ligne
     if gares_hors_ligne:
         options += ["— Autres gares (jonction) —"] + gares_hors_ligne
     return options
+
+
+def gares_options_mobile(index_gare_heure):
+    """Même regroupement que options_gare (desktop), pour le <select> 'Gare
+    de départ' de l'écran Accueil/Favoris mobile — mais basé sur les gares
+    ayant AU MOINS UN départ théorique connu (clés de index_gare_heure,
+    référentiel GTFS) plutôt que sur les gares réellement observées dans
+    observations.db (contrairement à options_gare) : la recherche mobile
+    résout un trajet via le référentiel, donc c'est cette liste-là qui doit
+    être exhaustive. Pas d'option "Toutes" ici (contrairement au filtre
+    desktop) : la recherche mobile a besoin d'un point de départ précis."""
+    return _regrouper_gares_ligne(index_gare_heure.keys())
 
 
 def _gare_est_filtree(gare):
@@ -860,9 +906,13 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
         contexte["periode"] = periode
         contexte["periode_options"] = PERIODE_OPTIONS
         limiter_ligne = lire_checkbox(request, "limiter_ligne", True)
-        contexte.update(
-            calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens, limiter_ligne)
-        )
+        connexion = sqlite3.connect(OBSERVATIONS_DB)
+        try:
+            contexte.update(
+                calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train, sens, limiter_ligne)
+            )
+        finally:
+            connexion.close()
     elif contexte["vue"] == "train":
         contexte.update(calculer_contexte_train(request, df, gare, train, sens))
     elif contexte["vue"] == "jour_heure":
@@ -983,7 +1033,7 @@ def serie_avec_trous(serie, unite, explication_max, explication_moyenne):
     return {"points": points, "trous": trous, "max": maximum, "moyenne": moyenne}
 
 
-def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens, limiter_ligne):
+def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train, sens, limiter_ligne):
     """Porte le bloc `with tab_graphique:` d'app_streamlit.py (période →
     plot_df, agrégation par relevé, calcul des deux séries) — basé sur
     df_avant_retard (jamais df_filtre) : "Limiter aux trains avec retard"
@@ -1022,6 +1072,18 @@ def calculer_contexte_graphique(df_avant_retard, periode, gare, train, sens, lim
         if circulations_annulees:
             cles = pd.MultiIndex.from_frame(plot_df[["trip_id", "start_date"]].astype(str))
             plot_df = plot_df[~cles.isin(circulations_annulees)]
+
+    # Exclut aussi les circulations pas encore confirmées arrivées (voir
+    # _cles_circulations_arrivees_globales) : sans ça, une circulation
+    # encore en cours de trajet apparaît avec son dernier retard connu,
+    # potentiellement provisoire — même correctif que la barre de stats
+    # globale (calculer_stats_globales_sql, depuis_debut_collecte), ajouté
+    # ici après avoir repéré un écart de méthode en comparant les chiffres
+    # desktop/mobile pour un même train (2026-08-24).
+    if not plot_df.empty:
+        cles_arrivees = _cles_circulations_arrivees_globales(connexion)
+        cles = plot_df["trip_id"].astype(str) + "|" + plot_df["start_date"].astype(str)
+        plot_df = plot_df[cles.isin(cles_arrivees)]
 
     if plot_df.empty:
         return {"graphique_vide": True}
@@ -1168,15 +1230,19 @@ def _construire_where_sql(
 ):
     """Équivalent SQL de filtrer_df() — mêmes règles exactes
     (_gare_est_filtree, GARES_LIGNE). debut_iso/fin_iso (par défaut None,
-    tous les appels existants restent inchangés) : réservé à l'onglet
-    Rapports, borne sur poll_time ET restreint aux circulations dont le
-    terminus est déjà "arrivé" à la fin de la période (table temporaire
-    `circulations_arrivees_periode(cle)`, que l'appelant DOIT avoir déjà
-    matérialisée — même contrat que limiter_retard/circulations_retard
-    ci-dessous). Les deux bornes sont toujours fournies ensemble (jamais
-    l'une sans l'autre) : Rapports n'a jamais besoin de l'une sans l'autre,
-    pas de paramètre séparé pour découpler les deux. exiger_retard_connu
-    (par défaut True) :
+    tous les appels existants restent inchangés) : borne sur poll_time ET
+    restreint aux circulations dont le terminus est déjà "arrivé" à la fin
+    de la période (table temporaire `circulations_arrivees_periode(cle)`,
+    que l'appelant DOIT avoir déjà matérialisée — même contrat que
+    limiter_retard/circulations_retard ci-dessous). Les deux bornes sont
+    toujours fournies ensemble (jamais l'une sans l'autre). Utilisé par
+    Rapports (sa propre période) ET par la barre de stats globale
+    (calculer_stats_globales_sql, depuis_debut_collecte=True, avec des
+    bornes "depuis toujours -> maintenant" — voir BORNE_DEBUT_COLLECTE_ISO
+    — pour bénéficier de la même vérification d'arrivée que Rapports/la
+    carte de stats mobile, ajouté le 2026-08-24 après avoir repéré un écart
+    de méthode en comparant les chiffres desktop/mobile pour un même
+    train). exiger_retard_connu (par défaut True) :
     ajoute le dropna(subset=["retard_min"]) fait par la plupart des
     appelants pandas, MAIS PAS calculer_stats_globales (app_fastapi.py) pour
     stats_ratio/resume_collecte — ces deux-là opèrent sur df_avant_retard,
@@ -1468,6 +1534,241 @@ def _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso):
     )
 
 
+# Cache mémoire des CLÉS "circulations confirmées arrivées" pour la barre de
+# stats globale (BORNE_DEBUT_COLLECTE_ISO -> maintenant), invalidé sur
+# nouveau relevé comme _cache_resultats_stats_globales — voir
+# _cles_circulations_arrivees_globales.
+_cache_circulations_arrivees_globales = {"dernier_poll": None, "cles": None}
+
+
+def _cles_circulations_arrivees_globales(connexion):
+    """Renvoie l'ensemble des clés "trip_id|start_date" confirmées arrivées
+    (BORNE_DEBUT_COLLECTE_ISO -> maintenant), via un cache mémoire —
+    _materialiser_circulations_arrivees_periode ne dépend d'AUCUN filtre
+    Gare/Train/Sens (toujours les mêmes bornes pour la barre globale) : sans
+    ce cache, chaque nouvelle combinaison de filtres visitée dans la même
+    fenêtre de 5 min entre 2 relevés repayait sa boucle Python choisir_
+    variante/estimer_passage_reel sur tout l'historique (~9-11s, 2026-08-
+    24), alors que le résultat est rigoureusement identique d'un filtre à
+    l'autre. Réutilisée par _obtenir_circulations_arrivees_globales (accès
+    SQL, TEMP TABLE) ET par calculer_contexte_graphique (accès pandas,
+    filtrage direct d'un DataFrame via .isin()) — un TEMP TABLE seul ne
+    suffit pas à éviter ce recalcul (portée : une connexion SQLite, recréée
+    à chaque requête HTTP), d'où ce cache mémoire des clés elles-mêmes
+    (petites chaînes, quelques Ko)."""
+    dernier_poll = connexion.execute("SELECT MAX(poll_time) FROM observations").fetchone()[0]
+    cache = _cache_circulations_arrivees_globales
+    if cache["dernier_poll"] != dernier_poll:
+        fin_iso = pd.Timestamp.now(tz="UTC").isoformat()
+        _materialiser_circulations_arrivees_periode(connexion, BORNE_DEBUT_COLLECTE_ISO, fin_iso)
+        cache["cles"] = [r[0] for r in connexion.execute("SELECT cle FROM circulations_arrivees_periode").fetchall()]
+        connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
+        cache["dernier_poll"] = dernier_poll
+    return set(cache["cles"])
+
+
+def _obtenir_circulations_arrivees_globales(connexion):
+    """(Re)matérialise le TEMP TABLE `circulations_arrivees_periode` pour
+    la barre de stats globale (voir _construire_where_sql), à partir du
+    cache mémoire des clés (_cles_circulations_arrivees_globales) plutôt
+    que de recalculer. Appelant responsable du DROP TABLE ensuite, comme
+    pour un appel direct à _materialiser_circulations_arrivees_periode."""
+    cles = _cles_circulations_arrivees_globales(connexion)
+    connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
+    connexion.execute("CREATE TEMP TABLE circulations_arrivees_periode (cle TEXT PRIMARY KEY)")
+    connexion.executemany(
+        "INSERT INTO circulations_arrivees_periode (cle) VALUES (?)",
+        [(cle,) for cle in cles],
+    )
+
+
+def calculer_carte_stats_train_sql(connexion, train, gare="Toutes", jours=90, limiter_ligne=False):
+    """Carte 'Train N' (écrans Accueil/Favoris mobile), bornée aux `jours`
+    derniers jours : % à l'heure, retard moyen/max, historique quotidien.
+    Réutilise les mêmes briques que la barre de stats globale
+    (_cte_dernier_par_passage_complet, _materialiser_circulations_annulees/
+    _arrivees_periode) plutôt que dupliquer leur logique. train étant déjà
+    fixé (contrairement à _retard_max_et_cumule_sql, qui GROUP BY train sur
+    plusieurs trains à la fois), une requête dédiée plus légère suffit ici.
+
+    limiter_ligne=False (pas True) : bug réel trouvé le 2026-08-24 (train
+    852868 à Avranches introuvable sur mobile mais 549 relevés sur
+    desktop) — `gare` est TOUJOURS une gare précise ici (jamais "Toutes" en
+    usage réel, contrairement à Retard max/cumulé qui peut agréger
+    plusieurs gares), donc limiter_ligne=True ajoutait "gare IN (11 gares
+    de la ligne)" EN PLUS de "gare = <gare choisie>" — un ET impossible à
+    satisfaire dès que la gare choisie est une gare de jonction (Avranches,
+    Audrieu, Granville...), justement celles ajoutées aux sélecteurs mobile
+    cette même session (gares_options_mobile). limiter_ligne=True n'a donc
+    jamais de sens ici, quelle que soit la gare.
+
+    jours=90 (pas 30) : vérifié sur observations.db réel (2026-08-24) qu'un
+    échantillon à 30 jours est statistiquement fragile pour beaucoup de
+    trains (38% des trains sous SEUIL_FIABLE=10 circulations). 90 jours ne
+    change presque rien aujourd'hui (la collecte n'a que ~44 jours
+    d'historique, donc la fenêtre est de facto plafonnée), mais ne coûte
+    rien non plus (requête déjà indexée sur train/gare, jamais un scan de
+    toute la table) et donnera le ×3 attendu automatiquement une fois la
+    collecte plus ancienne que 90 jours — pas besoin d'y revenir."""
+    fin = pd.Timestamp.now(tz="UTC")
+    debut = fin - pd.Timedelta(days=jours)
+    debut_iso, fin_iso = debut.isoformat(), fin.isoformat()
+
+    connexion.execute("DROP TABLE IF EXISTS temp.circulations_annulees")
+    connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
+    try:
+        _materialiser_circulations_annulees(connexion)
+        _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso)
+        where, params = _construire_where_sql(
+            gare, train, "Tous", limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
+        )
+        cte = _cte_dernier_par_passage_complet(where)
+        lignes = connexion.execute(
+            cte + "SELECT trip_id, start_date, MAX(retard_min) AS retard_min FROM derniers "
+            "WHERE (trip_id || '|' || start_date) NOT IN (SELECT cle FROM circulations_annulees) "
+            "GROUP BY trip_id, start_date ORDER BY start_date",
+            params,
+        ).fetchall()
+
+        # Contexte (type de jour/vacances/météo) pour la modale "détail d'un
+        # jour" (mobile) — même logique "dernier connu par circulation" que
+        # le retard ci-dessus, mais en requête séparée plutôt que d'étendre
+        # _cte_dernier_par_passage_complet (partagée avec Retard max/cumulé
+        # et Rapports, hors scope de cette seule carte). Réutilise le même
+        # `where`/`params` (gare/train/période/arrivée confirmée déjà
+        # appliqués) pour rester rigoureusement sur le même périmètre.
+        lignes_contexte = connexion.execute(
+            f"""
+            WITH filtre AS (
+                SELECT trip_id, start_date, poll_time, type_jour, vacances_scolaires,
+                       temperature_c, precipitation_mm, wind_speed_kmh
+                FROM observations WHERE {where}
+            ),
+            avec_rang AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY trip_id, start_date ORDER BY poll_time DESC
+                ) AS rn
+                FROM filtre
+            )
+            SELECT start_date, type_jour, vacances_scolaires,
+                   temperature_c, precipitation_mm, wind_speed_kmh
+            FROM avec_rang WHERE rn = 1
+            """,
+            params,
+        ).fetchall()
+    finally:
+        connexion.execute("DROP TABLE IF EXISTS temp.circulations_annulees")
+        connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
+
+    if not lignes:
+        return {"donnees_disponibles": False}
+
+    contexte_par_date = {
+        sd: {
+            "type_jour": tj, "vacances_scolaires": vac,
+            "temperature_c": temp, "precipitation_mm": pluie, "wind_speed_kmh": vent,
+        }
+        for sd, tj, vac, temp, pluie, vent in lignes_contexte
+    }
+    variantes = reference_donnees["variantes"]
+    calendrier = reference_donnees["calendrier"]
+
+    def _horaire_texte(trip_id, start_date, retard_min):
+        """"Prévu à HH:MM → passage à HH:MM", ou None si le train est
+        inconnu du référentiel ou ne dessert pas `gare` dans cette variante
+        — réutilise estimer_passage_reel (retard=0 pour le théorique, déjà
+        établi ailleurs dans l'appli plutôt que de reformater la chaîne GTFS
+        brute à la main, notamment pour gérer correctement une heure GTFS
+        >= 24:00)."""
+        variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+        if variante is None:
+            return None
+        heure_theo = dict(zip(variante["gares"], variante["horaires"])).get(gare)
+        if heure_theo is None:
+            return None
+        theo = estimer_passage_reel(heure_theo, start_date, 0)
+        reel = estimer_passage_reel(heure_theo, start_date, retard_min)
+        if theo is None or reel is None:
+            return None
+        theo_local = theo.tz_convert(PARIS_TZ).strftime("%H:%M")
+        reel_local = reel.tz_convert(PARIS_TZ).strftime("%H:%M")
+        return f"Prévu à {theo_local} → passage à {reel_local}"
+
+    def _contexte_texte(sd):
+        ctx = contexte_par_date.get(sd)
+        if not ctx:
+            return None
+        libelle_jour = {
+            "ouvré": "Jour ouvré", "ouvre": "Jour ouvré",
+            "weekend": "Weekend", "férié": "Jour férié",
+        }.get(ctx["type_jour"])
+        vac = ctx["vacances_scolaires"]
+        libelle_vacances = (
+            "Vacances scolaires" if vac == 1
+            else "Hors vacances scolaires" if vac == 0
+            else None
+        )
+        parties = [p for p in (libelle_jour, libelle_vacances) if p]
+        return " · ".join(parties) if parties else None
+
+    # MAX(retard_min) par circulation (pire gare du jour) — même logique
+    # "dernier connu, pire cas" que Retard max ailleurs dans l'appli.
+    retards = [r for _, _, r in lignes]
+    pct_a_lheure = 100 * sum(1 for r in retards if r == 0) / len(retards)
+    retard_max_periode = max(retards)
+    # Gare hors ligne (Autres gares (jonction), voir gares_options_mobile) :
+    # même convention que tr.hors-ligne (desktop, style.css) — prioritaire
+    # sur la couleur de retard habituelle (verte/orange/rouge), pas juste
+    # une nuance de plus. L'appli se concentre sur les 11 gares de l'axe
+    # Paris-Cherbourg ; une gare de jonction reste consultable (voir le
+    # correctif limiter_ligne du 2026-08-24) mais ses chiffres ne doivent
+    # pas se parer des mêmes couleurs "fiabilité de l'axe" (demande
+    # utilisateur, 2026-08-24).
+    hors_ligne = gare not in GARES_LIGNE
+    # hauteur_pct (0-100, relative au pire jour de la période) : même
+    # principe que barres_pct/hauteur_pct de calculer_contexte_tendances_
+    # mobile — calculé ici plutôt qu'en Jinja pour garder le template muet.
+    historique = [
+        {
+            "date": _format_start_date(sd), "retard_min": r,
+            "classe": "grise" if hors_ligne else (
+                "verte" if r == 0 else "orange" if r < SEUIL_RETARD_FORT else "rouge"
+            ),
+            "hauteur_pct": round(100 * r / retard_max_periode) if retard_max_periode else 0,
+            "horaire_texte": _horaire_texte(trip_id, sd, r),
+            "contexte_texte": _contexte_texte(sd),
+            "meteo_temp": contexte_par_date.get(sd, {}).get("temperature_c"),
+            "meteo_pluie": contexte_par_date.get(sd, {}).get("precipitation_mm"),
+            "meteo_vent": contexte_par_date.get(sd, {}).get("wind_speed_kmh"),
+        }
+        for trip_id, sd, r in lignes
+    ]
+    # Retards seuls (pas "derniers passages" tous confondus) : un petit
+    # échantillon des derniers jours, majoritairement à l'heure, tombait
+    # facilement "tout vert" par coïncidence et semblait contredire le %
+    # affiché juste au-dessus — lister uniquement les retards explique le %
+    # au lieu de sembler le contredire (retour utilisateur, 2026-08-24).
+    retards_liste = [j for j in reversed(historique) if j["retard_min"] > 0]
+    n_retards_masques = max(0, len(retards_liste) - MAX_RETARDS_AFFICHES_MOBILE)
+
+    return {
+        "donnees_disponibles": True,
+        "pct_a_lheure": round(pct_a_lheure, 1),
+        "retard_moyen": round(sum(retards) / len(retards), 1),
+        "retard_max": retard_max_periode,
+        "historique_quotidien": historique,
+        "retards": retards_liste[:MAX_RETARDS_AFFICHES_MOBILE],
+        "n_retards_masques": n_retards_masques,
+        "hors_ligne": hors_ligne,
+        # Même seuil que "Par jour/heure" (SEUIL_FIABLE) — repris ici pour
+        # signaler qu'un train encore peu observé peut voir son % bouger
+        # beaucoup au prochain relevé (demande différée du 2026-08-24).
+        "n_circulations": len(retards),
+        "fiable": len(retards) >= SEUIL_FIABLE,
+        "seuil_fiable": SEUIL_FIABLE,
+    }
+
+
 def _retard_max_et_cumule_sql(
     connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
 ):
@@ -1588,13 +1889,26 @@ def _circulations_et_trains_stats_sql(
     contrairement à Retard max/cumulé) ET nombre de trains distincts (au
     sens sans_date_trip_id — trip_id sans son suffixe ':AAAAMMJJ' final,
     utilisé par tooltip_ratio_retard) — mesuré 2026-08-16 : ces 2 comptes
-    portent sur le même périmètre (jamais limiter_retard : calculer_stats_
-    bloc(df_avant_retard) dans la version pandas d'origine ; exiger_retard_
-    connu=False, df_avant_retard n'est jamais dropna'd sur retard_min côté
-    pandas), regroupés en une seule requête plutôt que 2 scans séparés du
-    même ~520k lignes. Le GLOB isole les trip_id se terminant bien par le
-    suffixe date avant de le retirer (SUBSTR aveugle aurait tronqué à tort
-    les trip_id ne le portant pas, cas rare mais existant en pratique).
+    portent sur le même périmètre, regroupés en une seule requête plutôt que
+    2 scans séparés du même ~520k lignes. Le GLOB isole les trip_id se
+    terminant bien par le suffixe date avant de le retirer (SUBSTR aveugle
+    aurait tronqué à tort les trip_id ne le portant pas, cas rare mais
+    existant en pratique).
+
+    exiger_retard_connu=True (défaut de _construire_where_sql, pas
+    surchargé ici) depuis le 2026-08-24 — avant cette date, cette fonction
+    utilisait exiger_retard_connu=False (comme calculer_stats_bloc/pandas,
+    jamais dropna sur retard_min), pour rester au plus près de la version
+    pandas d'origine. Repassé à True après avoir constaté un écart de
+    dénominateur avec Rapports/mobile/le bloc période du Graphique (tous
+    déjà en True) sur un cas réel : une circulation avec un arrêt supprimé
+    à la gare filtrée (donc sans valeur de retard exploitable CE JOUR-LÀ à
+    CETTE gare) restait comptée ici mais pas ailleurs. Effet mesuré sur
+    observations.db réel : seules 4 circulations dans tout l'historique ont
+    eu un arrêt supprimé, et sans filtre Gare (le cas par défaut), leur
+    retard est presque toujours connu ailleurs sur leur trajet — impact
+    quasi nul en pratique, sauf sur une vue filtrée précisément sur la gare
+    sautée ce jour-là.
 
     Une circulation annulée (circulations_annulees, que l'appelant DOIT
     avoir déjà matérialisée) compte aussi comme "en retard" même sans
@@ -1606,8 +1920,7 @@ def _circulations_et_trains_stats_sql(
     2026-08-21 : celles jamais vues avec un retard positif avant leur
     annulation) tombaient à tort du côté "sans problème"."""
     where, params = _construire_where_sql(
-        gare, train, sens, limiter_ligne, exiger_retard_connu=False,
-        debut_iso=debut_iso, fin_iso=fin_iso,
+        gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
     )
     expr_retard = "COALESCE(arrival_delay_s, departure_delay_s)"
     expr_sans_date = (
@@ -1628,7 +1941,8 @@ def _circulations_et_trains_stats_sql(
 
 
 def calculer_stats_globales_sql(
-    connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
+    connexion, gare, train, sens, limiter_ligne, limiter_retard,
+    debut_iso=None, fin_iso=None, depuis_debut_collecte=False,
 ):
     """Porte calculer_stats_globales en SQL — même structure de sortie
     (mêmes clés de contexte, mêmes textes de tooltips), mais n'a plus
@@ -1640,19 +1954,37 @@ def calculer_stats_globales_sql(
     `circulations_retard` UNE fois ici (voir _construire_where_sql/
     _materialiser_circulations_retard) — Retard max/cumulé, Gare la +
     touchée et Retard moyen la référencent tous les 3 au lieu de
-    recalculer chacun leur propre sous-requête. debut_iso/fin_iso (Rapports
-    uniquement) : contrairement à circulations_retard, circulations_
-    arrivees_periode n'est PAS matérialisée ici — l'appelant (l'orchestration
-    Rapports) DOIT l'avoir déjà fait avant cet appel, car elle sert aussi à
-    d'autres calculs du rapport en dehors des stats globales (voir
-    _construire_where_sql).
+    recalculer chacun leur propre sous-requête.
 
-    circulations_annulees (voir _retard_max_et_cumule_sql) : matérialisée
-    ici UNIQUEMENT quand debut_iso est None (barre de stats globale, hors
-    Rapports) — sur l'onglet Rapports, calculer_contexte_rapport_sql l'a
-    déjà matérialisée une fois pour tout son traitement (y compris
-    _materialiser_circulations_arrivees_periode, appelé avant cette
-    fonction), pas la peine de la recalculer ici.
+    depuis_debut_collecte (par défaut False) : True uniquement pour l'appel
+    "barre de stats globale" (calculer_stats_globales_sql_avec_cache), avec
+    debut_iso=BORNE_DEBUT_COLLECTE_ISO/fin_iso=maintenant — PAS la même
+    chose que "debut_iso est fourni" : Rapports fournit aussi debut_iso/
+    fin_iso (sa propre période), mais avec depuis_debut_collecte resté
+    False. Ce distinguo a été introduit le 2026-08-24 quand la barre
+    globale a commencé, elle aussi, à exiger l'arrivée confirmée (voir
+    _materialiser_circulations_arrivees_periode), exactement comme Rapports
+    et la carte de stats mobile (calculer_carte_stats_train_sql) — jusque-
+    là, "Circulations perturbées"/"Retard max" de la barre globale
+    comptaient une circulation encore en cours avec son dernier retard
+    connu, potentiellement provisoire : un vrai écart de méthode entre
+    desktop et mobile, repéré en comparant leurs chiffres pour un même
+    train (2026-08-24). Une première version bornait plutôt sur une petite
+    fenêtre récente (48h) pour éviter de rejouer cette vérification sur
+    tout l'historique à chaque calcul (mesuré : 9,2s sur ~4400 circulations
+    contre 0,13s sur 48h) — écartée : elle laissait un écart résiduel sur
+    d'anciennes circulations jamais officiellement confirmées (dernier poll
+    juste avant l'heure d'arrivée théorique, un cas réel rencontré), pour
+    un gain de temps jugé pas assez important vu le trafic de cette appli
+    (usage perso/familial, un éventuel 1er appel à ~10s après une nouvelle
+    collecte, entre 2 collectes le reste du temps grâce au cache de
+    résultats, jugé acceptable — décision utilisateur, 2026-08-24). Sert
+    aussi à décider QUI matérialise circulations_annulees/circulations_
+    arrivees_periode (Rapports le fait déjà lui-même avant cet appel, car
+    elle sert aussi à d'autres calculs du rapport — voir
+    _construire_where_sql) ET, dans _calculer_stats_globales_sql_interne, à
+    choisir le bon texte ("depuis le début de la collecte" vs "sur cette
+    période") indépendamment du fait que des bornes soient passées ou non.
 
     Calcul intrinsèquement coûteux (2026-08-16, mesuré sur observations.db
     réel, ~950k lignes) : "dernier retard connu par passage" (Retard max/
@@ -1661,26 +1993,33 @@ def calculer_stats_globales_sql(
     GROUP BY+JOIN donnent le même ordre de grandeur) — de l'ordre de 1 à 4s
     sans filtre Gare (le cas le plus fréquent, ~520k lignes concernées),
     nettement moins avec un filtre Gare actif (sous-ensemble plus petit).
-    Voir calculer_stats_globales_sql_avec_cache : c'est ce coût qui justifie
-    le petit cache de RÉSULTATS (pas de données brutes) ajouté autour de
-    cette fonction plutôt que de l'appeler directement à chaque requête."""
+    depuis_debut_collecte=True ajoute par-dessus le coût de circulations_
+    arrivees_periode sur tout l'historique (~9-11s mesuré 2026-08-24, sur
+    un historique encore petit — ce coût grossira avec la collecte). Voir
+    calculer_stats_globales_sql_avec_cache : c'est ce coût qui justifie le
+    petit cache de RÉSULTATS (pas de données brutes) ajouté autour de
+    cette fonction plutôt que de l'appeler directement à chaque requête —
+    ne pèse donc qu'une seule fois par nouveau relevé (~5 min), pas à
+    chaque affichage."""
     if limiter_retard:
         connexion.execute("DROP TABLE IF EXISTS temp.circulations_retard")
         _materialiser_circulations_retard(
             connexion, gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
         )
-    if debut_iso is None:
+    if depuis_debut_collecte:
         _materialiser_circulations_annulees(connexion)
+        _obtenir_circulations_arrivees_globales(connexion)
     try:
         return _calculer_stats_globales_sql_interne(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
-            debut_iso=debut_iso, fin_iso=fin_iso,
+            debut_iso=debut_iso, fin_iso=fin_iso, depuis_debut_collecte=depuis_debut_collecte,
         )
     finally:
         if limiter_retard:
             connexion.execute("DROP TABLE IF EXISTS temp.circulations_retard")
-        if debut_iso is None:
+        if depuis_debut_collecte:
             connexion.execute("DROP TABLE IF EXISTS temp.circulations_annulees")
+            connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
 
 
 # Cache des RÉSULTATS déjà calculés (pas des données brutes, contrairement à
@@ -1712,12 +2051,15 @@ def calculer_stats_globales_sql_avec_cache(connexion, gare, train, sens, limiter
     if cle not in cache["resultats"]:
         cache["resultats"][cle] = calculer_stats_globales_sql(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
+            debut_iso=BORNE_DEBUT_COLLECTE_ISO, fin_iso=pd.Timestamp.now(tz="UTC").isoformat(),
+            depuis_debut_collecte=True,
         )
     return cache["resultats"][cle]
 
 
 def _calculer_stats_globales_sql_interne(
-    connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
+    connexion, gare, train, sens, limiter_ligne, limiter_retard,
+    debut_iso=None, fin_iso=None, depuis_debut_collecte=False,
 ):
     total, en_retard, nb_trains_observes = _circulations_et_trains_stats_sql(
         connexion, gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
@@ -1764,13 +2106,17 @@ def _calculer_stats_globales_sql_interne(
     )
 
     # "depuis le début de la collecte" n'a de sens que pour la barre de
-    # stats globale (debut_iso=None) — pour un appel borné à une période
-    # (Rapports), ce même texte affirmerait à tort porter sur tout
-    # l'historique alors que les chiffres sont bornés à la période choisie
-    # (bug réel trouvé en testant l'onglet Rapports en direct, 2026-08-17 :
-    # les NOMBRES étaient déjà correctement bornés, mais ce texte restait
-    # celui écrit pour la barre globale).
-    portee_texte = "sur cette période" if debut_iso is not None else "depuis le début de la collecte"
+    # stats globale (depuis_debut_collecte=True) — pour un appel borné à une
+    # période (Rapports, depuis_debut_collecte=False même si debut_iso est
+    # fourni), ce même texte affirmerait à tort porter sur tout l'historique
+    # alors que les chiffres sont bornés à la période choisie (bug réel
+    # trouvé en testant l'onglet Rapports en direct, 2026-08-17 : les
+    # NOMBRES étaient déjà correctement bornés, mais ce texte restait celui
+    # écrit pour la barre globale). Ne PAS retester sur debut_iso : depuis le
+    # 2026-08-24, la barre globale fournit elle aussi debut_iso/fin_iso (pour
+    # bénéficier de la vérification "arrivée confirmée"), ce qui rendrait ce
+    # test toujours vrai.
+    portee_texte = "sur cette période" if not depuis_debut_collecte else "depuis le début de la collecte"
     if total:
         tooltip_ratio_retard = (
             f"{en_retard} circulations perturbées (retard à un moment de "
@@ -1806,12 +2152,15 @@ def _calculer_stats_globales_sql_interne(
         }
         # "filtres actifs ci-dessus"/"300 dernières lignes affichées dans le
         # tableau" n'ont de sens que pour la barre de stats globale — sur
-        # l'onglet Rapports (debut_iso is not None), il n'y a ni filtres
-        # (formulaire #filtres entièrement masqué) ni tableau du tout,
-        # référence trompeuse à des éléments d'interface absents. Repéré en
-        # relisant les tooltips affichés en vrai sur cet onglet, 2026-08-18.
+        # l'onglet Rapports (depuis_debut_collecte=False), il n'y a ni
+        # filtres (formulaire #filtres entièrement masqué) ni tableau du
+        # tout, référence trompeuse à des éléments d'interface absents.
+        # Repéré en relisant les tooltips affichés en vrai sur cet onglet,
+        # 2026-08-18. Testé sur depuis_debut_collecte, pas debut_iso (voir
+        # portee_texte plus haut) : la barre globale fournit elle aussi des
+        # bornes depuis le 2026-08-24.
         portee_releves_texte = (
-            "issus de la période" if debut_iso is not None
+            "issus de la période" if not depuis_debut_collecte
             else "issus des filtres actifs ci-dessus, pas seulement sur les 300 dernières "
                  "lignes affichées dans le tableau"
         )
@@ -1830,7 +2179,7 @@ def _calculer_stats_globales_sql_interne(
         )
         jours_cumules, heures_restantes = divmod(heures, 24)
         depuis_texte = (
-            "sur cette période" if debut_iso is not None
+            "sur cette période" if not depuis_debut_collecte
             else f"depuis le tout début de la collecte, le {date_debut_collecte}"
         )
         tooltip_cumule = (
@@ -1957,6 +2306,162 @@ def calculer_contexte_jour_heure_sql_avec_cache(connexion, gare, train, sens, li
     if cle not in cache["resultats"]:
         cache["resultats"][cle] = calculer_contexte_jour_heure_sql(connexion, gare, train, sens, limiter_ligne)
     return cache["resultats"][cle]
+
+
+def _meilleur_et_pire_creneau(stats, labels, granularite):
+    """Calcule les puces 'Meilleur créneau'/'À éviter' de l'écran Tendances
+    mobile, à partir des mêmes stats déjà utilisées pour les barres desktop
+    (_stats_par_categorie_sql) — ignore les catégories peu fiables
+    (n_circulations < SEUIL_FIABLE, même règle que titre_dynamique_jour_
+    heure) pour ne jamais mettre en avant une catégorie non représentative.
+    Renvoie (meilleur, pire), chacun soit None (aucune catégorie fiable)
+    soit {"label": ..., "pct": ...}.
+
+    granularite == "jour" : un seul jour (pas de plage) pour chaque puce.
+    granularite == "heure" : 'à éviter' reste une heure unique, mais
+    'meilleur créneau' est une fenêtre de 3h glissante (les 3 heures
+    consécutives les plus fiables) — reproduit l'asymétrie du mockup
+    ('6h-9h' / '23h'), un choix de présentation, pas une nouvelle règle
+    statistique. Fenêtres non circulaires (jamais 22h-23h-0h) : la nuit n'a
+    pas de service continu, une fenêtre à cheval sur minuit n'aurait pas de
+    sens ici. Repli sur le label unique le plus bas si aucune fenêtre n'est
+    entièrement fiable."""
+    fiables = [
+        (label, valeur) for label, valeur, n in zip(labels, stats["pct"], stats["n_circulations"].fillna(0))
+        if pd.notna(valeur) and n >= SEUIL_FIABLE
+    ]
+    if not fiables:
+        return None, None
+    pire_label, pire_valeur = max(fiables, key=lambda c: c[1])
+    pire = {"label": pire_label, "pct": pire_valeur}
+
+    if granularite != "heure" or len(labels) < 3:
+        meilleur_label, meilleur_valeur = min(fiables, key=lambda c: c[1])
+        return {"label": meilleur_label, "pct": meilleur_valeur}, pire
+
+    fiables_par_label = dict(fiables)
+    meilleure_fenetre = None
+    for i in range(len(labels) - 2):
+        trio = labels[i:i + 3]
+        valeurs = [fiables_par_label.get(l) for l in trio]
+        if any(v is None for v in valeurs):
+            continue
+        moyenne = sum(valeurs) / 3
+        if meilleure_fenetre is None or moyenne < meilleure_fenetre[1]:
+            debut_h = int(trio[0].rstrip("h"))
+            meilleure_fenetre = (f"{debut_h}h-{(debut_h + 3) % 24}h", moyenne)
+    if meilleure_fenetre is None:
+        meilleur_label, meilleur_valeur = min(fiables, key=lambda c: c[1])
+        return {"label": meilleur_label, "pct": meilleur_valeur}, pire
+    return {"label": meilleure_fenetre[0], "pct": meilleure_fenetre[1]}, pire
+
+
+def calculer_contexte_tendances_mobile(connexion, request: Request, gare: str):
+    """Écran 'Tendances' mobile — mêmes données que l'onglet desktop 'Par
+    jour/heure' (_materialiser_jour_heure/_stats_par_categorie_sql), mais
+    gare seule (train="Tous", sens="Tous", limiter_ligne toujours True — pas
+    de case à cocher sur mobile) et SANS passer par json_pour_script
+    (réservé à Plotly) : les barres sont consommées directement par Jinja/
+    CSS (pas de graphique Plotly côté mobile, plus léger)."""
+    granularite = request.query_params.get("granularite") or "heure"
+    connexion.execute("DROP TABLE IF EXISTS temp.jour_heure_filtre")
+    try:
+        _materialiser_jour_heure(connexion, gare, "Tous", "Tous", True)
+        if granularite == "jour":
+            stats = _stats_par_categorie_sql(connexion, "jour_semaine", JOURS_ORDRE)
+            labels = [j[:3] for j in JOURS_ORDRE]
+        else:
+            stats = _stats_par_categorie_sql(connexion, "heure_locale", list(range(24)))
+            labels = [f"{h}h" for h in range(24)]
+    finally:
+        connexion.execute("DROP TABLE IF EXISTS temp.jour_heure_filtre")
+
+    barres_pct = _construire_barre(stats, "pct", labels, " %", avec_moyenne=False)
+    # hauteur_pct (0-100, relative au max de la série, pas à une échelle
+    # 0-100% absolue) + classe_couleur (mêmes seuils que le mockup validé
+    # par l'utilisateur, 8/15 % — pas de seuil équivalent déjà défini
+    # ailleurs dans l'appli : SEUIL_RETARD_FORT/MOYEN portent sur un retard
+    # en minutes par relevé, pas sur une proportion de circulations) :
+    # calculés ici plutôt qu'en Jinja, pour garder le template simple/muet.
+    valeurs = [b["valeur"] for b in barres_pct["barres"] if b["valeur"] is not None]
+    valeur_max = max(valeurs) if valeurs else 0
+    for b in barres_pct["barres"]:
+        if b["valeur"] is None:
+            b["hauteur_pct"] = 0
+            b["classe_couleur"] = ""
+        else:
+            b["hauteur_pct"] = round(100 * b["valeur"] / valeur_max) if valeur_max else 0
+            b["classe_couleur"] = "rouge" if b["valeur"] >= 15 else "orange" if b["valeur"] >= 8 else "verte"
+    meilleur, pire = _meilleur_et_pire_creneau(stats, labels, granularite)
+    return {
+        "granularite": granularite,
+        "barres_pct": barres_pct,
+        "meilleur_creneau": meilleur,
+        "pire_creneau": pire,
+        "gare_options": GARES_LIGNE_ORDRE,
+    }
+
+
+def _construire_lignes_annulations_mobile(evenements_df, maintenant, jours=7):
+    """Annulations récentes (écran 'Alertes' mobile) : mêmes événements
+    'trajet_annule' que calculer_contexte_travaux (Perturbations desktop),
+    mais bornés aux `jours` derniers jours et dédoublonnés par circulation
+    (train, start_date) — le flux peut enregistrer plusieurs événements pour
+    la même annulation au fil de la collecte."""
+    annules = evenements_df[
+        (evenements_df["type"] == "trajet_annule")
+        & (evenements_df["poll_time"] >= maintenant - pd.Timedelta(days=jours))
+    ].drop_duplicates(subset=["train", "start_date"]).sort_values("poll_time", ascending=False)
+    lignes = []
+    for _, ligne in annules.iterrows():
+        lignes.append({
+            "train": format_numero_train(ligne["train"]),
+            "trajet": trajet_origine_destination(ligne["trip_id"], reference_donnees["variantes"]),
+            "date": _format_start_date(ligne["start_date"]),
+        })
+    return lignes
+
+
+def calculer_contexte_alertes_mobile():
+    """Écran 'Alertes' mobile — pure réutilisation de charger_alertes/
+    calculer_alertes_actives (travaux actifs) et des événements 'trajet_
+    annule' (annulations récentes), déjà utilisés par l'onglet desktop
+    Perturbations/Rapports. Aucune nouvelle requête SQL."""
+    alertes_df = charger_alertes(LOCAL_ALERTES)
+    actif, _ = calculer_alertes_actives(alertes_df)
+    travaux = _construire_lignes_alertes(alertes_df[actif].sort_values("fin"))
+
+    maintenant = pd.Timestamp.now(tz="UTC")
+    evenements_df = charger_evenements(PERTURBATIONS_FILE)
+    annulations_recentes = _construire_lignes_annulations_mobile(evenements_df, maintenant)
+    return {
+        "n_alertes_actives": len(travaux),
+        "travaux": travaux,
+        "annulations_recentes": annulations_recentes,
+    }
+
+
+def construire_contexte_mobile(request: Request, ecran: str, gare: str):
+    """Point d'entrée des routes /mobile — dispatch sur `ecran`, même
+    principe que construire_contexte (desktop) sur `vue`, mais un contexte
+    totalement séparé : pas de filtres Gare/Train/Sens/Limiter partagés
+    avec le desktop (preparer_contexte_commun), l'écran mobile Accueil/
+    Favoris n'a même pas la notion de 'Train'/'Sens' avant résolution."""
+    contexte = {
+        "titre_app": TITRE_APP, "ecran": ecran, "gare": gare,
+        "gare_options": gares_options_mobile(reference_donnees["index_gare_heure"]),
+    }
+    if ecran == "tendances":
+        connexion = sqlite3.connect(OBSERVATIONS_DB)
+        try:
+            contexte.update(calculer_contexte_tendances_mobile(connexion, request, gare))
+        finally:
+            connexion.close()
+    elif ecran == "alertes":
+        contexte.update(calculer_contexte_alertes_mobile())
+    # "favoris" : rendu entièrement côté client (localStorage), voir mobile.js — Phase 3
+    # par défaut ("accueil") : rien à calculer avant que l'utilisateur choisisse gare+heure — Phase 2
+    return contexte
 
 
 def _materialiser_rapport_filtre(connexion, debut_iso, fin_iso):
@@ -3115,8 +3620,21 @@ def construire_lignes_tableau(df_filtre, circulations_annulees, arrets_supprimes
     return lignes
 
 
+MARQUEURS_USER_AGENT_MOBILE = ("iphone", "ipod", "android", "windows phone", "blackberry")
+
+
+def est_navigateur_mobile(request: Request) -> bool:
+    """Détection volontairement simple (sous-chaînes de User-Agent) : usage
+    perso/familial, pas de produit public à couvrir exhaustivement — vise les
+    téléphones (pas les tablettes, ex: iPad exclu, qui garde le desktop)."""
+    ua = request.headers.get("user-agent", "").lower()
+    return any(marqueur in ua for marqueur in MARQUEURS_USER_AGENT_MOBILE)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, gare: str = "Toutes", train: str = "Tous", sens: str = "Tous"):
+    if est_navigateur_mobile(request):
+        return RedirectResponse("/mobile")
     contexte = construire_contexte(request, gare, train, sens)
     return templates.TemplateResponse(request, "base.html", contexte)
 
@@ -3125,6 +3643,75 @@ def index(request: Request, gare: str = "Toutes", train: str = "Tous", sens: str
 def contenu(request: Request, gare: str = "Toutes", train: str = "Tous", sens: str = "Tous"):
     contexte = construire_contexte(request, gare, train, sens)
     return templates.TemplateResponse(request, "_contenu_reponse.html", contexte)
+
+
+@app.get("/mobile", response_class=HTMLResponse)
+def mobile_index(request: Request, ecran: str = "accueil", gare: str = GARES_LIGNE_ORDRE[0]):
+    contexte = construire_contexte_mobile(request, ecran, gare)
+    return templates.TemplateResponse(request, "mobile_base.html", contexte)
+
+
+@app.get("/mobile/contenu", response_class=HTMLResponse)
+def mobile_contenu(request: Request, ecran: str = "accueil", gare: str = GARES_LIGNE_ORDRE[0]):
+    contexte = construire_contexte_mobile(request, ecran, gare)
+    return templates.TemplateResponse(request, "_mobile_contenu_reponse.html", contexte)
+
+
+@app.get("/mobile/destinations_gare", response_class=HTMLResponse)
+def mobile_destinations_gare(request: Request, gare: str):
+    """Fragment <option> pour le <select> 'Gare d'arrivée' de l'écran
+    Accueil/Favoris mobile — rechargé à chaque changement de Gare de
+    départ."""
+    destinations = destinations_disponibles_pour_gare(gare, reference_donnees["index_gare_heure"])
+    return templates.TemplateResponse(
+        request, "_mobile_options_destination.html", {"destinations": _regrouper_gares_ligne(destinations)},
+    )
+
+
+@app.get("/mobile/heures_trajet", response_class=HTMLResponse)
+def mobile_heures_trajet(request: Request, gare: str, destination: str):
+    """Fragment <option> pour le <select> 'Départ' de l'écran Accueil/
+    Favoris mobile — rechargé à chaque changement de Gare d'arrivée, scopé
+    au trajet (gare, destination) choisi (donc ne mélange plus les
+    horaires de trains partant vers d'autres destinations)."""
+    heures = heures_disponibles_pour_trajet(gare, destination, reference_donnees["index_gare_heure"])
+    return templates.TemplateResponse(request, "_mobile_options_heure.html", {"heures": heures})
+
+
+@app.get("/mobile/resoudre_train", response_class=HTMLResponse)
+def mobile_resoudre_train(request: Request, gare: str, heure: str, destination: str = "", mode: str = "accueil"):
+    """Fragment de désambiguïsation : liste de candidats (voir
+    resoudre_trains_pour_gare_heure) que l'utilisateur clique pour
+    confirmer — le clic déclenche ensuite le chargement de la carte stats
+    (/mobile/carte_train)."""
+    candidats = resoudre_trains_pour_gare_heure(
+        gare, heure, reference_donnees["index_gare_heure"], destination=destination or None,
+    )
+    return templates.TemplateResponse(
+        request, "_mobile_candidats_train.html",
+        {"candidats": candidats, "gare": gare, "heure": heure, "mode": mode},
+    )
+
+
+@app.get("/mobile/carte_train", response_class=HTMLResponse)
+def mobile_carte_train(
+    request: Request, train: str, gare: str = "Toutes", heure: str = "",
+    destination: str = "", mode: str = "accueil",
+):
+    """Carte stats réutilisée par Accueil (après résolution) ET par Favoris
+    (Phase 3, un favori stocke déjà train/gare/heure/destination, appelle
+    directement cette route sans repasser par le résolveur). mode="favoris"
+    fait apparaître le bouton "Ajouter aux favoris" dans le template."""
+    connexion = sqlite3.connect(OBSERVATIONS_DB)
+    try:
+        contexte = calculer_carte_stats_train_sql(connexion, train, gare)
+    finally:
+        connexion.close()
+    contexte.update({
+        "train": train, "train_affiche": format_numero_train(train), "gare": gare,
+        "heure": heure, "destination": destination, "mode": mode,
+    })
+    return templates.TemplateResponse(request, "_mobile_carte_stats.html", contexte)
 
 
 @app.get("/rapports/{periode}/telecharger")

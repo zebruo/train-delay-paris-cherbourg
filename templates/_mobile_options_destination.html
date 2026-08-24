@@ -1,0 +1,8 @@
+<option value="" selected disabled hidden>Choisissez…</option>
+{% for d in destinations %}
+    {% if d.startswith("—") %}
+        <option disabled>{{ d }}</option>
+    {% else %}
+        <option value="{{ d }}">{{ d }}</option>
+    {% endif %}
+{% endfor %}

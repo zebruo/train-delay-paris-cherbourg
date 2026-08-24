@@ -1,0 +1,37 @@
+{% if n_alertes_actives %}
+<div class="mobile-bandeau mobile-bandeau-orange">
+    <span class="mobile-bandeau-nombre">{{ n_alertes_actives }}</span>
+    <span class="mobile-bandeau-texte">alerte(s) active(s)<br>sur l'axe Paris ↔ Cherbourg</span>
+</div>
+{% endif %}
+
+{% if travaux %}
+<p class="mobile-section-titre">Travaux en cours</p>
+{% for a in travaux %}
+<div class="mobile-carte">
+    <span class="mobile-pastille mobile-pastille-orange">Travaux</span>
+    <p class="mobile-alerte-titre">{{ a.gares }}</p>
+    <p class="mobile-alerte-detail">{{ a.description }}</p>
+    <p class="mobile-alerte-periode">Du <b>{{ a.depuis }}</b> au <b>{{ a.jusqua }}</b></p>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if annulations_recentes %}
+<p class="mobile-section-titre">Annulations récentes</p>
+<div class="mobile-liste">
+    {% for an in annulations_recentes %}
+    <div class="mobile-ligne">
+        <div>
+            <div class="mobile-ligne-titre">Train {{ an.train }}</div>
+            <div class="mobile-ligne-detail">{{ an.trajet or "Trajet inconnu" }} — {{ an.date }}</div>
+        </div>
+        <span class="mobile-etat-rouge">Annulé</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if not travaux and not annulations_recentes %}
+<div class="mobile-bandeau mobile-bandeau-vert">✓ Aucune perturbation connue sur la ligne</div>
+{% endif %}

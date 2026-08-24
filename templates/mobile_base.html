@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>{{ titre_app }}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/train-logo.svg">
+    <script>
+        // Même logique que base.html (desktop) — thème sombre par défaut,
+        // appliqué avant le premier rendu pour éviter un flash.
+        (function () {
+            var theme = localStorage.getItem("theme") || "dark";
+            document.documentElement.dataset.theme = theme;
+        })();
+    </script>
+    <link rel="stylesheet" href="/static/mobile.css">
+    <script src="/static/htmx.min.js"></script>
+    <script src="/static/mobile.js"></script>
+</head>
+<body>
+    <header class="mobile-entete">
+        <div>
+            <h1>Axe Paris ↔ Cherbourg</h1>
+            <p class="mobile-sous-titre">Fiabilité de vos trains sur les 11 gares de la ligne</p>
+        </div>
+        <button class="mobile-bouton-aide" aria-label="Aide" onclick="afficherAideMobile()">?</button>
+    </header>
+
+    <input type="hidden" id="mobile-ecran-actif" value="{{ ecran }}">
+
+    <main id="mobile-contenu">
+        {% include "_mobile_vue_dispatch.html" %}
+    </main>
+
+    <nav class="mobile-onglets">
+        <button class="mobile-onglet {% if ecran == 'accueil' %}actif{% endif %}"
+                hx-get="/mobile/contenu" hx-target="#mobile-contenu"
+                hx-vals='{"ecran": "accueil"}' onclick="activerOngletMobile(this, 'accueil')">Accueil</button>
+        <button class="mobile-onglet {% if ecran == 'tendances' %}actif{% endif %}"
+                hx-get="/mobile/contenu" hx-target="#mobile-contenu"
+                hx-vals='{"ecran": "tendances"}' onclick="activerOngletMobile(this, 'tendances')">Tendances</button>
+        <button class="mobile-onglet {% if ecran == 'alertes' %}actif{% endif %}"
+                hx-get="/mobile/contenu" hx-target="#mobile-contenu"
+                hx-vals='{"ecran": "alertes"}' onclick="activerOngletMobile(this, 'alertes')">Alertes</button>
+        <button class="mobile-onglet {% if ecran == 'favoris' %}actif{% endif %}"
+                hx-get="/mobile/contenu" hx-target="#mobile-contenu"
+                hx-vals='{"ecran": "favoris"}' onclick="activerOngletMobile(this, 'favoris')">Favoris</button>
+    </nav>
+
+    {% include "_mobile_aide.html" %}
+</body>
+</html>

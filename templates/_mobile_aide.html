@@ -1,0 +1,89 @@
+<div id="mobile-aide" class="mobile-modale-fond" style="display: none;" onclick="if (event.target === this) masquerAideMobile()">
+    <div class="mobile-modale">
+        <button class="mobile-modale-fermer" aria-label="Fermer" onclick="masquerAideMobile()">✕</button>
+        <p class="mobile-modale-aide-titre">Comment lire l'appli</p>
+
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">% à l'heure</p>
+            <p class="mobile-modale-bloc-val">
+                Proportion de circulations arrivées avec exactement 0 min de retard, sur les 90
+                derniers jours, à la gare choisie. Seules les circulations dont l'arrivée est
+                confirmée sont comptées — pas celles encore en cours de trajet.
+            </p>
+        </div>
+
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">Retard moyen / Retard max récent</p>
+            <p class="mobile-modale-bloc-val">
+                Calculés sur les mêmes 90 jours, à la même gare. Le retard max récent est le plus
+                grand retard connu sur cette période, pas le record absolu du train.
+            </p>
+        </div>
+
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">Donnée peu fiable</p>
+            <p class="mobile-modale-bloc-val">
+                Moins de 10 circulations observées sur la période : un seul incident peut
+                fortement changer le %. Signalé par une pastille orange.
+            </p>
+        </div>
+
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">Hors axe Paris ↔ Cherbourg</p>
+            <p class="mobile-modale-bloc-val">
+                La gare choisie n'est pas l'une des 11 gares de l'axe principal (Paris
+                Saint-Lazare → Cherbourg). Les chiffres restent corrects, mais s'affichent en gris
+                plutôt qu'avec les couleurs habituelles de retard.
+            </p>
+        </div>
+
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">« Retards constatés à [gare] »</p>
+            <p class="mobile-modale-bloc-val">
+                Cette liste ne montre que les retards à la gare choisie au départ — pas ceux qui
+                ont pu se produire ailleurs sur le trajet du train ce jour-là.
+            </p>
+        </div>
+
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">« 90 derniers jours »</p>
+            <p class="mobile-modale-bloc-val">
+                Une barre du mini-graphique correspond à une circulation réellement observée, pas
+                à un jour du calendrier. Un train qui ne circule pas tous les jours (pas de
+                weekend, par exemple) aura donc moins de barres que de jours écoulés.
+            </p>
+        </div>
+
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">Couleurs de l'onglet Tendances</p>
+            <p class="mobile-modale-bloc-val">
+                Vert : moins de 8 % de circulations en retard. Orange : entre 8 % et 15 %. Rouge :
+                15 % ou plus. Gris hachuré : moins de 10 circulations sur ce créneau, donnée peu
+                fiable.
+            </p>
+        </div>
+
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">Favoris</p>
+            <p class="mobile-modale-bloc-val">
+                Enregistrés uniquement sur cet appareil, sans compte — ils restent tant que vous
+                ne videz pas les données de site de ce navigateur (l'historique de navigation seul
+                ne les efface pas).
+            </p>
+        </div>
+
+        <!-- Même contenu que "Sources des données" (_dialogue_aide.html,
+        desktop) — les mêmes sources alimentent les deux versions, pas de
+        raison que la liste diverge entre elles. -->
+        <div class="mobile-modale-bloc">
+            <p class="mobile-modale-bloc-label">Sources des données</p>
+            <p class="mobile-modale-bloc-val">
+                Retards en temps réel : proxy.transport.data.gouv.fr (flux GTFS-RT SNCF, public,
+                sans clé). Météo : api.open-meteo.com. Horaires théoriques :
+                eu.ftp.opendatasoft.com/sncf/plandata (GTFS statique SNCF). Jours fériés :
+                calendrier.api.gouv.fr. Vacances scolaires (zone B) : data.education.gouv.fr.
+                Toutes ces sources sont publiques et gratuites, sans authentification.
+            </p>
+        </div>
+    </div>
+</div>

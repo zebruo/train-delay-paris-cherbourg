@@ -1,0 +1,20 @@
+{% if candidats|length == 0 %}
+    <p class="mobile-info">Aucun train trouvé autour de {{ heure }} à {{ gare }}.</p>
+{% elif candidats|length == 1 %}
+    <div id="mobile-carte-train"
+         hx-get="/mobile/carte_train" hx-trigger="load" hx-target="this"
+         hx-vals='{"train": "{{ candidats[0].train }}", "gare": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ candidats[0].destination }}", "mode": "{{ mode }}"}'>
+    </div>
+{% else %}
+    <p class="mobile-info">Plusieurs trains circulent autour de cette heure — choisissez :</p>
+    <div class="mobile-liste">
+        {% for c in candidats %}
+        <button class="mobile-candidat"
+                hx-get="/mobile/carte_train" hx-target="#mobile-carte-train" hx-swap="innerHTML"
+                hx-vals='{"train": "{{ c.train }}", "gare": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ c.destination }}", "mode": "{{ mode }}"}'>
+            Train {{ c.train_affiche }} ({{ c.heure_theorique }}) → {{ c.destination }}
+        </button>
+        {% endfor %}
+    </div>
+    <div id="mobile-carte-train"></div>
+{% endif %}

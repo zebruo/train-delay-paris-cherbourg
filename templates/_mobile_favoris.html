@@ -1,0 +1,13 @@
+<p class="mobile-section-titre" style="margin-top: 0;">Vos favoris</p>
+<div id="mobile-favoris-liste"></div>
+
+<button class="mobile-bouton-favori" style="margin-top: 6px;"
+        onclick="const f = document.getElementById('mobile-nouveau-favori'); f.style.display = f.style.display === 'none' ? 'block' : 'none';">
+    + Nouveau favori
+</button>
+<div id="mobile-nouveau-favori" style="display: none; margin-top: 14px;">
+    {% set mode = "favoris" %}
+    {% include "_mobile_choix_train.html" %}
+</div>
+
+<script>rafraichirFavoris();</script>

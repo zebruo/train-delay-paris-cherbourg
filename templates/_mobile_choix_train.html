@@ -1,0 +1,35 @@
+<div class="mobile-carte">
+    <p class="mobile-section-titre" style="margin-top: 0;">Quel train prenez-vous habituellement ?</p>
+    <label class="mobile-champ" style="margin-bottom: 10px;">
+        <span class="mobile-champ-label">Gare de départ :</span>
+        <select id="mobile-choix-gare-{{ mode }}" name="gare"
+                hx-get="/mobile/destinations_gare" hx-target="#mobile-choix-arrivee-{{ mode }}" hx-trigger="change"
+                hx-swap="innerHTML">
+            <option value="" selected disabled hidden>Choisissez…</option>
+            {% for g in gare_options %}
+                {% if g.startswith("—") %}
+                    <option disabled>{{ g }}</option>
+                {% else %}
+                    <option value="{{ g }}">{{ g }}</option>
+                {% endif %}
+            {% endfor %}
+        </select>
+    </label>
+    <label class="mobile-champ" style="margin-bottom: 10px;">
+        <span class="mobile-champ-label">Gare d'arrivée :</span>
+        <select id="mobile-choix-arrivee-{{ mode }}" name="destination"
+                hx-get="/mobile/heures_trajet" hx-target="#mobile-choix-heure-{{ mode }}" hx-trigger="change"
+                hx-include="#mobile-choix-gare-{{ mode }}" hx-swap="innerHTML">
+            <option value="" selected disabled hidden>Choisissez…</option>
+        </select>
+    </label>
+    <label class="mobile-champ">
+        <span class="mobile-champ-label">Heure théo. :</span>
+        <select id="mobile-choix-heure-{{ mode }}" name="heure"
+                hx-get="/mobile/resoudre_train" hx-target="#mobile-candidats-{{ mode }}" hx-trigger="change"
+                hx-include="#mobile-choix-gare-{{ mode }}, #mobile-choix-arrivee-{{ mode }}" hx-vals='{"mode": "{{ mode }}"}'>
+            <option value="" selected disabled hidden>Choisissez…</option>
+        </select>
+    </label>
+</div>
+<div id="mobile-candidats-{{ mode }}"></div>

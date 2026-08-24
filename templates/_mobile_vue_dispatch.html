@@ -1,0 +1,9 @@
+{% if ecran == "tendances" %}
+    {% include "_mobile_tendances.html" %}
+{% elif ecran == "alertes" %}
+    {% include "_mobile_alertes.html" %}
+{% elif ecran == "favoris" %}
+    {% include "_mobile_favoris.html" %}
+{% else %}
+    {% include "_mobile_accueil.html" %}
+{% endif %}

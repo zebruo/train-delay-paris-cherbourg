@@ -1,4 +1,8 @@
 :root {
+    /* Indique au navigateur comment styler ses propres contrôles natifs
+    (listes déroulantes ouvertes, ascenseurs...) — sans ça, leur apparence
+    dépend du thème système plutôt que du thème choisi dans l'appli. */
+    color-scheme: light;
     --fond: #f7f8fa;
     --fond-secondaire: #f0f2f6;
     --texte: #262730;
@@ -11,6 +15,7 @@
 
 @media (prefers-color-scheme: dark) {
     :root {
+        color-scheme: dark;
         --fond: #0e1117;
         --fond-secondaire: #262730;
         --texte: #f0f2f6;
@@ -30,6 +35,7 @@ suffit pas à départager deux sélecteurs :root, c'est l'ordre dans le
 fichier qui tranche). Sans attribut (première visite, aucun choix
 enregistré), seule la règle @media ci-dessus s'applique. */
 :root[data-theme="dark"] {
+    color-scheme: dark;
     --fond: #0e1117;
     --fond-secondaire: #262730;
     --texte: #f0f2f6;
@@ -41,6 +47,7 @@ enregistré), seule la règle @media ci-dessus s'applique. */
 }
 
 :root[data-theme="light"] {
+    color-scheme: light;
     --fond: #f7f8fa;
     --fond-secondaire: #f0f2f6;
     --texte: #262730;

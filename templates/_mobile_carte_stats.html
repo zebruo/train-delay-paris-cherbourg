@@ -1,0 +1,82 @@
+{% macro appel_modale(j, gare) %}afficherModaleJour({date: '{{ j.date }}', gare: '{{ gare|replace("'", "\\'") }}', retardMin: {{ j.retard_min|int }}, classe: '{{ j.classe }}', horaireTexte: '{{ (j.horaire_texte or "")|replace("'", "\\'") }}', contexteTexte: '{{ j.contexte_texte or "" }}', meteoTemp: '{{ j.meteo_temp if j.meteo_temp is not none else "" }}', meteoPluie: '{{ j.meteo_pluie if j.meteo_pluie is not none else "" }}', meteoVent: '{{ j.meteo_vent if j.meteo_vent is not none else "" }}'})
+{%- endmacro %}
+{% if not donnees_disponibles %}
+<div class="mobile-carte">
+    <p class="mobile-info">Aucun relevé pour le train {{ train_affiche }} sur les 90 derniers jours.</p>
+</div>
+{% else %}
+<div class="mobile-carte">
+    <div class="mobile-carte-train-entete">
+        <span class="mobile-carte-train-numero">Train {{ train_affiche }}</span>
+        {% if heure %}<span class="mobile-carte-train-heure">{{ heure }}</span>{% endif %}
+    </div>
+    {% if destination %}
+    <p class="mobile-alerte-detail">{{ gare }} <span>→</span> {{ destination }}</p>
+    {% endif %}
+
+    {% if hors_ligne %}
+    <span class="mobile-pastille mobile-pastille-grise">Hors axe Paris ↔ Cherbourg</span>
+    <p class="mobile-info" style="margin: -4px 0 10px;">
+        Gare de jonction, hors du cœur de ligne suivi par l'appli — les couleurs habituelles de retard ne s'appliquent pas ici.
+    </p>
+    {% endif %}
+    {% if not fiable %}
+    <span class="mobile-pastille mobile-pastille-orange">Donnée peu fiable</span>
+    <p class="mobile-info" style="margin: -4px 0 10px;">
+        Seulement {{ n_circulations }} circulation{{ "s" if n_circulations > 1 else "" }} observée{{ "s" if n_circulations > 1 else "" }}
+        (minimum recommandé : {{ seuil_fiable }}) — un incident isolé peut fortement influencer ce %.
+    </p>
+    {% endif %}
+    <div class="mobile-bandeau {{ 'mobile-bandeau-gris' if hors_ligne else 'mobile-bandeau-vert' }}" style="margin: 12px 0;">
+        <span class="mobile-bandeau-nombre">{{ pct_a_lheure }} %</span>
+        <span class="mobile-bandeau-texte">à l'heure sur<br>les 90 derniers jours</span>
+    </div>
+
+    <div class="mobile-callouts">
+        <div class="mobile-callout" style="background: var(--fond-tertiaire);">
+            <div class="mobile-callout-label" style="color: var(--texte-attenue);">Retard moyen</div>
+            <div class="mobile-callout-val">{{ retard_moyen }} min</div>
+        </div>
+        <div class="mobile-callout" style="background: var(--fond-tertiaire);">
+            <div class="mobile-callout-label" style="color: var(--texte-attenue);">Retard max récent</div>
+            <div class="mobile-callout-val">{{ retard_max }} min</div>
+        </div>
+    </div>
+
+    <p class="mobile-section-titre" style="margin-top: 18px;">90 derniers jours</p>
+    <div class="mobile-barres">
+        {% for j in historique_quotidien %}
+            <div class="mobile-barre-conteneur" title="{{ j.date }} : {{ j.retard_min }} min"
+                 onclick="{{ appel_modale(j, gare) }}">
+                <div class="mobile-barre mobile-barre-{{ j.classe }}" style="height: {{ j.hauteur_pct if j.hauteur_pct > 3 else 3 }}%;"></div>
+            </div>
+        {% endfor %}
+    </div>
+    <p class="mobile-info" style="margin-top: 6px; text-align: center;"><span class="mobile-texte-fort">{{ n_circulations }}</span> jour{{ "s" if n_circulations > 1 else "" }} de circulations constatées</p>
+
+    {% if mode == "favoris" %}
+    <button class="mobile-bouton-favori"
+            onclick="ajouterFavori({gare: '{{ gare|replace("'", "\\'") }}', heure: '{{ heure }}', train: '{{ train }}', train_affiche: '{{ train_affiche }}', destination: '{{ destination|replace("'", "\\'") }}'})">
+        ★ Ajouter aux favoris
+    </button>
+    {% endif %}
+</div>
+
+{% if retards %}
+<p class="mobile-section-titre">Retards constatés à <span class="mobile-texte-fort">{{ gare }}</span> sur les 90 derniers jours</p>
+<div class="mobile-liste">
+    {% for r in retards %}
+    <div class="mobile-ligne" onclick="{{ appel_modale(r, gare) }}">
+        <span>{{ r.date }}</span>
+        <span class="mobile-etat-{{ r.classe }}">+{{ r.retard_min|int }} min</span>
+    </div>
+    {% endfor %}
+</div>
+{% if n_retards_masques > 0 %}
+<p class="mobile-info">+{{ n_retards_masques }} autre{{ "s" if n_retards_masques > 1 else "" }}.</p>
+{% endif %}
+{% else %}
+<p class="mobile-section-titre">Retards constatés à <span class="mobile-texte-fort">{{ gare }}</span> sur les 90 derniers jours</p>
+<p class="mobile-info">Aucun retard sur les 90 derniers jours.</p>
+{% endif %}
+{% endif %}
