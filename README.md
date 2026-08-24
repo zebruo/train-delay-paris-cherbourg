@@ -2,8 +2,9 @@
 
 Suivi en temps réel des retards sur la ligne SNCF Paris ↔ Cherbourg : collecte
 GTFS-RT sur une VPS, interface web (FastAPI + htmx, en ligne sur
-[paris-cherbourg.generalbol.fr](https://paris-cherbourg.generalbol.fr)) et
-desktop (Tkinter), rapports PDF automatiques et détection des perturbations.
+[paris-cherbourg.generalbol.fr](https://paris-cherbourg.generalbol.fr), avec
+une section dédiée mobile) et desktop (Tkinter), rapports PDF automatiques et
+détection des perturbations.
 
 ## Architecture
 
@@ -43,6 +44,18 @@ Propre à `viewer.py` :
 Propre à l'appli web :
 
 - **Rapports** — même contenu que les rapports PDF ci-dessous (quotidien/hebdomadaire/mensuel : stats, météo, alertes, Top 5 des circulations les plus perturbées ou graphiques mensuels selon la période), recalculé en direct en SQL plutôt que généré à l'avance — périmètre fixe (11 gares de la ligne, comme le PDF), pas de filtre Gare/Train/Sens. Un bouton télécharge le vrai PDF de la période affichée (dernière version poussée par le Pi, voir plus haut).
+
+Propre à la section mobile (`/mobile`) :
+
+- **Accueil** — résout gare + heure théorique en train (jusqu'à 3 candidats proposés en cas d'ambiguïté), affiche sa carte de stats (% à l'heure, retard moyen/max, historique des 90 derniers jours) à la gare choisie.
+- **Tendances** — retards par heure ou par jour à une gare donnée, avec meilleur créneau / créneau à éviter.
+- **Alertes** — travaux/perturbations actives et annulations récentes.
+- **Favoris** — trajets (gare/heure/train) enregistrés en local (`localStorage`, pas de compte utilisateur), stats rafraîchies à chaque ouverture de l'onglet.
+
+Interface volontairement séparée du desktop plutôt qu'une adaptation
+responsive de l'existant (templates/CSS propres, `static/mobile.css` /
+`static/mobile.js`) : cartes empilées, barres CSS pures (pas de Plotly),
+thème sombre par défaut.
 
 Les rapports PDF (`generer_rapport.py`, envoyés au NAS via le Pi) et le
 référentiel des trajets (`build_reference.py`, à partir de l'export GTFS
