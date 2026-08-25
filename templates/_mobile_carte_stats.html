@@ -13,6 +13,9 @@
     {% if destination %}
     <p class="mobile-alerte-detail">{{ gare_depart }} <span>→</span> {{ destination }}</p>
     {% endif %}
+    {% if horaire_variable_texte %}
+    <p class="mobile-info" style="margin-top: -4px;">{{ horaire_variable_texte }}</p>
+    {% endif %}
 
     {% if hors_ligne %}
     <span class="mobile-pastille mobile-pastille-grise">Hors axe Paris ↔ Cherbourg</span>
@@ -44,16 +47,16 @@
     </div>
 
     {% if destination and gare_depart != destination %}
-    <p class="mobile-selecteur-gare-label">Voir les stats à :</p>
+    <!--<p class="mobile-selecteur-gare-label">Voir les stats à :</p>-->
     <div class="mobile-selecteur-gare">
         <button class="{{ 'actif' if gare == gare_depart else '' }}"
                 hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
-                hx-vals='{"train": "{{ train }}", "gare": "{{ gare_depart|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}"}'>
+                hx-vals='{"train": "{{ train }}", "gare": "{{ gare_depart|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
             {{ gare_depart }} (départ)
         </button>
         <button class="{{ 'actif' if gare == destination else '' }}"
                 hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
-                hx-vals='{"train": "{{ train }}", "gare": "{{ destination|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}"}'>
+                hx-vals='{"train": "{{ train }}", "gare": "{{ destination|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
             {{ destination }} (arrivée)
         </button>
     </div>

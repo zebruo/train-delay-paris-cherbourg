@@ -6,6 +6,27 @@ function activerOngletMobile(bouton, nom) {
     bouton.classList.add("actif");
 }
 
+// Formulaire "Quel train prenez-vous habituellement ?" (_mobile_choix_train.html,
+// écrans "Mon train"/Favoris) — un changement de Gare de départ invalide Jour/
+// Heure/le train déjà résolu (choisis pour l'ancien trajet), sans qu'aucun
+// événement "change" ne se déclenche dessus tout seul (htmx ne fait que
+// remplacer les <option> de la Gare d'arrivée). Repéré en usage réel
+// (2026-08-26) : changer de gare d'arrivée ou de départ après avoir déjà
+// résolu un train laissait l'ancienne liste d'heures, et l'ancienne carte
+// affichée, sans lien avec le nouveau trajet en cours de saisie.
+function reinitialiserApresGareDepart(mode) {
+    const jour = document.getElementById("mobile-choix-jour-" + mode);
+    const heure = document.getElementById("mobile-choix-heure-" + mode);
+    if (jour) jour.value = "";
+    if (heure) heure.innerHTML = '<option value="" selected disabled hidden>Choisissez…</option>';
+    viderCandidatsTrain(mode);
+}
+
+function viderCandidatsTrain(mode) {
+    const candidats = document.getElementById("mobile-candidats-" + mode);
+    if (candidats) candidats.innerHTML = "";
+}
+
 // Favoris (écran Favoris) — stockage 100% côté client (localStorage), pas de
 // compte utilisateur dans l'appli (voir plan d'implémentation). Un favori est
 // {gare, heure, train, train_affiche, destination} ; les stats affichées sont

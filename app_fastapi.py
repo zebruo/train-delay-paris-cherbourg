@@ -2086,14 +2086,24 @@ def calculer_stats_globales_sql(
     cette fonction plutôt que de l'appeler directement à chaque requête —
     ne pèse donc qu'une seule fois par nouveau relevé (~5 min), pas à
     chaque affichage."""
+    # Ordre important : depuis_debut_collecte D'ABORD — quand debut_iso est
+    # fourni, _construire_where_sql (donc _materialiser_circulations_retard
+    # ci-dessous, si limiter_retard) référence temp.circulations_arrivees_
+    # periode, qui n'existe qu'une fois _obtenir_circulations_arrivees_
+    # globales passée. Bug réel trouvé le 2026-08-25 (sqlite3.OperationalError
+    # "no such table: circulations_arrivees_periode", déclenché en cochant
+    # "Limiter aux trains en retard" sur la barre de stats globale — cette
+    # combinaison exacte, limiter_retard=True ET depuis_debut_collecte=True,
+    # n'avait apparemment jamais été testée depuis l'ajout de
+    # depuis_debut_collecte le 2026-08-24) : l'ordre était inversé.
+    if depuis_debut_collecte:
+        _materialiser_circulations_annulees(connexion)
+        _obtenir_circulations_arrivees_globales(connexion)
     if limiter_retard:
         connexion.execute("DROP TABLE IF EXISTS temp.circulations_retard")
         _materialiser_circulations_retard(
             connexion, gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
         )
-    if depuis_debut_collecte:
-        _materialiser_circulations_annulees(connexion)
-        _obtenir_circulations_arrivees_globales(connexion)
     try:
         return _calculer_stats_globales_sql_interne(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
@@ -3776,7 +3786,13 @@ def mobile_heures_trajet(request: Request, gare: str, destination: str, jour: st
     semaine choisis (donc ne mélange plus les horaires de trains partant
     vers d'autres destinations, ni ceux qui ne circulent pas ce jour-là).
     jour : nom français ("Lundi".."Dimanche", voir JOURS_ORDRE), converti
-    ici en entier 0-6 pour l'index (voir _jours_semaine_actifs)."""
+    ici en entier 0-6 pour l'index (voir _jours_semaine_actifs). Peut
+    arriver vide/invalide : la Gare d'arrivée redéclenche désormais aussi
+    cette route (voir _mobile_choix_train.html), et peut donc être changée
+    avant que Jour ait déjà une valeur — dans ce cas, liste vide plutôt
+    qu'une erreur, en attendant que Jour soit choisi à son tour."""
+    if jour not in JOURS_ORDRE:
+        return templates.TemplateResponse(request, "_mobile_options_heure.html", {"heures": []})
     heures = heures_disponibles_pour_trajet(
         gare, destination, JOURS_ORDRE.index(jour), reference_donnees["index_gare_heure"],
     )
@@ -3804,6 +3820,7 @@ def mobile_resoudre_train(
 def mobile_carte_train(
     request: Request, train: str, gare: str = "Toutes", heure: str = "",
     destination: str = "", mode: str = "accueil", gare_depart: str = "",
+    horaire_variable_texte: str = "",
 ):
     """Carte stats réutilisée par "Mon train" (après résolution) ET par
     Favoris (Phase 3, un favori stocke déjà train/gare/heure/destination,
@@ -3819,7 +3836,14 @@ def mobile_carte_train(
     de départ pour revenir en arrière. Repli sur `gare` si absent
     (favoris enregistrés avant l'ajout de ce champ, ou tout appelant qui
     ne le connaît pas encore) : gare_depart == gare == la gare affichée à
-    ce moment-là, comportement inchangé."""
+    ce moment-là, comportement inchangé.
+
+    horaire_variable_texte : phrase optionnelle ('HHhMM → valable du JJ/MM
+    au JJ/MM.', voir formatting._horaire_variable_texte) calculée une seule
+    fois à la résolution (mobile_resoudre_train) puis simplement transportée
+    ici via hx-vals à chaque appel (résolution initiale ET bascule départ/
+    arrivée) — pas recalculée ici, cette route n'a pas accès au jour de la
+    semaine ni à l'index gare_heure complet nécessaires."""
     connexion = sqlite3.connect(OBSERVATIONS_DB)
     try:
         contexte = calculer_carte_stats_train_sql(connexion, train, gare)
@@ -3828,7 +3852,7 @@ def mobile_carte_train(
     contexte.update({
         "train": train, "train_affiche": format_numero_train(train), "gare": gare,
         "heure": heure, "destination": destination, "mode": mode,
-        "gare_depart": gare_depart or gare,
+        "gare_depart": gare_depart or gare, "horaire_variable_texte": horaire_variable_texte,
     })
     return templates.TemplateResponse(request, "_mobile_carte_stats.html", contexte)
 

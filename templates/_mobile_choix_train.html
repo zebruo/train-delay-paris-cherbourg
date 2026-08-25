@@ -4,7 +4,7 @@
         <span class="mobile-champ-label">Gare de départ :</span>
         <select id="mobile-choix-gare-{{ mode }}" name="gare"
                 hx-get="/mobile/destinations_gare" hx-target="#mobile-choix-arrivee-{{ mode }}" hx-trigger="change"
-                hx-swap="innerHTML">
+                hx-swap="innerHTML" onchange="reinitialiserApresGareDepart('{{ mode }}')">
             <option value="" selected disabled hidden>Choisissez…</option>
             {% for g in gare_options %}
                 {% if g.startswith("—") %}
@@ -17,7 +17,10 @@
     </label>
     <label class="mobile-champ" style="margin-bottom: 10px;">
         <span class="mobile-champ-label">Gare d'arrivée :</span>
-        <select id="mobile-choix-arrivee-{{ mode }}" name="destination">
+        <select id="mobile-choix-arrivee-{{ mode }}" name="destination"
+                hx-get="/mobile/heures_trajet" hx-target="#mobile-choix-heure-{{ mode }}" hx-trigger="change"
+                hx-include="#mobile-choix-gare-{{ mode }}, #mobile-choix-jour-{{ mode }}" hx-swap="innerHTML"
+                onchange="viderCandidatsTrain('{{ mode }}')">
             <option value="" selected disabled hidden>Choisissez…</option>
         </select>
     </label>
@@ -25,7 +28,8 @@
         <span class="mobile-champ-label">Jour :</span>
         <select id="mobile-choix-jour-{{ mode }}" name="jour"
                 hx-get="/mobile/heures_trajet" hx-target="#mobile-choix-heure-{{ mode }}" hx-trigger="change"
-                hx-include="#mobile-choix-gare-{{ mode }}, #mobile-choix-arrivee-{{ mode }}" hx-swap="innerHTML">
+                hx-include="#mobile-choix-gare-{{ mode }}, #mobile-choix-arrivee-{{ mode }}" hx-swap="innerHTML"
+                onchange="viderCandidatsTrain('{{ mode }}')">
             <option value="" selected disabled hidden>Choisissez…</option>
             <option value="Lundi">Lundi</option>
             <option value="Mardi">Mardi</option>
@@ -37,7 +41,7 @@
         </select>
     </label>
     <label class="mobile-champ">
-        <span class="mobile-champ-label">Heure théo. :</span>
+        <span class="mobile-champ-label">Horaire théo. :</span>
         <select id="mobile-choix-heure-{{ mode }}" name="heure"
                 hx-get="/mobile/resoudre_train" hx-target="#mobile-candidats-{{ mode }}" hx-trigger="change"
                 hx-include="#mobile-choix-gare-{{ mode }}, #mobile-choix-arrivee-{{ mode }}, #mobile-choix-jour-{{ mode }}"
