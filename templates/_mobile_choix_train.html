@@ -17,17 +17,31 @@
     </label>
     <label class="mobile-champ" style="margin-bottom: 10px;">
         <span class="mobile-champ-label">Gare d'arrivée :</span>
-        <select id="mobile-choix-arrivee-{{ mode }}" name="destination"
-                hx-get="/mobile/heures_trajet" hx-target="#mobile-choix-heure-{{ mode }}" hx-trigger="change"
-                hx-include="#mobile-choix-gare-{{ mode }}" hx-swap="innerHTML">
+        <select id="mobile-choix-arrivee-{{ mode }}" name="destination">
             <option value="" selected disabled hidden>Choisissez…</option>
+        </select>
+    </label>
+    <label class="mobile-champ" style="margin-bottom: 10px;">
+        <span class="mobile-champ-label">Jour :</span>
+        <select id="mobile-choix-jour-{{ mode }}" name="jour"
+                hx-get="/mobile/heures_trajet" hx-target="#mobile-choix-heure-{{ mode }}" hx-trigger="change"
+                hx-include="#mobile-choix-gare-{{ mode }}, #mobile-choix-arrivee-{{ mode }}" hx-swap="innerHTML">
+            <option value="" selected disabled hidden>Choisissez…</option>
+            <option value="Lundi">Lundi</option>
+            <option value="Mardi">Mardi</option>
+            <option value="Mercredi">Mercredi</option>
+            <option value="Jeudi">Jeudi</option>
+            <option value="Vendredi">Vendredi</option>
+            <option value="Samedi">Samedi</option>
+            <option value="Dimanche">Dimanche</option>
         </select>
     </label>
     <label class="mobile-champ">
         <span class="mobile-champ-label">Heure théo. :</span>
         <select id="mobile-choix-heure-{{ mode }}" name="heure"
                 hx-get="/mobile/resoudre_train" hx-target="#mobile-candidats-{{ mode }}" hx-trigger="change"
-                hx-include="#mobile-choix-gare-{{ mode }}, #mobile-choix-arrivee-{{ mode }}" hx-vals='{"mode": "{{ mode }}"}'>
+                hx-include="#mobile-choix-gare-{{ mode }}, #mobile-choix-arrivee-{{ mode }}, #mobile-choix-jour-{{ mode }}"
+                hx-vals='{"mode": "{{ mode }}"}'>
             <option value="" selected disabled hidden>Choisissez…</option>
         </select>
     </label>

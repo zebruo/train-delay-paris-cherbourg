@@ -1,20 +1,20 @@
 {% if candidats|length == 0 %}
-    <p class="mobile-info">Aucun train trouvé autour de {{ heure }} à {{ gare }}.</p>
+    <p class="mobile-info">Aucun train trouvé autour de {{ heure }} à {{ gare }} le {{ jour|lower }}.</p>
 {% elif candidats|length == 1 %}
-    <div id="mobile-carte-train"
+    <div id="mobile-carte-train" class="mobile-carte-train-wrapper"
          hx-get="/mobile/carte_train" hx-trigger="load" hx-target="this"
-         hx-vals='{"train": "{{ candidats[0].train }}", "gare": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ candidats[0].destination }}", "mode": "{{ mode }}"}'>
+         hx-vals='{"train": "{{ candidats[0].train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ candidats[0].destination }}", "mode": "{{ mode }}"}'>
     </div>
 {% else %}
-    <p class="mobile-info">Plusieurs trains circulent autour de cette heure — choisissez :</p>
+    <p class="mobile-info">Plusieurs trains partent à cette heure — choisissez :</p>
     <div class="mobile-liste">
         {% for c in candidats %}
         <button class="mobile-candidat"
                 hx-get="/mobile/carte_train" hx-target="#mobile-carte-train" hx-swap="innerHTML"
-                hx-vals='{"train": "{{ c.train }}", "gare": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ c.destination }}", "mode": "{{ mode }}"}'>
+                hx-vals='{"train": "{{ c.train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ c.destination }}", "mode": "{{ mode }}"}'>
             Train {{ c.train_affiche }} ({{ c.heure_theorique }}) → {{ c.destination }}
         </button>
         {% endfor %}
     </div>
-    <div id="mobile-carte-train"></div>
+    <div id="mobile-carte-train" class="mobile-carte-train-wrapper"></div>
 {% endif %}

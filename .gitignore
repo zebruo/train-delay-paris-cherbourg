@@ -35,6 +35,10 @@ verification_gtfs.log
 backups_code/
 a_verifier_avant_suppression/
 
+# Script personnel de sauvegarde du projet vers le NAS de l'utilisateur —
+# chemins/structure propres à cette machine, sans lien avec l'appli elle-même
+sauvegarder_projet_nas.sh
+
 # Outils ponctuels de test/monitoring du ventilo Pi, sans lien avec l'appli
 monitor_ventilo_pi.py
 test_ventilo_pi.sh

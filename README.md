@@ -47,7 +47,7 @@ Propre à l'appli web :
 
 Propre à la section mobile (`/mobile`) :
 
-- **Accueil** — résout gare + heure théorique en train (jusqu'à 3 candidats proposés en cas d'ambiguïté), affiche sa carte de stats (% à l'heure, retard moyen/max, historique des 90 derniers jours) à la gare choisie.
+- **Mon train** — résout gare de départ + gare d'arrivée + jour de la semaine + heure théorique en train (jusqu'à 3 candidats proposés en cas d'ambiguïté), affiche sa carte de stats (% à l'heure, retard moyen/max, historique des 90 derniers jours) à la gare choisie — bascule possible entre départ et arrivée sans relancer une recherche.
 - **Tendances** — retards par heure ou par jour à une gare donnée, avec meilleur créneau / créneau à éviter.
 - **Alertes** — travaux/perturbations actives et annulations récentes.
 - **Favoris** — trajets (gare/heure/train) enregistrés en local (`localStorage`, pas de compte utilisateur), stats rafraîchies à chaque ouverture de l'onglet.

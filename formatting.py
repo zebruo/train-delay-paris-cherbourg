@@ -703,21 +703,36 @@ def _distance_circulaire(a, b):
     return min(d, 1440 - d)
 
 
-def construire_index_gare_heure(variantes):
+def _jours_semaine_actifs(service_id, calendrier):
+    """Jours de la semaine (entiers 0=lundi .. 6=dimanche, même convention
+    que date.weekday()) où ce service circule au moins une fois — déduit
+    des dates valides (load_calendrier, depuis calendar_dates.txt), qui ne
+    contient pas de motif hebdomadaire tout fait ('lundi-vendredi'), juste
+    des dates exactes une par une : il faut le déduire empiriquement plutôt
+    que le lire directement."""
+    dates = calendrier.get(service_id, ())
+    return frozenset(datetime.strptime(d, "%Y%m%d").weekday() for d in dates)
+
+
+def construire_index_gare_heure(variantes, calendrier):
     """gare (nom complet, ex: 'Caen', même valeur que stop_name/GARES_LIGNE_
-    ORDRE) -> liste de (train, minutes, destination), une entrée PAR VARIANTE
-    d'horaire connue à cette gare (pas dédoublonnée par train — le
-    dédoublonnage se fait à la résolution, voir resoudre_trains_pour_gare_
-    heure, pour garder la variante la plus proche de l'heure demandée plutôt
-    qu'une variante arbitraire parmi plusieurs, ex: horaire vacances vs
-    normal). train = sans_date_trip_id.split(':')[0], identique à la clé
-    'train' déjà utilisée partout ailleurs pour le filtre Train/format_
-    numero_train — permet de réutiliser directement les fonctions de stats
-    existantes (_construire_where_sql) une fois un train résolu.
+    ORDRE) -> liste de (train, minutes, destination, jours_actifs), une
+    entrée PAR VARIANTE d'horaire connue à cette gare (pas dédoublonnée par
+    train — le dédoublonnage se fait à la résolution, voir resoudre_trains_
+    pour_gare_heure, pour garder la variante la plus proche de l'heure
+    demandée plutôt qu'une variante arbitraire parmi plusieurs, ex: horaire
+    vacances vs normal). train = sans_date_trip_id.split(':')[0], identique
+    à la clé 'train' déjà utilisée partout ailleurs pour le filtre Train/
+    format_numero_train — permet de réutiliser directement les fonctions de
+    stats existantes (_construire_where_sql) une fois un train résolu.
+    jours_actifs (voir _jours_semaine_actifs) : mémoïsé par service_id
+    (plusieurs variantes/arrêts partagent souvent le même service_id) pour
+    ne pas reparser les mêmes dates plusieurs fois.
 
     Construit UNE SEULE FOIS au démarrage (voir lifespan, app_fastapi.py) à
-    partir de reference_donnees['variantes'] — un seul passage sur toutes
-    les variantes déjà en mémoire, pas recalculé à chaque requête mobile.
+    partir de reference_donnees['variantes']/['calendrier'] — un seul
+    passage sur toutes les variantes déjà en mémoire, pas recalculé à
+    chaque requête mobile.
 
     N'indexe QUE les gares[:-1] (tout sauf le terminus) : à une gare
     intermédiaire/d'origine, `horaires` contient l'heure de DÉPART
@@ -729,6 +744,7 @@ def construire_index_gare_heure(variantes):
     'Caen, 07h42' retournait un train dont Caen est le terminus, donc sans
     aucun départ possible à cette heure depuis Caen)."""
     index = {}
+    cache_jours = {}
     for sans_date_id, liste_variantes in variantes.items():
         train = sans_date_id.split(":")[0]
         for variante in liste_variantes:
@@ -736,10 +752,14 @@ def construire_index_gare_heure(variantes):
             if len(gares) < 2:
                 continue  # trajet à 0-1 arrêt connu : rien d'exploitable pour une résolution gare+heure
             destination = gares[-1]
+            service_id = variante["service_id"]
+            if service_id not in cache_jours:
+                cache_jours[service_id] = _jours_semaine_actifs(service_id, calendrier)
+            jours_actifs = cache_jours[service_id]
             for nom_gare, horaire in zip(gares[:-1], variante["horaires"][:-1]):
                 minutes = _minutes_gtfs(horaire)
                 if minutes is not None:
-                    index.setdefault(nom_gare, []).append((train, minutes, destination))
+                    index.setdefault(nom_gare, []).append((train, minutes, destination, jours_actifs))
     return index
 
 
@@ -749,37 +769,56 @@ def destinations_disponibles_pour_gare(gare, index_gare_heure):
     'destination' brut stocké dans index_gare_heure, réutilisé ensuite par
     heures_disponibles_pour_trajet/resoudre_trains_pour_gare_heure) triées
     alphabétiquement — alimente le <select> 'Gare d'arrivée' de l'écran
-    Accueil/Favoris mobile, une fois la gare de départ choisie."""
-    return sorted({destination for _, _, destination in index_gare_heure.get(gare, [])})
+    Mon train/Favoris mobile, une fois la gare de départ choisie. Pas de
+    filtre par jour ici : le champ 'Jour' vient après 'Gare d'arrivée' dans
+    le formulaire (voir _mobile_choix_train.html), donc pas encore connu à
+    ce stade."""
+    return sorted({destination for _, _, destination, _ in index_gare_heure.get(gare, [])})
 
 
-def heures_disponibles_pour_trajet(gare, destination, index_gare_heure):
+def heures_disponibles_pour_trajet(gare, destination, jour_semaine, index_gare_heure):
     """Heures théoriques ('HH:MM') triées et dédoublonnées pour le couple
-    (gare de départ, gare d'arrivée) — alimente le <select> 'Départ' une
-    fois les deux gares choisies : une heure de cette liste correspond
-    garanti à un train qui dessert bien cette destination précise, pas
-    seulement cette gare de départ (sinon la liste mélangerait des trains
-    partant vers des destinations complètement différentes, ex: à Caen,
-    des départs vers Cherbourg/Rennes/Granville tous ensemble)."""
-    minutes_vues = sorted({m for _, m, d in index_gare_heure.get(gare, []) if d == destination})
+    (gare de départ, gare d'arrivée), restreintes aux variantes qui
+    circulent réellement au jour de la semaine choisi (jour_semaine, entier
+    0=lundi..6=dimanche — voir _jours_semaine_actifs) — alimente le
+    <select> 'Heure théo.' une fois gare/destination/jour choisis : une
+    heure de cette liste correspond garanti à un train qui dessert bien
+    cette destination précise ce jour-là, pas seulement cette gare de
+    départ (sinon la liste mélangerait des trains partant vers d'autres
+    destinations, ou ne circulant pas du tout ce jour-là)."""
+    minutes_vues = sorted({
+        m for _, m, d, jours in index_gare_heure.get(gare, [])
+        if d == destination and jour_semaine in jours
+    })
     return [f"{m // 60:02d}:{m % 60:02d}" for m in minutes_vues]
 
 
-def resoudre_trains_pour_gare_heure(gare, heure_hhmm, index_gare_heure, destination=None, tolerance_min=0, max_candidats=3):
-    """Résout (gare, heure[, destination]) -> jusqu'à max_candidats trains
-    candidats, triés par proximité horaire, DÉDOUBLONNÉS PAR TRAIN (une
-    seule entrée par train, la variante la plus proche de heure_hhmm
+def resoudre_trains_pour_gare_heure(
+    gare, heure_hhmm, jour_semaine, index_gare_heure, destination=None, tolerance_min=0, max_candidats=3,
+):
+    """Résout (gare, heure, jour[, destination]) -> jusqu'à max_candidats
+    trains candidats, triés par proximité horaire, DÉDOUBLONNÉS PAR TRAIN
+    (une seule entrée par train, la variante la plus proche de heure_hhmm
     l'emporte — plusieurs variantes du même train, ex: horaire vacances vs
     normal, ne doivent jamais compter comme 2 candidats distincts).
+
+    jour_semaine (entier 0=lundi..6=dimanche, voir _jours_semaine_actifs) :
+    ne garde que les variantes qui circulent réellement ce jour-là — sans
+    ce filtre, un horaire "habituel" du lundi pouvait résoudre vers un
+    train qui ne circule en réalité que le samedi (même minute de départ,
+    services différents), demande explicite de l'utilisateur (2026-08-25) :
+    savoir si LA circulation qu'il prendra tel jour précis a souvent des
+    problèmes, pas une moyenne mélangeant plusieurs services distincts.
 
     destination (nom brut du référentiel, comme renvoyé par
     destinations_disponibles_pour_gare — PAS formaté via format_gare) :
     filtre optionnel, exact. Le menu 'Départ' est déjà scopé au trajet
-    (gare, destination) choisi via heures_disponibles_pour_trajet, donc ce
-    filtre ne change quasiment jamais le résultat en pratique — gardé
-    explicite plutôt qu'implicite pour rester correct même dans le rare
-    cas d'une collision exacte même gare+minute+destination (2 variantes
-    du même trajet, ex: un service normal et un bus de substitution).
+    (gare, destination, jour) choisi via heures_disponibles_pour_trajet,
+    donc ce filtre ne change quasiment jamais le résultat en pratique —
+    gardé explicite plutôt qu'implicite pour rester correct même dans le
+    rare cas d'une collision exacte même gare+minute+destination+jour (2
+    variantes du même trajet, ex: un service normal et un bus de
+    substitution).
 
     tolerance_min=0 (exact) par défaut : le seul appelant (route /mobile/
     resoudre_train) reçoit toujours une heure_hhmm choisie dans le menu
@@ -788,22 +827,22 @@ def resoudre_trains_pour_gare_heure(gare, heure_hhmm, index_gare_heure, destinat
     trains à d'autres horaires déjà proposés séparément dans ce même menu
     (source de confusion constatée en usage réel). Ambiguïté encore réelle
     et conservée : 2 trains DIFFÉRENTS peuvent partager l'exacte même
-    minute à la même gare, même vers la même destination (rare mais
-    possible : service normal + substitution) — c'est pourquoi ceci
-    renvoie une LISTE, pas un train unique ; l'appelant (app_fastapi.py)
+    minute à la même gare, même vers la même destination et le même jour
+    (rare mais possible : service normal + substitution) — c'est pourquoi
+    ceci renvoie une LISTE, pas un train unique ; l'appelant (app_fastapi.py)
     affiche tous les candidats pour que l'utilisateur confirme lui-même,
     plutôt que de deviner arbitrairement.
 
-    Pas de filtrage par calendrier/service_id ici (choisir_variante existe
-    pour ça mais demande une date précise) : un résolveur 'train habituel' à
-    partir d'une gare et d'une heure seules n'a pas de date cible —
-    limitation assumée, documentée plutôt que cachée. En pratique, un train
-    annulé ou hors saison ce jour précis reste proposé ; ses stats
+    Toujours pas de filtrage sur une DATE précise (choisir_variante existe
+    pour ça) : jour_semaine est récurrent (tous les lundis), pas une date
+    cible — un train annulé ce lundi précis reste proposé ; ses stats
     historiques restent correctes (elles portent sur les VRAIS relevés
     passés), seule la disponibilité du jour même n'est pas garantie."""
     candidats_par_train = {}
     cible = _minutes_hhmm(heure_hhmm)
-    for train, minutes, dest in index_gare_heure.get(gare, []):
+    for train, minutes, dest, jours in index_gare_heure.get(gare, []):
+        if jour_semaine not in jours:
+            continue
         if destination is not None and dest != destination:
             continue
         delta = _distance_circulaire(cible, minutes)
@@ -815,7 +854,7 @@ def resoudre_trains_pour_gare_heure(gare, heure_hhmm, index_gare_heure, destinat
                 "train": train,
                 "train_affiche": format_numero_train(train),
                 "heure_theorique": f"{minutes // 60:02d}h{minutes % 60:02d}",
-                "destination": format_gare(dest),
+                "destination": dest,
                 "delta_min": delta,
             }
     return sorted(candidats_par_train.values(), key=lambda c: c["delta_min"])[:max_candidats]

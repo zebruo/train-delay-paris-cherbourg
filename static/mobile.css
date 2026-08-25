@@ -297,7 +297,7 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
     border-radius: 14px;
     padding: 13px 15px;
     margin-bottom: 18px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
 }
 .mobile-bandeau-orange { background: var(--orange-fond); color: var(--orange-texte); }
@@ -314,6 +314,38 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
 }
 .mobile-carte-train-numero { font-size: 18px; font-weight: 700; }
 .mobile-carte-train-heure { font-size: 13px; color: var(--texte-attenue); font-weight: 600; }
+
+.mobile-selecteur-gare-label {
+    font-size: 10px;
+    font-weight: 650;
+    color: var(--texte-attenue);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    margin: 0 0 8px;
+}
+.mobile-selecteur-gare {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.mobile-selecteur-gare button {
+    flex: 1;
+    background: var(--fond-tertiaire);
+    border: 1px solid var(--bordure);
+    color: var(--texte-attenue);
+    border-radius: 12px;
+    padding: 9px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: center;
+}
+.mobile-selecteur-gare button.actif {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
 
 .mobile-etat-vert { color: var(--pastille-texte); font-weight: 600; font-size: 12.5px; }
 .mobile-etat-orange { color: var(--orange-texte); font-weight: 600; font-size: 12.5px; }

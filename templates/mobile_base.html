@@ -34,9 +34,9 @@
     </main>
 
     <nav class="mobile-onglets">
-        <button class="mobile-onglet {% if ecran == 'accueil' %}actif{% endif %}"
+        <button id="mobile-onglet-accueil" class="mobile-onglet {% if ecran == 'accueil' %}actif{% endif %}"
                 hx-get="/mobile/contenu" hx-target="#mobile-contenu"
-                hx-vals='{"ecran": "accueil"}' onclick="activerOngletMobile(this, 'accueil')">Accueil</button>
+                hx-vals='{"ecran": "accueil"}' onclick="activerOngletMobile(this, 'accueil')">Mon train</button>
         <button class="mobile-onglet {% if ecran == 'tendances' %}actif{% endif %}"
                 hx-get="/mobile/contenu" hx-target="#mobile-contenu"
                 hx-vals='{"ecran": "tendances"}' onclick="activerOngletMobile(this, 'tendances')">Tendances</button>

@@ -9,7 +9,7 @@ function activerOngletMobile(bouton, nom) {
 // Favoris (écran Favoris) — stockage 100% côté client (localStorage), pas de
 // compte utilisateur dans l'appli (voir plan d'implémentation). Un favori est
 // {gare, heure, train, train_affiche, destination} ; les stats affichées sont
-// récupérées en direct via /mobile/carte_train (même route que l'Accueil),
+// récupérées en direct via /mobile/carte_train (même route que "Mon train"),
 // rien n'est recalculé/mis en cache côté client.
 const CLE_FAVORIS_MOBILE = "mobile_favoris";
 
@@ -59,7 +59,8 @@ function rafraichirFavoris() {
     conteneur.innerHTML = liste.map((f, i) => `
         <div class="mobile-favori-bloc">
             <button class="mobile-favori-retirer" onclick="supprimerFavori(${i})" title="Retirer des favoris">✕</button>
-            <div hx-get="/mobile/carte_train?train=${encodeURIComponent(f.train)}&gare=${encodeURIComponent(f.gare)}&heure=${encodeURIComponent(f.heure)}&destination=${encodeURIComponent(f.destination)}"
+            <div class="mobile-carte-train-wrapper"
+                 hx-get="/mobile/carte_train?train=${encodeURIComponent(f.train)}&gare=${encodeURIComponent(f.gare)}&heure=${encodeURIComponent(f.heure)}&destination=${encodeURIComponent(f.destination)}&mode=favori"
                  hx-trigger="load" hx-target="this" hx-swap="innerHTML">
                 <div class="mobile-carte"><p class="mobile-info">Chargement…</p></div>
             </div>

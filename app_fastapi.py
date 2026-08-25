@@ -194,11 +194,13 @@ async def lifespan(app: FastAPI):
     # demandée (voir formatting.py, correctif du 2026-08-12).
     reference_donnees["variantes"] = build_trip_data(reference)
     reference_donnees["calendrier"] = load_calendrier()
-    # Index gare -> trains desservant cette gare (mobile, écran Accueil/
-    # Favoris — résolution "gare + heure habituelle" -> train) — construit
-    # une seule fois ici, pas recalculé à chaque requête (voir formatting.
-    # construire_index_gare_heure).
-    reference_donnees["index_gare_heure"] = construire_index_gare_heure(reference_donnees["variantes"])
+    # Index gare -> trains desservant cette gare (mobile, écran "Mon train"/
+    # Favoris — résolution "gare + heure habituelle, tel jour" -> train) —
+    # construit une seule fois ici, pas recalculé à chaque requête (voir
+    # formatting.construire_index_gare_heure).
+    reference_donnees["index_gare_heure"] = construire_index_gare_heure(
+        reference_donnees["variantes"], reference_donnees["calendrier"],
+    )
     yield
 
 
@@ -325,8 +327,8 @@ def _charger_observations_incremental(cache, fenetre_jours=None, calculer_stats=
 # permanence — mesuré à ~1 Go de RAM pour 932k lignes sans limite
 # (2026-08-15, voir mémoire du projet), sur une VM à 3,8 Go. "Par
 # jour/heure" (calculer_contexte_jour_heure_sql) et "tout l'historique" du
-# Graphique (charger_observations_completes) n'utilisent plus ce cache,
-# justement parce qu'ils ont besoin de tout l'historique — c'est ce qui
+# Graphique (calculer_donnees_graphique_historique_sql) n'utilisent plus ce
+# cache, justement parce qu'ils ont besoin de tout l'historique — c'est ce qui
 # rend cette fenêtre sûre pour tout le reste.
 _cache_observations = {"dernier_poll": None, "df": None, "debut_collecte": None, "total_lignes": None}
 FENETRE_CACHE_JOURS = 7
@@ -357,37 +359,6 @@ def charger_observations():
     return (
         _cache_observations["df"].copy(), None,
         _cache_observations["debut_collecte"], _cache_observations["total_lignes"],
-    )
-
-
-def charger_observations_completes():
-    """Chargement complet, à la demande, PAS mis en cache durablement
-    (contrairement à charger_observations(), une fenêtre glissante) —
-    utilisé uniquement pour la période "tout l'historique" du
-    Graphique. Cette vue calcule aussi la barre de stats en dessous des
-    courbes (calculer_stats_bloc), qui a besoin d'un DataFrame complet
-    (dernier relevé par passage, gestion des égalités...) et pas seulement
-    d'agrégats — contrairement à "Par jour/heure"
-    (calculer_contexte_jour_heure_sql), cette logique n'a pas été traduite
-    en SQL (chantier plus lourd, différé). ~12 s mesurées sur 932k lignes
-    (2026-08-15) : accepté comme compromis pour une action volontaire et
-    rare plutôt que de garder tout l'historique en mémoire en permanence
-    pour ce seul cas — la RAM redescend après la requête. Ne réutilise pas
-    _charger_observations_incremental (pas de cache à invalider/maintenir
-    ici, un simple SELECT * à chaque appel suffit et reste plus simple).
-    None si le fichier est absent/corrompu (l'appelant garde alors la
-    fenêtre glissante déjà chargée plutôt que de planter)."""
-    if not os.path.isfile(OBSERVATIONS_DB):
-        return None
-    connexion = sqlite3.connect(OBSERVATIONS_DB)
-    try:
-        df = pd.read_sql_query("SELECT * FROM observations ORDER BY poll_time", connexion)
-    except (sqlite3.DatabaseError, pd.errors.DatabaseError):
-        return None
-    finally:
-        connexion.close()
-    return preparer_donnees(
-        df, reference_donnees["stop_names"], reference_donnees["variantes"], reference_donnees["calendrier"],
     )
 
 
@@ -1038,18 +1009,34 @@ def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train
     plot_df, agrégation par relevé, calcul des deux séries) — basé sur
     df_avant_retard (jamais df_filtre) : "Limiter aux trains avec retard"
     biaiserait la moyenne vers le haut (même règle que la barre de stats du
-    haut)."""
+    haut). "tout l'historique" est un cas à part, calculé entièrement en SQL
+    (calculer_donnees_graphique_historique_sql) plutôt qu'en pandas sur
+    df_avant_retard (qui ne couvre que quelques jours, voir
+    _cache_observations) — remplace l'ancien chargement complet en pandas
+    (charger_observations_completes, retiré : ~30s / pic RAM ~2,6 Go mesurés
+    sur la VPS avant cette migration, 2026-08-24, sans plafond avec la
+    croissance de la collecte). Les deux chemins convergent ensuite vers le
+    même tail commun (_construire_reponse_graphique), pour ne jamais laisser
+    leurs textes/tooltips diverger."""
     if periode == "tout l'historique":
-        # df_avant_retard vient de la fenêtre glissante (_cache_observations,
-        # quelques jours seulement) — insuffisant pour cette période, qui a
-        # explicitement besoin de tout voir. Remplacé par un chargement
-        # frais complet (voir charger_observations_completes) plutôt que de
-        # garder tout l'historique en mémoire en permanence pour ce seul
-        # cas rare. Repli silencieux sur df_avant_retard (fenêtre glissante,
-        # partiel mais pas une erreur) si le chargement complet échoue.
-        df_complet = charger_observations_completes()
-        if df_complet is not None:
-            df_avant_retard = filtrer_df(df_complet, gare, train, sens, limiter_ligne)
+        # Repli sur la fenêtre glissante (df_avant_retard, partielle mais
+        # pas une erreur) UNIQUEMENT en cas d'échec SQL (ex: DB verrouillée)
+        # — un total SQL à 0 est en revanche définitif (l'historique complet
+        # a déjà été consulté, contrairement à un repli pandas qui ne
+        # verrait qu'une fenêtre partielle et pourrait à tort y trouver des
+        # circulations que le vrai historique complet exclut).
+        try:
+            resultat = calculer_donnees_graphique_historique_sql(connexion, gare, train, sens, limiter_ligne)
+        except sqlite3.Error:
+            resultat = False
+        if resultat is None:
+            return {"graphique_vide": True}
+        if resultat is not False:
+            moyenne_par_releve, pct_par_releve, nb_releves, stats_periode = resultat
+            return _construire_reponse_graphique(
+                moyenne_par_releve, pct_par_releve, nb_releves, stats_periode, periode, gare, train, sens,
+            )
+
     plot_df = df_avant_retard.dropna(subset=["retard_min"]).copy()
     if not plot_df.empty:
         plot_df["poll_time"] = pd.to_datetime(plot_df["poll_time"])
@@ -1091,7 +1078,22 @@ def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train
     moyenne_par_releve = plot_df.groupby("poll_time")["retard_min"].mean().sort_index()
     plot_df["circulation"] = cle_circulation(plot_df)
     pct_par_releve = plot_df.groupby("poll_time").apply(_pct_en_retard, include_groups=False).sort_index()
+    stats_periode = calculer_stats_bloc(plot_df)
 
+    return _construire_reponse_graphique(
+        moyenne_par_releve, pct_par_releve, len(plot_df), stats_periode, periode, gare, train, sens,
+    )
+
+
+def _construire_reponse_graphique(moyenne_par_releve, pct_par_releve, nb_releves, stats_periode, periode, gare, train, sens):
+    """Assemble le contexte final de l'onglet Graphique (JSON Plotly +
+    segments_periode) à partir des 2 séries temporelles déjà calculées
+    (moyenne/pct par poll_time, pas forcément triées — serie_avec_trous
+    trie déjà) et du dict stats_periode (mêmes clés que formatting.
+    calculer_stats_bloc) — partagé par les 2 chemins de calcul de
+    calculer_contexte_graphique (SQL pour "tout l'historique", pandas pour
+    les 3 autres périodes), pour ne jamais laisser leurs textes/tooltips
+    diverger."""
     explication_max_retard = (
         "Indique le pic de tous les relevés à cet instant (selon les filtres actifs). "
         "C'est différent du « Retard max » affiché juste au-dessus de ce graphique, qui est "
@@ -1123,7 +1125,6 @@ def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train
     }
     donnees_json = json_pour_script(donnees)
 
-    stats_periode = calculer_stats_bloc(plot_df)
     segments_periode = [
         f"{stats_periode['en_retard']}/{stats_periode['total']} circulations perturbées "
         f"({100 * stats_periode['en_retard'] / stats_periode['total']:.0f} %)",
@@ -1137,27 +1138,9 @@ def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train
     return {
         "graphique_vide": False,
         "donnees_json": donnees_json,
-        "nb_releves": len(plot_df),
+        "nb_releves": nb_releves,
         "segments_periode": segments_periode,
     }
-
-
-def _stats_par_categorie(df, colonne, ordre=None):
-    """Porte _stats_par_categorie (viewer.py:1870-1883) : pour chaque
-    valeur de `colonne`, retard moyen, nombre de relevés (n) et % de
-    circulations (pas de relevés) en retard — base commune aux 6
-    graphiques de l'onglet "Par jour / heure"."""
-    groupes = df.groupby(colonne)
-    moyenne = groupes["retard_min"].mean()
-    n = groupes.size()
-    # _pct_en_retard : même formule que le lambda utilisé ici avant cette
-    # factorisation (audit du 2026-08-10) — signature déjà compatible
-    # (reçoit directement un groupe), en plus protégée contre une division
-    # par zéro (sans conséquence pratique ici, groupby ne produit jamais un
-    # groupe réellement vide, mais plus sûr).
-    pct = groupes.apply(_pct_en_retard, include_groups=False)
-    stats = pd.DataFrame({"moyenne": moyenne, "n": n, "pct": pct})
-    return stats.reindex(ordre) if ordre is not None else stats
 
 
 def _construire_barre(stats, colonne_valeur, labels, unite, avec_moyenne):
@@ -1773,9 +1756,11 @@ def _retard_max_et_cumule_sql(
     connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
 ):
     """Retard max (par train, avec gestion des égalités jusqu'à 3 —
-    même motif texte que calculer_stats_bloc, formatting.py) et Retard
-    cumulé (somme des dernières valeurs positives), tous deux dérivés de
-    la même CTE "dernier par passage". Matérialisée UNE fois dans une table
+    même motif texte que calculer_stats_bloc, formatting.py), Retard cumulé
+    (somme des dernières valeurs positives, + nb_passages_impactes, le
+    nombre de passages qui la composent — utilisé par calculer_contexte_
+    graphique, pas par la barre de stats globale) et % à l'heure, tous
+    dérivés de la même CTE "dernier par passage". Matérialisée UNE fois dans une table
     temporaire plutôt que réévaluée par 2 requêtes séparées (mesuré 2026-
     08-16 sur observations.db réel : la fenêtre ROW_NUMBER coûtait ~200ms
     par passage sur un filtre Gare, doublé inutilement par les 2 requêtes
@@ -1808,6 +1793,13 @@ def _retard_max_et_cumule_sql(
         somme = connexion.execute(
             "SELECT SUM(retard_min) FROM derniers_par_passage WHERE retard_min > 0",
         ).fetchone()[0] or 0
+        # Nombre de passages (dernier connu) au retard cumulé ci-dessus —
+        # même table déjà construite, pas de scan supplémentaire. Utilisé
+        # par calculer_contexte_graphique (segments_periode, "X passages
+        # impactés"), pas par la barre de stats globale.
+        nb_passages_impactes = connexion.execute(
+            "SELECT COUNT(*) FROM derniers_par_passage WHERE retard_min > 0",
+        ).fetchone()[0]
         # % de relevés (dernier connu par gare, PAS par circulation — un
         # même train à l'heure sur 10 gares et en retard sur une seule
         # compte pour 10 relevés "à l'heure" ici) à 0 min pile — même table
@@ -1835,7 +1827,7 @@ def _retard_max_et_cumule_sql(
     )
     heures, minutes = divmod(round(somme), 60)
 
-    return retard_max_texte, heures, minutes, pct_a_lheure
+    return retard_max_texte, heures, minutes, pct_a_lheure, nb_passages_impactes
 
 
 def _pire_gare_et_moyenne_sql(
@@ -1877,6 +1869,99 @@ def _pire_gare_et_moyenne_sql(
     )
     label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
     return moyenne, nb_releves, pire_gare_texte, label_pire_gare
+
+
+def _serie_temporelle_graphique_sql(connexion, gare, train, sens, limiter_ligne, debut_iso, fin_iso):
+    """Série temporelle du Graphique période "tout l'historique" (moyenne et
+    % en retard par poll_time) — équivalent SQL de
+    plot_df.groupby("poll_time")... (calculer_contexte_graphique), plus le
+    ratio total/en_retard ("circulations perturbées"). Même stratégie que
+    _pire_gare_et_moyenne_sql/_retard_max_et_cumule_sql : un seul scan du
+    périmètre filtré, matérialisé dans une table temporaire, plusieurs
+    agrégats dérivés à faible coût.
+
+    PAS le même calcul que _circulations_et_trains_stats_sql (barre de stats
+    globale) pour total/en_retard : celle-ci compte délibérément une
+    annulation comme "en retard" (voir son docstring) ; ici une circulation
+    annulée est déjà absente du périmètre filtré (exclue en amont par
+    circulations_arrivees_periode, voir _construire_where_sql) et ne peut
+    donc jamais être comptée comme "en retard" — comportement de
+    formatting.calculer_stats_bloc, que ce Graphique reproduit."""
+    where, params = _construire_where_sql(gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso)
+
+    connexion.execute("DROP TABLE IF EXISTS temp.graphique_releves_filtres")
+    try:
+        connexion.execute(
+            "CREATE TEMP TABLE graphique_releves_filtres AS "
+            "SELECT poll_time, trip_id || '|' || start_date AS circulation, "
+            "ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min "
+            f"FROM observations WHERE {where}",
+            params,
+        )
+        nb_releves = connexion.execute("SELECT COUNT(*) FROM graphique_releves_filtres").fetchone()[0]
+        total, en_retard = connexion.execute(
+            "SELECT COUNT(DISTINCT circulation), "
+            "COUNT(DISTINCT CASE WHEN retard_min > 0 THEN circulation END) "
+            "FROM graphique_releves_filtres",
+        ).fetchone()
+        lignes_moyenne = connexion.execute(
+            "SELECT poll_time, AVG(retard_min) FROM graphique_releves_filtres GROUP BY poll_time",
+        ).fetchall()
+        lignes_pct = connexion.execute(
+            "SELECT poll_time, 100.0 * COUNT(DISTINCT CASE WHEN retard_min > 0 THEN circulation END) "
+            "/ COUNT(DISTINCT circulation) FROM graphique_releves_filtres GROUP BY poll_time",
+        ).fetchall()
+    finally:
+        connexion.execute("DROP TABLE IF EXISTS temp.graphique_releves_filtres")
+
+    moyenne_par_releve = pd.Series(
+        [l[1] for l in lignes_moyenne], index=pd.to_datetime([l[0] for l in lignes_moyenne], utc=True),
+    )
+    pct_par_releve = pd.Series(
+        [l[1] for l in lignes_pct], index=pd.to_datetime([l[0] for l in lignes_pct], utc=True),
+    )
+    return moyenne_par_releve, pct_par_releve, nb_releves, total, en_retard
+
+
+def calculer_donnees_graphique_historique_sql(connexion, gare, train, sens, limiter_ligne):
+    """Équivalent SQL, pour la période "tout l'historique" du Graphique, de
+    (charger_observations_completes + filtrer_df + exclusions annulées/non-
+    confirmées + groupby poll_time + calculer_stats_bloc) — mêmes bornes
+    (BORNE_DEBUT_COLLECTE_ISO -> maintenant) et même orchestration de tables
+    temporaires que calculer_stats_globales_sql(depuis_debut_collecte=True) :
+    n'a plus besoin de charger toute la table observations en pandas (voir
+    mémoire du projet — mesuré ~30s / pic RAM ~2,6 Go sur la VPS en
+    2026-08-24, 1,24M lignes, sans plafond avec la croissance de la
+    collecte). Renvoie None si aucune circulation ne correspond au périmètre
+    filtré (équivalent de plot_df.empty)."""
+    fin_iso = pd.Timestamp.now(tz="UTC").isoformat()
+    _materialiser_circulations_annulees(connexion)
+    _obtenir_circulations_arrivees_globales(connexion)
+    try:
+        moyenne_par_releve, pct_par_releve, nb_releves, total, en_retard = _serie_temporelle_graphique_sql(
+            connexion, gare, train, sens, limiter_ligne, BORNE_DEBUT_COLLECTE_ISO, fin_iso,
+        )
+        if total == 0:
+            return None
+        retard_max_texte, heures, minutes, _pct_a_lheure, nb_passages_impactes = _retard_max_et_cumule_sql(
+            connexion, gare, train, sens, limiter_ligne, limiter_retard=False,
+            debut_iso=BORNE_DEBUT_COLLECTE_ISO, fin_iso=fin_iso,
+        )
+        moyen, _nb_releves, pire_gare_texte, label_pire_gare = _pire_gare_et_moyenne_sql(
+            connexion, gare, train, sens, limiter_ligne, limiter_retard=False,
+            debut_iso=BORNE_DEBUT_COLLECTE_ISO, fin_iso=fin_iso,
+        )
+    finally:
+        connexion.execute("DROP TABLE IF EXISTS temp.circulations_annulees")
+        connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
+
+    stats_bloc = {
+        "total": total, "en_retard": en_retard, "heures": heures, "minutes": minutes,
+        "nb_passages_impactes": nb_passages_impactes, "moyen": moyen,
+        "pire_gare_texte": pire_gare_texte, "label_pire_gare": label_pire_gare,
+        "retard_max_texte": retard_max_texte,
+    }
+    return moyenne_par_releve, pct_par_releve, nb_releves, stats_bloc
 
 
 def _circulations_et_trains_stats_sql(
@@ -2140,7 +2225,7 @@ def _calculer_stats_globales_sql_interne(
         connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
     )
     if nb_releves:
-        retard_max_texte, heures, minutes, pct_a_lheure = _retard_max_et_cumule_sql(
+        retard_max_texte, heures, minutes, pct_a_lheure, _nb_passages_impactes = _retard_max_et_cumule_sql(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
             debut_iso=debut_iso, fin_iso=fin_iso,
         )
@@ -3669,39 +3754,57 @@ def mobile_destinations_gare(request: Request, gare: str):
 
 
 @app.get("/mobile/heures_trajet", response_class=HTMLResponse)
-def mobile_heures_trajet(request: Request, gare: str, destination: str):
-    """Fragment <option> pour le <select> 'Départ' de l'écran Accueil/
-    Favoris mobile — rechargé à chaque changement de Gare d'arrivée, scopé
-    au trajet (gare, destination) choisi (donc ne mélange plus les
-    horaires de trains partant vers d'autres destinations)."""
-    heures = heures_disponibles_pour_trajet(gare, destination, reference_donnees["index_gare_heure"])
+def mobile_heures_trajet(request: Request, gare: str, destination: str, jour: str):
+    """Fragment <option> pour le <select> 'Heure théo.' de l'écran "Mon
+    train"/Favoris mobile — rechargé à chaque changement de Gare d'arrivée
+    OU de Jour, scopé au trajet (gare, destination) ET au jour de la
+    semaine choisis (donc ne mélange plus les horaires de trains partant
+    vers d'autres destinations, ni ceux qui ne circulent pas ce jour-là).
+    jour : nom français ("Lundi".."Dimanche", voir JOURS_ORDRE), converti
+    ici en entier 0-6 pour l'index (voir _jours_semaine_actifs)."""
+    heures = heures_disponibles_pour_trajet(
+        gare, destination, JOURS_ORDRE.index(jour), reference_donnees["index_gare_heure"],
+    )
     return templates.TemplateResponse(request, "_mobile_options_heure.html", {"heures": heures})
 
 
 @app.get("/mobile/resoudre_train", response_class=HTMLResponse)
-def mobile_resoudre_train(request: Request, gare: str, heure: str, destination: str = "", mode: str = "accueil"):
+def mobile_resoudre_train(
+    request: Request, gare: str, heure: str, jour: str, destination: str = "", mode: str = "accueil",
+):
     """Fragment de désambiguïsation : liste de candidats (voir
     resoudre_trains_pour_gare_heure) que l'utilisateur clique pour
     confirmer — le clic déclenche ensuite le chargement de la carte stats
-    (/mobile/carte_train)."""
+    (/mobile/carte_train). jour : voir mobile_heures_trajet ci-dessus."""
     candidats = resoudre_trains_pour_gare_heure(
-        gare, heure, reference_donnees["index_gare_heure"], destination=destination or None,
+        gare, heure, JOURS_ORDRE.index(jour), reference_donnees["index_gare_heure"], destination=destination or None,
     )
     return templates.TemplateResponse(
         request, "_mobile_candidats_train.html",
-        {"candidats": candidats, "gare": gare, "heure": heure, "mode": mode},
+        {"candidats": candidats, "gare": gare, "heure": heure, "jour": jour, "mode": mode},
     )
 
 
 @app.get("/mobile/carte_train", response_class=HTMLResponse)
 def mobile_carte_train(
     request: Request, train: str, gare: str = "Toutes", heure: str = "",
-    destination: str = "", mode: str = "accueil",
+    destination: str = "", mode: str = "accueil", gare_depart: str = "",
 ):
-    """Carte stats réutilisée par Accueil (après résolution) ET par Favoris
-    (Phase 3, un favori stocke déjà train/gare/heure/destination, appelle
-    directement cette route sans repasser par le résolveur). mode="favoris"
-    fait apparaître le bouton "Ajouter aux favoris" dans le template."""
+    """Carte stats réutilisée par "Mon train" (après résolution) ET par
+    Favoris (Phase 3, un favori stocke déjà train/gare/heure/destination,
+    appelle directement cette route sans repasser par le résolveur).
+    mode="favoris" fait apparaître le bouton "Ajouter aux favoris" dans le
+    template.
+
+    gare_depart : gare de départ FIXE du trajet (les 2 extrémités,
+    gare_depart/destination, ne changent jamais), distincte de `gare`
+    (la gare actuellement AFFICHÉE, qui bascule entre les deux via le
+    sélecteur "Voir les stats à :") — sans cette distinction, une fois
+    basculé sur l'arrivée, plus aucun champ ne garderait le nom de la gare
+    de départ pour revenir en arrière. Repli sur `gare` si absent
+    (favoris enregistrés avant l'ajout de ce champ, ou tout appelant qui
+    ne le connaît pas encore) : gare_depart == gare == la gare affichée à
+    ce moment-là, comportement inchangé."""
     connexion = sqlite3.connect(OBSERVATIONS_DB)
     try:
         contexte = calculer_carte_stats_train_sql(connexion, train, gare)
@@ -3710,6 +3813,7 @@ def mobile_carte_train(
     contexte.update({
         "train": train, "train_affiche": format_numero_train(train), "gare": gare,
         "heure": heure, "destination": destination, "mode": mode,
+        "gare_depart": gare_depart or gare,
     })
     return templates.TemplateResponse(request, "_mobile_carte_stats.html", contexte)
 
