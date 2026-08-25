@@ -26,7 +26,7 @@ from datetime import datetime
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -3714,6 +3714,21 @@ def est_navigateur_mobile(request: Request) -> bool:
     téléphones (pas les tablettes, ex: iPad exclu, qui garde le desktop)."""
     ua = request.headers.get("user-agent", "").lower()
     return any(marqueur in ua for marqueur in MARQUEURS_USER_AGENT_MOBILE)
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+def robots_txt():
+    """Guide les moteurs de recherche vers les 2 vraies pages (/ et
+    /mobile) — le reste (/contenu, /mobile/*, /rapports/...) sert des
+    fragments HTML partiels (htmx) ou des téléchargements PDF, sans
+    intérêt à indexer séparément (et sans URL propre/stable à afficher
+    dans des résultats de recherche)."""
+    return (
+        "User-agent: *\n"
+        "Disallow: /contenu\n"
+        "Disallow: /mobile/\n"
+        "Disallow: /rapports/\n"
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
