@@ -604,7 +604,7 @@ def generer(nom_periode, maintenant=None):
     afficher_top5 = nom_periode != "mensuel"
     n_graphiques = (max(len(top5), 1) if afficher_top5 else 0)
     lignes_entete_top5 = 1 if afficher_top5 else 0
-    # Le résumé "Travaux / alertes" tient sur une seule ligne sous la météo
+    # Le résumé "Perturbations" tient sur une seule ligne sous la météo
     # (voir plus bas) — les 2 dernières rangées (espaceur + liste détaillée)
     # ne sont donc réservées que s'il y a vraiment des alertes à détailler.
     has_alertes = not alertes_periode.empty
@@ -718,8 +718,8 @@ def generer(nom_periode, maintenant=None):
         texte_meteo = "Météo : non disponible sur cette période."
     ax_stats.text(0, 0.54, texte_meteo, fontsize=8, color="#555", va="top", ha="left")
     texte_alertes = (
-        f"Travaux / alertes sur la période : {len(alertes_periode)} alerte(s) active(s) (détail ci-dessous)."
-        if has_alertes else "Travaux / alertes sur la période : aucune alerte connue."
+        f"Perturbations sur la période : {len(alertes_periode)} alerte(s) active(s) (détail ci-dessous)."
+        if has_alertes else "Perturbations sur la période : aucune alerte connue."
     )
     ax_stats.text(0, 0.325, texte_alertes, fontsize=8, color="#555", va="top", ha="left")
     # Invisible des stats de retard ci-dessus (voir circulation_est_arrivee)

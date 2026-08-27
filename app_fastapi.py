@@ -2499,7 +2499,7 @@ def calculer_contexte_tendances_mobile(connexion, request: Request, gare: str):
 
 
 def _construire_lignes_annulations_mobile(evenements_df, maintenant, jours=7):
-    """Annulations récentes (écran 'Alertes' mobile) : mêmes événements
+    """Annulations récentes (écran 'Perturbations' mobile) : mêmes événements
     'trajet_annule' que calculer_contexte_travaux (Perturbations desktop),
     mais bornés aux `jours` derniers jours et dédoublonnés par circulation
     (train, start_date) — le flux peut enregistrer plusieurs événements pour
@@ -2519,7 +2519,7 @@ def _construire_lignes_annulations_mobile(evenements_df, maintenant, jours=7):
 
 
 def calculer_contexte_alertes_mobile():
-    """Écran 'Alertes' mobile — pure réutilisation de charger_alertes/
+    """Écran 'Perturbations' mobile — pure réutilisation de charger_alertes/
     calculer_alertes_actives (travaux actifs) et des événements 'trajet_
     annule' (annulations récentes), déjà utilisés par l'onglet desktop
     Perturbations/Rapports. Aucune nouvelle requête SQL."""
@@ -3119,9 +3119,9 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
     # contexte de requête.
     resultat["lignes_alertes"] = lignes_alertes
     resultat["rapport_texte_alertes"] = (
-        f"Travaux / alertes sur la période : {len(lignes_alertes)} alerte(s) active(s) "
+        f"Perturbations sur la période : {len(lignes_alertes)} alerte(s) active(s) "
         "(détail ci-dessous)." if lignes_alertes else
-        "Travaux / alertes sur la période : aucune alerte connue."
+        "Perturbations sur la période : aucune alerte connue."
     )
 
     if nom_periode == "mensuel":

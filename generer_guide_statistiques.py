@@ -497,7 +497,7 @@ GUIDE_PAGES = [
         titre_page="3. Autres points utiles rapports PDF\nquotidien/hebdomadaire/mensuelle (suite)",
         blocs=[
             dict(
-                titre="Météo et Travaux / alertes",
+                titre="Météo et Perturbations",
                 definition=(
                     "Moyennes météo (température, pluie, vent) et liste des perturbations\n"
                     "SNCF en cours sur la ligne pendant la période — sans traitement\n"
