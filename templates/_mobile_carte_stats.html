@@ -8,26 +8,30 @@
 <div class="mobile-carte">
     <div class="mobile-carte-train-entete">
         <span class="mobile-carte-train-numero">Train {{ train_affiche }}</span>
-        {% if heure %}<span class="mobile-carte-train-heure">{{ heure }}</span>{% endif %}
     </div>
     {% if destination %}
     <p class="mobile-alerte-detail">{{ gare_depart }} <span>→</span> {{ destination }}</p>
     {% endif %}
+    {% if heure_arrivee and duree %}
+    <p class="mobile-info" style="margin-top: -4px;">⏱ {{ duree }} — Dép. à {{ heure }} → Arr. à {{ heure_arrivee }}</p>
+    {% elif heure %}
+    <p class="mobile-info" style="margin-top: -4px;">Dép. à {{ heure }}</p>
+    {% endif %}
     {% if horaire_variable_texte %}
-    <p class="mobile-info" style="margin-top: -4px;">{{ horaire_variable_texte }}</p>
+    <p class="mobile-info">{{ horaire_variable_texte }}</p>
     {% endif %}
 
     {% if hors_ligne %}
     <span class="mobile-pastille mobile-pastille-grise">Hors axe Paris ↔ Cherbourg</span>
     <p class="mobile-info" style="margin: -4px 0 10px;">
-        Gare de jonction, hors du cœur de ligne suivi par l'appli — les couleurs habituelles de retard ne s'appliquent pas ici.
+        Gare de jonction, hors du cœur de ligne suivi par l'appli — (voir aide).
     </p>
     {% endif %}
     {% if not fiable %}
     <span class="mobile-pastille mobile-pastille-orange">Donnée peu fiable</span>
     <p class="mobile-info" style="margin: -4px 0 10px;">
         Seulement {{ n_circulations }} circulation{{ "s" if n_circulations > 1 else "" }} observée{{ "s" if n_circulations > 1 else "" }}
-        (minimum recommandé : {{ seuil_fiable }}) — un incident isolé peut fortement influencer ce %.
+        (minimum recommandé : {{ seuil_fiable }}) — (voir aide).
     </p>
     {% endif %}
     <div class="mobile-bandeau {{ 'mobile-bandeau-gris' if hors_ligne else 'mobile-bandeau-vert' }}" style="margin: 12px 0;">
@@ -47,22 +51,21 @@
     </div>
 
     {% if destination and gare_depart != destination %}
-    <!--<p class="mobile-selecteur-gare-label">Voir les stats à :</p>-->
     <div class="mobile-selecteur-gare">
         <button class="{{ 'actif' if gare == gare_depart else '' }}"
                 hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
                 hx-vals='{"train": "{{ train }}", "gare": "{{ gare_depart|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
-            {{ gare_depart }} (départ)
+            {{ gare_depart }} (Dép.)
         </button>
         <button class="{{ 'actif' if gare == destination else '' }}"
                 hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
                 hx-vals='{"train": "{{ train }}", "gare": "{{ destination|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
-            {{ destination }} (arrivée)
+            {{ destination }} (Arr.)
         </button>
     </div>
     {% endif %}
 
-    <p class="mobile-section-titre" style="margin-top: 18px;">90 derniers jours</p>
+    <p class="mobile-section-titre">90 derniers jours</p>
     <div class="mobile-barres">
         {% for j in historique_quotidien %}
             <div class="mobile-barre-conteneur" title="{{ j.date }} : {{ j.retard_min }} min"
@@ -72,17 +75,6 @@
         {% endfor %}
     </div>
     <p class="mobile-info" style="margin-top: 6px; text-align: center;"><span class="mobile-texte-fort">{{ n_circulations }}</span> jour{{ "s" if n_circulations > 1 else "" }} de circulations constatées</p>
-
-    {# mode == "favori" : carte d'un favori DÉJÀ enregistré (rafraichirFavoris,
-    mobile.js) — pas de bouton, il y est déjà. mode == "accueil" (seule autre
-    valeur possible, onglet "Mon train" — la recherche dédiée de l'onglet
-    Favoris a été retirée, redondante) : recherche en cours, bouton affiché. #}
-    {% if mode != "favori" %}
-    <button class="mobile-bouton-favori"
-            onclick="ajouterFavori({gare: '{{ gare_depart|replace("'", "\\'") }}', heure: '{{ heure }}', train: '{{ train }}', train_affiche: '{{ train_affiche }}', destination: '{{ destination|replace("'", "\\'") }}'})">
-        ★ Ajouter aux favoris
-    </button>
-    {% endif %}
 </div>
 
 {% if retards %}
@@ -101,5 +93,16 @@
 {% else %}
 <p class="mobile-section-titre">Retards constatés à <span class="mobile-texte-fort">{{ gare }}</span> sur les 90 derniers jours</p>
 <p class="mobile-info">Aucun retard sur les 90 derniers jours.</p>
+{% endif %}
+
+{# mode == "favori" : carte d'un favori DÉJÀ enregistré (rafraichirFavoris,
+mobile.js) — pas de bouton, il y est déjà. mode == "accueil" (seule autre
+valeur possible, onglet "Mon train" — la recherche dédiée de l'onglet
+Favoris a été retirée, redondante) : recherche en cours, bouton affiché. #}
+{% if mode != "favori" %}
+<button class="mobile-bouton-favori"
+        onclick="ajouterFavori({gare: '{{ gare_depart|replace("'", "\\'") }}', heure: '{{ heure }}', train: '{{ train }}', train_affiche: '{{ train_affiche }}', destination: '{{ destination|replace("'", "\\'") }}'})">
+    ★ Ajouter aux favoris
+</button>
 {% endif %}
 {% endif %}

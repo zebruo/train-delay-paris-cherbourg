@@ -27,6 +27,15 @@ function viderCandidatsTrain(mode) {
     if (candidats) candidats.innerHTML = "";
 }
 
+// Même placeholder que rafraichirFavoris (ci-dessous) : affiché immédiatement
+// au clic sur un candidat, avant que la réponse de /mobile/carte_train
+// n'arrive (htmx ne touche pas au contenu de la cible tant que la requête est
+// en cours — sans ce placeholder, l'écran restait vide pendant le chargement).
+function afficherChargementCarte(id) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="mobile-carte"><p class="mobile-info">Chargement…</p></div>';
+}
+
 // Favoris (écran Favoris) — stockage 100% côté client (localStorage), pas de
 // compte utilisateur dans l'appli (voir plan d'implémentation). Un favori est
 // {gare, heure, train, train_affiche, destination} ; les stats affichées sont

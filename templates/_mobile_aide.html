@@ -16,7 +16,7 @@
             <p class="mobile-modale-bloc-label">Retard moyen / Retard max récent</p>
             <p class="mobile-modale-bloc-val">
                 Calculés sur les mêmes 90 jours, à la même gare. Le retard max récent est le plus
-                grand retard connu sur cette période, pas le record absolu du train.
+                grand retard connu sur cette période.
             </p>
         </div>
 
@@ -24,7 +24,8 @@
             <p class="mobile-modale-bloc-label">Donnée peu fiable</p>
             <p class="mobile-modale-bloc-val">
                 Moins de 10 circulations observées sur la période : un seul incident peut
-                fortement changer le %. Signalé par une pastille orange.
+                fortement changer le %, train qui circule un seul jour de la semaine, liés aux vacances
+                scolaires, occasionnel. Signalé par une pastille orange.
             </p>
         </div>
 
@@ -32,7 +33,7 @@
             <p class="mobile-modale-bloc-label">Hors axe Paris ↔ Cherbourg</p>
             <p class="mobile-modale-bloc-val">
                 La gare choisie n'est pas l'une des 11 gares de l'axe principal (Paris
-                Saint-Lazare → Cherbourg). Les chiffres restent corrects, mais s'affichent en gris
+                Saint-Lazare → Cherbourg). Les chiffres sont corrects, mais s'affichent en gris
                 plutôt qu'avec les couleurs habituelles de retard.
             </p>
         </div>
@@ -40,25 +41,23 @@
         <div class="mobile-modale-bloc">
             <p class="mobile-modale-bloc-label">Jour</p>
             <p class="mobile-modale-bloc-val">
-                Jour de la semaine récurrent (tous les lundis, par exemple), pas une date précise —
-                filtre les horaires proposés à ceux qui circulent réellement ce jour-là, pour éviter
-                de résoudre vers un train qui ne roule pas au bon jour à la même minute de départ.
+                Filtre les horaires proposés aux trains qui circulent réellement ce jour-là.
             </p>
         </div>
 
         <div class="mobile-modale-bloc">
-            <p class="mobile-modale-bloc-label">« HHhMM → valable du... au... »</p>
+            <p class="mobile-modale-bloc-label">« Horaire → du... au... »</p>
             <p class="mobile-modale-bloc-val">
                 Un même numéro de train peut avoir deux horaires de départ très proches (à
-                quelques minutes d'écart) selon la période — chacun est réel, en vigueur sur sa
-                propre plage de dates. Cette précision n'apparaît que quand un autre horaire proche
-                existe pour ce train à cette gare, pour éviter la confusion avec deux trains
-                distincts.
+                quelques minutes d'écart) selon la période — chacun est réel, programmé sur sa
+                propre plage de dates. Cette précision apparaît pour éviter la confusion avec ces deux trains.
+                Les statistiques affichées restent calculées sur tout l'historique du
+                train, même hors de cette période.
             </p>
         </div>
 
         <div class="mobile-modale-bloc">
-            <p class="mobile-modale-bloc-label">« Voir les stats à : » (départ / arrivée)</p>
+            <p class="mobile-modale-bloc-label">Boutons (Dép.) / (Arr.)</p>
             <p class="mobile-modale-bloc-val">
                 Bascule les statistiques affichées entre la gare de départ et la gare d'arrivée du
                 trajet recherché, sans relancer une recherche — utile pour voir si un retard apparaît
@@ -69,9 +68,7 @@
         <div class="mobile-modale-bloc">
             <p class="mobile-modale-bloc-label">« Retards constatés à [gare] »</p>
             <p class="mobile-modale-bloc-val">
-                Cette liste ne montre que les retards à la gare actuellement sélectionnée (départ ou
-                arrivée, voir « Voir les stats à » ci-dessus) — pas ceux qui ont pu se produire à
-                l'autre gare, ou ailleurs sur le trajet du train ce jour-là.
+                Cette liste ne montre que les retards à la gare actuellement sélectionnée par le bouton (Dép.) ou (Arr.).
             </p>
         </div>
 

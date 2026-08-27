@@ -4,6 +4,7 @@
     <div id="mobile-carte-train" class="mobile-carte-train-wrapper"
          hx-get="/mobile/carte_train" hx-trigger="load" hx-target="this"
          hx-vals='{"train": "{{ candidats[0].train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ candidats[0].destination }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ candidats[0].horaire_variable_texte or '' }}"}'>
+        <div class="mobile-carte"><p class="mobile-info">Chargement…</p></div>
     </div>
 {% else %}
     <p class="mobile-info">Plusieurs trains partent à cette heure — choisissez :</p>
@@ -11,7 +12,8 @@
         {% for c in candidats %}
         <button class="mobile-candidat"
                 hx-get="/mobile/carte_train" hx-target="#mobile-carte-train" hx-swap="innerHTML"
-                hx-vals='{"train": "{{ c.train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ c.destination }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ c.horaire_variable_texte or '' }}"}'>
+                hx-vals='{"train": "{{ c.train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ c.destination }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ c.horaire_variable_texte or '' }}"}'
+                onclick="afficherChargementCarte('mobile-carte-train')">
             Train {{ c.train_affiche }} ({{ c.heure_theorique }}) → {{ c.destination }}
         </button>
         {% endfor %}

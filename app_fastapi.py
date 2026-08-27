@@ -55,6 +55,7 @@ from formatting import (
     format_retard,
     format_valeur,
     heures_disponibles_pour_trajet,
+    informations_horaire_train,
     load_calendrier,
     load_reference,
     resoudre_trains_pour_gare_heure,
@@ -3843,16 +3844,27 @@ def mobile_carte_train(
     fois à la résolution (mobile_resoudre_train) puis simplement transportée
     ici via hx-vals à chaque appel (résolution initiale ET bascule départ/
     arrivée) — pas recalculée ici, cette route n'a pas accès au jour de la
-    semaine ni à l'index gare_heure complet nécessaires."""
+    semaine ni à l'index gare_heure complet nécessaires.
+
+    heure_arrivee/duree : à l'inverse, RECALCULÉS ici à chaque appel (voir
+    formatting.informations_horaire_train) plutôt que transportés depuis la
+    résolution — pas besoin de jour_semaine, et ça marche aussi pour un
+    favori (qui ne connaît que train/gare/heure/destination, jamais passé
+    par le résolveur)."""
     connexion = sqlite3.connect(OBSERVATIONS_DB)
     try:
         contexte = calculer_carte_stats_train_sql(connexion, train, gare)
     finally:
         connexion.close()
+    gare_depart_effective = gare_depart or gare
+    heure_arrivee, duree = informations_horaire_train(
+        train, gare_depart_effective, heure, destination, reference_donnees["index_gare_heure"],
+    )
     contexte.update({
         "train": train, "train_affiche": format_numero_train(train), "gare": gare,
         "heure": heure, "destination": destination, "mode": mode,
-        "gare_depart": gare_depart or gare, "horaire_variable_texte": horaire_variable_texte,
+        "gare_depart": gare_depart_effective, "horaire_variable_texte": horaire_variable_texte,
+        "heure_arrivee": heure_arrivee, "duree": duree,
     })
     return templates.TemplateResponse(request, "_mobile_carte_stats.html", contexte)
 
