@@ -21,6 +21,37 @@
     <p class="mobile-info">{{ horaire_variable_texte }}</p>
     {% endif %}
 
+    {% if destination and gare_depart != destination %}
+    <div class="mobile-selecteur-gare">
+        <button class="{{ 'actif' if gare == gare_depart else '' }}"
+                hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
+                hx-vals='{"train": "{{ train }}", "gare": "{{ gare_depart|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
+            {{ gare_depart }}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 14h12" />
+                <path d="m4.05 11.75 7-7" />
+                <path d="m6.05 4.75 h5 v5" />
+            </svg>
+        </button>
+        <svg class="mobile-selecteur-echange" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 8h15"/>
+            <path d="M14 4l4 4-4 4"/>
+            <path d="M21 16H6"/>
+            <path d="M10 12l-4 4 4 4"/>
+        </svg>
+        <button class="{{ 'actif' if gare == destination else '' }}"
+                hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
+                hx-vals='{"train": "{{ train }}", "gare": "{{ destination|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
+            {{ destination }}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 14h12" />
+                <path d="m6.95 4.75 7 7" />
+                <path d="m13.95 6.75 v5 h-5" />
+            </svg>
+        </button>
+    </div>
+    {% endif %}
+
     {% if hors_ligne %}
     <span class="mobile-pastille mobile-pastille-grise">Hors axe Paris ↔ Cherbourg</span>
     <p class="mobile-info" style="margin: -4px 0 10px;">
@@ -34,7 +65,8 @@
         (minimum recommandé : {{ seuil_fiable }}) — (voir aide).
     </p>
     {% endif %}
-    <div class="mobile-bandeau {{ 'mobile-bandeau-gris' if hors_ligne else 'mobile-bandeau-vert' }}" style="margin: 12px 0;">
+    {% set pct_retard = 100 - pct_a_lheure %}
+    <div class="mobile-bandeau {{ 'mobile-bandeau-gris' if hors_ligne else 'mobile-bandeau-rouge' if pct_retard >= 15 else 'mobile-bandeau-orange' if pct_retard >= 8 else 'mobile-bandeau-vert' }}" style="margin: 12px 0;">
         <span class="mobile-bandeau-nombre">{{ pct_a_lheure }} %</span>
         <span class="mobile-bandeau-texte">à l'heure sur les 90 derniers jours</span>
     </div>
@@ -49,21 +81,6 @@
             <div class="mobile-callout-val">{{ retard_max }} min</div>
         </div>
     </div>
-
-    {% if destination and gare_depart != destination %}
-    <div class="mobile-selecteur-gare">
-        <button class="{{ 'actif' if gare == gare_depart else '' }}"
-                hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
-                hx-vals='{"train": "{{ train }}", "gare": "{{ gare_depart|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
-            {{ gare_depart }} (Dép.)
-        </button>
-        <button class="{{ 'actif' if gare == destination else '' }}"
-                hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
-                hx-vals='{"train": "{{ train }}", "gare": "{{ destination|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
-            {{ destination }} (Arr.)
-        </button>
-    </div>
-    {% endif %}
 
     <p class="mobile-section-titre">90 derniers jours</p>
     <div class="mobile-barres">

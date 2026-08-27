@@ -1,3 +1,15 @@
+// Bascule thème clair/sombre — même clé localStorage "theme" que
+// basculerTheme() côté desktop (base.html), pour rester cohérent si
+// l'utilisateur visite les deux versions sur le même navigateur. Pas de
+// bascule visuelle des icônes à faire ici : gérée en CSS pur via
+// [data-theme] (voir mobile.css), déjà à jour au prochain repaint.
+function basculerThemeMobile() {
+    var actuel = document.documentElement.dataset.theme || "dark";
+    var nouveau = actuel === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = nouveau;
+    localStorage.setItem("theme", nouveau);
+}
+
 // Bascule d'onglet mobile — même principe que activerOnglet (base.html,
 // desktop), en plus simple (pas de filtres partagés à masquer/afficher).
 function activerOngletMobile(bouton, nom) {

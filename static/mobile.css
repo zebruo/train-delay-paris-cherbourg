@@ -103,25 +103,59 @@ body {
 }
 
 .mobile-entete {
-    position: relative;
     padding: 16px 18px 8px;
     text-align: center;
 }
-.mobile-bouton-aide {
-    position: absolute;
-    top: 16px;
-    right: 18px;
+/* Titre + boutons sur une ligne (flex, centrés ensemble comme UN groupe,
+pas h1 seul) : un vrai centrage de h1 seul (grid 3 colonnes avec un
+espaceur qui reflète la largeur des boutons) coûte deux fois la largeur
+des boutons à l'espace dispo pour le texte — sur un petit écran, ça faisait
+passer le titre sur 2 lignes (repéré sur un vrai téléphone, l'environnement
+de test n'a pas les mêmes polices système pour le vérifier fiablement à
+l'avance, 2026-08-28). Ce compromis ne réserve la largeur des boutons
+qu'une seule fois — titre légèrement décalé du vrai centre de l'écran,
+mais jamais rogné/replié. */
+.mobile-entete-ligne {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+.mobile-entete-boutons {
+    flex: none;
+    display: flex;
+    gap: 8px;
+}
+.mobile-bouton-aide,
+.mobile-bouton-theme {
+    flex: none;
     width: 28px;
     height: 28px;
     border-radius: 50%;
     border: 1px solid var(--bordure);
     background: var(--fond-secondaire);
     color: var(--texte-attenue);
-    font-size: 14px;
-    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     line-height: 1;
     cursor: pointer;
 }
+.mobile-bouton-aide {
+    font-size: 14px;
+    font-weight: 700;
+}
+/* Bouton de bascule thème (localStorage "theme", même clé que basculerTheme
+côté desktop, base.html) — les 2 icônes sont toujours dans le DOM, seule
+celle du thème vers lequel on bascule (pas celui actif) est visible via
+[data-theme], pour ne jamais recalculer/rerendre au clic. */
+.mobile-bouton-theme svg {
+    width: 15px;
+    height: 15px;
+    display: none;
+}
+:root[data-theme="dark"] .mobile-bouton-theme .icone-soleil { display: block; }
+:root[data-theme="light"] .mobile-bouton-theme .icone-lune { display: block; }
 .mobile-entete h1 {
     font-size: 19px;
     font-weight: 700;
@@ -283,7 +317,6 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
     font-weight: 650;
     color: var(--texte-attenue);
     text-transform: uppercase;
-    text-align: center;
     letter-spacing: .02em;
     margin: 18px 0 10px;
 }
@@ -302,6 +335,7 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
     font-weight: 600;
 }
 .mobile-bandeau-orange { background: var(--orange-fond); color: var(--orange-texte); }
+.mobile-bandeau-rouge { background: var(--rouge-fond); color: var(--rouge-texte); }
 .mobile-bandeau-vert { background: var(--pastille-fond); color: var(--pastille-texte); }
 .mobile-bandeau-gris { background: var(--fond-tertiaire); color: var(--texte-attenue); }
 .mobile-bandeau-nombre { font-size: 20px; font-weight: 800; }
@@ -325,11 +359,23 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
 }
 .mobile-selecteur-gare {
     display: flex;
+    align-items: center;
     gap: 8px;
-    margin-bottom: 14px;
+    margin: 14px 0;
+}
+.mobile-selecteur-echange {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    color: var(--texte-attenue);
 }
 .mobile-selecteur-gare button {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
     background: var(--fond-tertiaire);
     border: 1px solid var(--bordure);
     color: var(--texte-attenue);
@@ -340,6 +386,13 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
     font-family: inherit;
     cursor: pointer;
     text-align: center;
+}
+/* currentColor : héritent automatiquement de la couleur du bouton (grisée
+au repos, blanche une fois .actif) sans règle supplémentaire. */
+.mobile-selecteur-gare button svg {
+    flex: none;
+    width: 15px;
+    height: 15px;
 }
 .mobile-selecteur-gare button.actif {
     background: var(--accent);
