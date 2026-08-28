@@ -1,5 +1,5 @@
 <div class="mobile-carte">
-    <p class="mobile-section-titre" style="margin-top: 0;">Retards par heure / jour pour</p>
+    <p class="mobile-section-titre" style="margin-top: 0;">Retards par heure/jour pour</p>
     <label class="mobile-champ">
         Gare :
         <select name="gare" hx-get="/mobile/contenu" hx-target="#mobile-contenu" hx-trigger="change"
@@ -40,25 +40,39 @@
 {% endif %}
 
 <div class="mobile-carte">
-    <p class="mobile-graphe-titre">Retards {{ "par heure" if granularite == "heure" else "par jour" }}</p>
-    <div class="mobile-barres">
-        {% for b in barres_pct.barres %}
-            <div class="mobile-barre-conteneur" title="{{ b.label }} : {% if b.valeur is not none %}{{ b.valeur }}{{ barres_pct.unite }}{% else %}aucun relevé{% endif %}{% if not b.fiable %} — donnée peu fiable{% endif %}">
-                <div class="mobile-barre {% if not b.fiable %}mobile-barre-peu-fiable{% else %}mobile-barre-{{ b.classe_couleur }}{% endif %}"
-                     style="height: {{ b.hauteur_pct }}%;"></div>
+    <p class="mobile-graphe-titre" style="text-align: center;">Retards {{ "par heure" if granularite == "heure" else "par jour" }}</p>
+    <div class="mobile-graphe-avec-axe">
+        <div class="mobile-axe-y">
+            <span>{{ barres_pct.axe_max_texte }} %</span>
+            <span>{{ barres_pct.axe_mi_texte }} %</span>
+            <span>0</span>
+        </div>
+        <div class="mobile-graphe-zone-colonne">
+            <div class="mobile-graphe-zone">
+                <div class="mobile-repere" style="top: 0%;"></div>
+                <div class="mobile-repere" style="top: 50%;"></div>
+                <div class="mobile-repere" style="top: 100%;"></div>
+                <div class="mobile-barres-avec-axe">
+                    {% for b in barres_pct.barres %}
+                        <div class="mobile-barre-conteneur" title="{{ b.label }} : {% if b.valeur is not none %}{{ b.valeur }}{{ barres_pct.unite }}{% else %}aucun relevé{% endif %}{% if not b.fiable %} — donnée peu fiable{% endif %}">
+                            <div class="mobile-barre {% if not b.fiable %}mobile-barre-peu-fiable{% else %}mobile-barre-{{ b.classe_couleur }}{% endif %}"
+                                 style="height: {{ b.hauteur_pct }}%;"></div>
+                        </div>
+                    {% endfor %}
+                </div>
             </div>
-        {% endfor %}
+            {% if granularite == "jour" %}
+            <div class="mobile-axe mobile-axe-pleine">
+                {% for b in barres_pct.barres %}
+                    <span>{{ b.label }}</span>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="mobile-axe">
+                <span>{{ barres_pct.barres[0].label }}</span>
+                <span>{{ barres_pct.barres[-1].label }}</span>
+            </div>
+            {% endif %}
+        </div>
     </div>
-    {% if granularite == "jour" %}
-    <div class="mobile-axe mobile-axe-pleine">
-        {% for b in barres_pct.barres %}
-            <span>{{ b.label }}</span>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="mobile-axe">
-        <span>{{ barres_pct.barres[0].label }}</span>
-        <span>{{ barres_pct.barres[-1].label }}</span>
-    </div>
-    {% endif %}
 </div>

@@ -926,25 +926,30 @@ SEUIL_VARIANTE_PROCHE_MIN = 5
 
 
 def _horaire_variable_texte(minutes, date_min, date_max, entrees_train):
-    """Phrase 'HHhMM → du JJ/MM au JJ/MM. Stats hors plage mais conservées
-    ci-dessous.' à afficher sur la carte d'un train résolu, UNIQUEMENT quand
-    une autre variante du même train, à la même gare, circule à moins de
-    SEUIL_VARIANTE_PROCHE_MIN minutes de celle-ci (ex: train 852221 à Lison,
-    16h56 ET 16h59 selon la période) — évite la confusion '2 trains
-    identiques à 3 min d'intervalle' repérée en usage réel (2026-08-26). Les
-    2 horaires sont réels, chacun programmé sur sa propre période (voir
-    choisir_variante) ; le terme 'théorique' est volontairement évité
-    (retour utilisateur explicite : sous-entend à tort qu'il existerait un
-    horaire 'pratique' différent en plus). Le mot 'valable' aussi évité
-    (retour utilisateur, 2026-08-27) : laissait entendre à tort que les
-    stats affichées sous la carte étaient bornées à cette même période,
-    alors qu'elles portent sur tout l'historique du train (voir
-    calculer_carte_stats_train_sql, filtrée par numéro de train seul, pas
-    par variante/plage de dates) — d'où la 2e phrase, qui le précise
-    explicitement plutôt que de laisser 'valable' le sous-entendre à tort.
-    date_min/date_max : période de la VARIANTE SÉLECTIONNÉE uniquement (pas
-    une heuristique de proximité — juste les vraies bornes de dates de ce
-    service_id, voir _jours_semaine_actifs)."""
+    """Phrase 'HHhMM → du JJ/MM au JJ/MM. Historique ci-dessous du train
+    toutes périodes confondues.' à afficher sur la carte d'un train résolu,
+    UNIQUEMENT quand une autre variante du même train, à la même gare,
+    circule à moins de SEUIL_VARIANTE_PROCHE_MIN minutes de celle-ci (ex:
+    train 852221 à Lison, 16h56 ET 16h59 selon la période) — évite la
+    confusion '2 trains identiques à 3 min d'intervalle' repérée en usage
+    réel (2026-08-26). Les 2 horaires sont réels, chacun programmé sur sa
+    propre période (voir choisir_variante) ; le terme 'théorique' est
+    volontairement évité (retour utilisateur explicite : sous-entend à tort
+    qu'il existerait un horaire 'pratique' différent en plus). Le mot
+    'valable' aussi évité (retour utilisateur, 2026-08-27) : laissait
+    entendre à tort que les stats affichées sous la carte étaient bornées à
+    cette même période, alors qu'elles portent sur tout l'historique du
+    train (voir calculer_carte_stats_train_sql, filtrée par numéro de train
+    seul, pas par variante/plage de dates) — d'où la 2e phrase, qui le
+    précise explicitement plutôt que de laisser 'valable' le sous-entendre
+    à tort. 'Stats hors plage' (1re reformulation, 2026-08-27) écartée à son
+    tour (retour utilisateur, 2026-08-28) : sonnait comme une observation
+    sur la date du jour ('hors plage aujourd'hui'), alors que c'est une
+    généralité vraie quelle que soit la date du jour, dans ou hors de la
+    plage affichée — 'toutes périodes confondues' reste neutre dans les
+    deux cas. date_min/date_max : période de la VARIANTE SÉLECTIONNÉE
+    uniquement (pas une heuristique de proximité — juste les vraies bornes
+    de dates de ce service_id, voir _jours_semaine_actifs)."""
     a_un_voisin = any(
         m != minutes and abs(m - minutes) <= SEUIL_VARIANTE_PROCHE_MIN
         for m, _, _ in entrees_train
@@ -953,22 +958,34 @@ def _horaire_variable_texte(minutes, date_min, date_max, entrees_train):
         return None
     return (
         f"{minutes // 60:02d}h{minutes % 60:02d} → du {date_min} au {date_max}. "
-        "Stats hors plage mais conservées ci-dessous — (voir aide)."
+        "Historique ci-dessous du train toutes périodes confondues — (voir aide)."
     )
 
 
+JOURS_ABREGES = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+
+
 def informations_horaire_train(train, gare_depart, heure_hhmm, destination, index_gare_heure):
-    """(heure_arrivee 'HH:MM', duree 'HhMM') pour la variante de `train`
-    partant de `gare_depart` à `heure_hhmm` — recherchée dans index_gare_
-    heure (même donnée que la résolution initiale, voir resoudre_trains_
-    pour_gare_heure) plutôt que transportée depuis la résolution via l'URL
-    (hx-vals) : recalculée à chaque affichage de la carte, donc fonctionne
-    aussi bien pour un train tout juste résolu que pour un favori enregistré
-    (qui n'a jamais connu que train/gare/heure/destination, voir ajouterFavori
-    mobile.js) — pas besoin de jour_semaine ici, train+gare_depart+heure_hhmm
-    identifie déjà la variante de façon quasi-univoque en pratique. (None,
-    None) si aucune correspondance (favori désormais orphelin d'un
-    changement d'horaire GTFS, ou horaire d'arrivée absent du référentiel).
+    """(heure_arrivee 'HH:MM', duree 'HhMM', jours_texte 'Lun, Mar, ...')
+    pour la variante de `train` partant de `gare_depart` à `heure_hhmm` —
+    recherchée dans index_gare_heure (même donnée que la résolution
+    initiale, voir resoudre_trains_pour_gare_heure) plutôt que transportée
+    depuis la résolution via l'URL (hx-vals) : recalculée à chaque
+    affichage de la carte, donc fonctionne aussi bien pour un train tout
+    juste résolu que pour un favori enregistré (qui n'a jamais connu que
+    train/gare/heure/destination, voir ajouterFavori mobile.js) — pas
+    besoin de jour_semaine ici, train+gare_depart+heure_hhmm identifie déjà
+    la variante de façon quasi-univoque en pratique. (None, None, None) si
+    aucune correspondance (favori désormais orphelin d'un changement
+    d'horaire GTFS, ou horaire d'arrivée absent du référentiel).
+
+    jours_texte : liste des jours de circulation de CETTE variante (pas
+    forcément le seul jour cherché lors de la résolution) — un train résolu
+    un mardi peut très bien circuler aussi les autres jours de la semaine,
+    et "Retards constatés" (qui liste tout l'historique du train, pas
+    seulement les mardis) en montre alors les dates sans lien apparent avec
+    le mardi recherché ; cette ligne explique pourquoi (retour utilisateur,
+    2026-08-28 : "c'est un peu perturbant" de voir des dates d'autres jours).
 
     Durée = (minutes_arrivee - minutes_depart) % 1440 : suppose un trajet de
     moins de 24h (toujours vrai sur cette ligne, aucun train de nuit) — le
@@ -976,9 +993,9 @@ def informations_horaire_train(train, gare_depart, heure_hhmm, destination, inde
     après, sans avoir besoin d'une date réelle (résolution par jour de la
     semaine récurrent, pas par date précise, voir _jours_semaine_actifs)."""
     if not heure_hhmm:
-        return None, None
+        return None, None, None
     cible = _minutes_hhmm(heure_hhmm)
-    for t, minutes, dest, _jours, _dmin, _dmax, minutes_arrivee in index_gare_heure.get(gare_depart, []):
+    for t, minutes, dest, jours, _dmin, _dmax, minutes_arrivee in index_gare_heure.get(gare_depart, []):
         if t != train or minutes != cible or minutes_arrivee is None:
             continue
         if destination and dest != destination:
@@ -986,5 +1003,6 @@ def informations_horaire_train(train, gare_depart, heure_hhmm, destination, inde
         duree_min = (minutes_arrivee - minutes) % 1440
         heure_arrivee = f"{minutes_arrivee // 60:02d}:{minutes_arrivee % 60:02d}"
         duree = f"{duree_min // 60}h{duree_min % 60:02d}"
-        return heure_arrivee, duree
-    return None, None
+        jours_texte = ", ".join(JOURS_ABREGES[j] for j in sorted(jours))
+        return heure_arrivee, duree, jours_texte
+    return None, None, None

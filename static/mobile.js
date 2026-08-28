@@ -79,8 +79,6 @@ function ajouterFavori(favori) {
     if (!sauvegarderFavoris(liste)) return;
     afficherToastMobile("Trajet ajouté aux favoris.");
     rafraichirFavoris();
-    const formulaire = document.getElementById("mobile-nouveau-favori");
-    if (formulaire) formulaire.style.display = "none";
 }
 
 function supprimerFavori(indice) {
@@ -111,6 +109,62 @@ function rafraichirFavoris() {
     // Indispensable : le HTML injecté hors d'une réponse htmx (innerHTML
     // direct) n'est pas auto-scanné par htmx pour ses attributs hx-*.
     htmx.process(conteneur);
+}
+
+// Dernier train résolu sur "Mon train" (écran "accueil") — même mécanisme
+// que les Favoris ci-dessus (localStorage, un seul objet au lieu d'une
+// liste), pour ne pas perdre la recherche en cours en changeant d'onglet
+// puis en revenant (repéré en usage réel, 2026-08-28 : le formulaire
+// repartait à zéro à chaque retour sur l'onglet).
+const CLE_DERNIER_TRAIN_MOBILE = "mobile_dernier_train";
+
+function chargerDernierTrain() {
+    try {
+        return JSON.parse(localStorage.getItem(CLE_DERNIER_TRAIN_MOBILE));
+    } catch {
+        return null;
+    }
+}
+
+function sauvegarderDernierTrain(info) {
+    try {
+        localStorage.setItem(CLE_DERNIER_TRAIN_MOBILE, JSON.stringify(info));
+    } catch {
+        // Silencieux : juste un confort de retour sur l'onglet, pas grave
+        // si le stockage local est indisponible (contrairement à un
+        // favori explicitement demandé par l'utilisateur, voir sauvegarderFavoris).
+    }
+}
+
+// Appelée au chargement de l'écran "Mon train" (_mobile_accueil.html) —
+// même schéma que rafraichirFavoris (placeholder "Chargement…" + htmx.process),
+// juste réutilisé pour une seule carte au lieu d'une liste.
+function restaurerDernierTrain() {
+    const conteneur = document.getElementById("mobile-dernier-train");
+    if (!conteneur) return;
+    const info = chargerDernierTrain();
+    if (!info) return;
+    conteneur.innerHTML = `
+        <div class="mobile-carte-train-wrapper"
+             hx-get="/mobile/carte_train?train=${encodeURIComponent(info.train)}&gare=${encodeURIComponent(info.gare)}&gare_depart=${encodeURIComponent(info.gare_depart)}&heure=${encodeURIComponent(info.heure)}&destination=${encodeURIComponent(info.destination)}&mode=accueil"
+             hx-trigger="load" hx-target="this" hx-swap="innerHTML">
+            <div class="mobile-carte"><p class="mobile-info">Chargement…</p></div>
+        </div>
+    `;
+    htmx.process(conteneur);
+    const formulaire = document.getElementById("mobile-formulaire-accueil");
+    if (formulaire) formulaire.style.display = "none";
+}
+
+// Bouton "Nouvelle recherche" (_mobile_carte_stats.html, dans la même rangée
+// qu'"Ajouter aux favoris") — vit désormais DANS la carte du train (résolu ou
+// restauré), pas dans un bouton à part au-dessus du formulaire : un rechargement
+// complet de l'onglet est plus simple et fiable que de deviner quel conteneur
+// vider selon qu'on vient d'une résolution fraîche (#mobile-carte-train) ou
+// d'un train restauré (#mobile-dernier-train, voir restaurerDernierTrain).
+function nouvelleRechercheTrain() {
+    localStorage.removeItem(CLE_DERNIER_TRAIN_MOBILE);
+    htmx.ajax("GET", "/mobile/contenu?ecran=accueil", {target: "#mobile-contenu", swap: "innerHTML"});
 }
 
 function afficherToastMobile(message) {

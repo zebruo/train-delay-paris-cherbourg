@@ -118,7 +118,7 @@ mais jamais rogné/replié. */
 .mobile-entete-ligne {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-around;
     gap: 8px;
 }
 .mobile-entete-boutons {
@@ -164,7 +164,7 @@ celle du thème vers lequel on bascule (pas celui actif) est visible via
 .mobile-sous-titre {
     font-size: 12px;
     color: var(--texte-attenue);
-    margin: 2px 0 0;
+    margin: 3px 0 0;
 }
 
 #mobile-contenu {
@@ -225,7 +225,7 @@ celle du thème vers lequel on bascule (pas celui actif) est visible via
     cursor: pointer;
 }
 .mobile-toggle button.actif {
-    background: var(--fond-secondaire);
+    background: var(--accent);
     color: var(--texte);
 }
 
@@ -259,12 +259,57 @@ celle du thème vers lequel on bascule (pas celui actif) est visible via
 
 .mobile-graphe-titre { font-size: 14px; font-weight: 700; margin: 0 0 14px; }
 
-.mobile-barres {
+/* Axe Y (3 repères : 0 / moitié / max) — le max n'est PAS une échelle
+absolue fixe, mais le vrai max de la période affichée (retard_max côté
+carte train, valeur_max côté Tendances), donc recalculé/affiché à chaque
+fois plutôt que codé en dur (demande utilisateur, 2026-08-28 : une barre
+"haute" sans repère chiffré peut représenter 20 min pour un train et 90 min
+pour un autre, impossible à juger d'un coup d'œil). */
+.mobile-section-titre-centre { text-align: center; }
+.mobile-graphe-avec-axe {
+    display: flex;
+    gap: 8px;
+}
+.mobile-axe-y {
+    flex: none;
+    width: 34px;
+    height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    text-align: right;
+    font-size: 9.5px;
+    color: var(--texte-attenue);
+    padding-bottom: 1px;
+    white-space: nowrap;
+}
+/* Colonne à droite de l'axe Y : englobe la zone des barres ET la rangée de
+labels sous les barres (mobile-axe/-pleine, Tendances uniquement) pour
+qu'ils restent alignés ensemble, quelle que soit la largeur de l'axe Y —
+sans ça, la rangée de labels (pleine largeur de la carte, en dehors de ce
+conteneur) se désynchronisait des barres qu'elle est censée annoter. */
+.mobile-graphe-zone-colonne {
+    flex: 1;
+    min-width: 0;
+}
+.mobile-graphe-zone {
+    position: relative;
+    height: 120px;
+}
+.mobile-repere {
+    position: absolute;
+    left: 0;
+    right: 0;
+    border-top: 1px dashed var(--bordure);
+}
+.mobile-barres-avec-axe {
+    position: relative;
     display: flex;
     align-items: flex-end;
     gap: 2px;
-    height: 120px;
+    height: 100%;
 }
+
 .mobile-barre-conteneur {
     flex: 1;
     height: 100%;
@@ -349,25 +394,17 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
 }
 .mobile-carte-train-numero { font-size: 18px; font-weight: 700; }
 
-.mobile-selecteur-gare-label {
-    font-size: 10px;
-    font-weight: 650;
-    color: var(--texte-attenue);
-    text-transform: uppercase;
-    letter-spacing: .03em;
-    margin: 0 0 8px;
-}
+/* Même style que .mobile-toggle (Tendances, Par heure/Par jour) : fond
+continu plutôt que 2 boutons à bordure propre — un seul pill suffit à
+montrer que c'est une bascule à 2 états, pas besoin d'icône d'échange en
+plus (repris à l'identique, demande explicite de l'utilisateur, 2026-08-28). */
 .mobile-selecteur-gare {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    background: var(--fond-tertiaire);
+    border: 1px solid var(--bordure);
+    border-radius: 12px;
+    padding: 3px;
     margin: 14px 0;
-}
-.mobile-selecteur-echange {
-    flex: none;
-    width: 18px;
-    height: 18px;
-    color: var(--texte-attenue);
 }
 .mobile-selecteur-gare button {
     flex: 1;
@@ -376,11 +413,11 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
     align-items: center;
     justify-content: center;
     gap: 3px;
-    background: var(--fond-tertiaire);
-    border: 1px solid var(--bordure);
+    background: none;
+    border: none;
     color: var(--texte-attenue);
-    border-radius: 12px;
-    padding: 9px 10px;
+    border-radius: 9px;
+    padding: 8px 0;
     font-size: 13px;
     font-weight: 600;
     font-family: inherit;
@@ -388,7 +425,7 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
     text-align: center;
 }
 /* currentColor : héritent automatiquement de la couleur du bouton (grisée
-au repos, blanche une fois .actif) sans règle supplémentaire. */
+au repos, celle de --texte une fois .actif) sans règle supplémentaire. */
 .mobile-selecteur-gare button svg {
     flex: none;
     width: 15px;
@@ -396,8 +433,7 @@ au repos, blanche une fois .actif) sans règle supplémentaire. */
 }
 .mobile-selecteur-gare button.actif {
     background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
+    color: var(--texte);
 }
 
 .mobile-etat-vert { color: var(--pastille-texte); font-weight: 600; font-size: 12.5px; }
@@ -405,15 +441,33 @@ au repos, blanche une fois .actif) sans règle supplémentaire. */
 .mobile-etat-rouge { color: var(--rouge-texte); font-weight: 600; font-size: 12.5px; }
 .mobile-etat-grise { color: var(--texte-attenue); font-weight: 600; font-size: 12.5px; }
 
+.mobile-boutons-carte {
+    display: flex;
+    gap: 8px;
+    margin-top: 22px;
+}
 .mobile-bouton-favori {
-    display: block;
-    width: 100%;
-    margin-top: 16px;
+    flex: 1;
     background: var(--accent);
     color: #fff;
     border: none;
     border-radius: 12px;
-    padding: 12px 0;
+    padding: 10px 0;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+}
+/* Secondaire (Nouvelle recherche) : même gabarit que .mobile-bouton-favori,
+fond atténué plutôt que --accent pour ne pas rivaliser visuellement avec
+l'action principale (Ajouter aux favoris). */
+.mobile-bouton-secondaire {
+    flex: 1;
+    background: var(--fond-tertiaire);
+    color: var(--texte);
+    border: 1px solid var(--bordure);
+    border-radius: 12px;
+    padding: 10px 0;
     font-size: 14px;
     font-weight: 700;
     font-family: inherit;
@@ -468,6 +522,10 @@ au repos, blanche une fois .actif) sans règle supplémentaire. */
 .mobile-ligne-detail { color: var(--texte-attenue); font-size: 12px; margin-top: 1px; }
 
 .mobile-info { font-size: 13px; color: var(--texte-attenue); margin: 0; }
+/* "+N autres" (liste de retards tronquée) : détachée de la liste au-dessus
+— collait directement dessus sinon (.mobile-info a margin: 0 par défaut,
+réutilisée ailleurs sans marge voulue). */
+.mobile-info-espace-avant { margin-top: 10px; }
 
 .mobile-onglets {
     position: fixed;

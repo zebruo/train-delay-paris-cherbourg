@@ -110,7 +110,7 @@ SEUIL_FIABLE = 10
 # eu au moins un retard sur 30 jours, médiane 3, 75e centile 5, seuls
 # 16/237 dépassent 8 (max observé 14) — la grande majorité des trains
 # n'est donc jamais tronquée.
-MAX_RETARDS_AFFICHES_MOBILE = 8
+MAX_RETARDS_AFFICHES_MOBILE = 10
 
 # Borne basse "depuis toujours" pour calculer_stats_globales_sql_avec_cache
 # (voir son docstring, 2026-08-24) : un simple repère antérieur à toute
@@ -1740,6 +1740,11 @@ def calculer_carte_stats_train_sql(connexion, train, gare="Toutes", jours=90, li
         "pct_a_lheure": round(pct_a_lheure, 1),
         "retard_moyen": round(sum(retards) / len(retards), 1),
         "retard_max": retard_max_periode,
+        # Repères de l'axe Y du mini-graphique (mobile.css .mobile-axe-y) —
+        # texte déjà formaté ici plutôt qu'en Jinja ("10" pas "10.0", voir
+        # format_min_sans_zero) pour garder le template muet.
+        "axe_retard_max_texte": format_min_sans_zero(retard_max_periode),
+        "axe_retard_mi_texte": format_min_sans_zero(retard_max_periode / 2),
         "historique_quotidien": historique,
         "retards": retards_liste[:MAX_RETARDS_AFFICHES_MOBILE],
         "n_retards_masques": n_retards_masques,
@@ -2481,6 +2486,12 @@ def calculer_contexte_tendances_mobile(connexion, request: Request, gare: str):
     # calculés ici plutôt qu'en Jinja, pour garder le template simple/muet.
     valeurs = [b["valeur"] for b in barres_pct["barres"] if b["valeur"] is not None]
     valeur_max = max(valeurs) if valeurs else 0
+    # Exposé pour l'axe Y du template (repères 0/moitié/max, voir
+    # mobile.css .mobile-axe-y) — même valeur que celle utilisée juste en
+    # dessous pour hauteur_pct, pas un second calcul. Texte déjà formaté ici
+    # ("10" pas "10.0", voir format_min_sans_zero) pour garder le template muet.
+    barres_pct["axe_max_texte"] = format_min_sans_zero(valeur_max)
+    barres_pct["axe_mi_texte"] = format_min_sans_zero(valeur_max / 2)
     for b in barres_pct["barres"]:
         if b["valeur"] is None:
             b["hauteur_pct"] = 0
@@ -3846,25 +3857,25 @@ def mobile_carte_train(
     arrivée) — pas recalculée ici, cette route n'a pas accès au jour de la
     semaine ni à l'index gare_heure complet nécessaires.
 
-    heure_arrivee/duree : à l'inverse, RECALCULÉS ici à chaque appel (voir
-    formatting.informations_horaire_train) plutôt que transportés depuis la
-    résolution — pas besoin de jour_semaine, et ça marche aussi pour un
-    favori (qui ne connaît que train/gare/heure/destination, jamais passé
-    par le résolveur)."""
+    heure_arrivee/duree/jours_circulation : à l'inverse, RECALCULÉS ici à
+    chaque appel (voir formatting.informations_horaire_train) plutôt que
+    transportés depuis la résolution — pas besoin de jour_semaine, et ça
+    marche aussi pour un favori (qui ne connaît que train/gare/heure/
+    destination, jamais passé par le résolveur)."""
     connexion = sqlite3.connect(OBSERVATIONS_DB)
     try:
         contexte = calculer_carte_stats_train_sql(connexion, train, gare)
     finally:
         connexion.close()
     gare_depart_effective = gare_depart or gare
-    heure_arrivee, duree = informations_horaire_train(
+    heure_arrivee, duree, jours_circulation = informations_horaire_train(
         train, gare_depart_effective, heure, destination, reference_donnees["index_gare_heure"],
     )
     contexte.update({
         "train": train, "train_affiche": format_numero_train(train), "gare": gare,
         "heure": heure, "destination": destination, "mode": mode,
         "gare_depart": gare_depart_effective, "horaire_variable_texte": horaire_variable_texte,
-        "heure_arrivee": heure_arrivee, "duree": duree,
+        "heure_arrivee": heure_arrivee, "duree": duree, "jours_circulation": jours_circulation,
     })
     return templates.TemplateResponse(request, "_mobile_carte_stats.html", contexte)
 

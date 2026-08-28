@@ -1,2 +1,7 @@
 {% set mode = "accueil" %}
-{% include "_mobile_choix_train.html" %}
+<div id="mobile-dernier-train"></div>
+<div id="mobile-formulaire-accueil">
+    {% include "_mobile_choix_train.html" %}
+</div>
+
+<script>restaurerDernierTrain();</script>
