@@ -53,6 +53,14 @@ from formatting import (
 # DISTINCTES, pas en relevés bruts, depuis le 2026-08-23 — voir le
 # commentaire de SEUIL_FIABLE côté app_fastapi.py pour le raisonnement.
 SEUIL_FIABLE_MENSUEL = 10
+# Nombre max de numéros de train listés pour "Circulations annulées" (le
+# reste devient "et N autres") — filet de sécurité pour un jour avec
+# beaucoup plus de 10 annulations : au-delà, la ligne dépasse la largeur de
+# la page (ax_stats.text ne retourne jamais à la ligne toute seule, voir
+# plus bas) et se fait tronquer en plein milieu d'un numéro (repéré en
+# usage réel, rapport n°39, 2026-08-28, 10 annulations le même jour — ce
+# cas précis tient déjà sur une ligne sans plafonnement, vérifié visuellement).
+SEUIL_TRAINS_ANNULES_AFFICHES = 10
 
 OBSERVATIONS_DB = "observations.db"
 ALERTES_FILE = "alertes.csv"
@@ -724,10 +732,17 @@ def generer(nom_periode, maintenant=None):
     ax_stats.text(0, 0.325, texte_alertes, fontsize=8, color="#555", va="top", ha="left")
     # Invisible des stats de retard ci-dessus (voir circulation_est_arrivee)
     # — d'où sa propre ligne, plutôt qu'un chiffre de plus noyé dans ligne2.
+    if nb_annulations > SEUIL_TRAINS_ANNULES_AFFICHES:
+        reste = nb_annulations - SEUIL_TRAINS_ANNULES_AFFICHES
+        noms_texte = (
+            f"{', '.join(noms_annulations[:SEUIL_TRAINS_ANNULES_AFFICHES])} "
+            f"et {reste} autre{'s' if reste > 1 else ''}"
+        )
+    else:
+        noms_texte = ", ".join(noms_annulations)
     texte_annulations = (
-        f"Circulations annulées sur la période (sur la ligne) : {nb_annulations} "
-        f"({', '.join(noms_annulations)})."
-        if nb_annulations else "Circulations annulées sur la période (sur la ligne) : aucune."
+        f"Circulations annulées  : {nb_annulations} ({noms_texte})."
+        if nb_annulations else "Circulations annulées  : aucune."
     )
     ax_stats.text(0, 0.11, texte_annulations, fontsize=8, color="#555", va="top", ha="left")
     ax_stats.set_xlim(0, 1)
