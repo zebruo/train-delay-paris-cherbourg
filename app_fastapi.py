@@ -1005,6 +1005,64 @@ def serie_avec_trous(serie, unite, explication_max, explication_moyenne):
     return {"points": points, "trous": trous, "max": maximum, "moyenne": moyenne}
 
 
+def _est_combinaison_filtres_par_defaut(gare, train, sens, limiter_ligne):
+    """Combinaison de filtres précalculée par rafraichir_caches_historique.py
+    (cron) — Gare/Train/Sens tous "non filtrés" (mêmes règles que
+    filtrer_df/_gare_est_filtree) ET "Limiter aux gares de la ligne" coché,
+    de loin la combinaison la plus consultée à l'arrivée sur les onglets
+    Graphique (période "tout l'historique") et Par jour/heure — voir
+    _lire_cache_graphique_historique/_lire_cache_jour_heure_historique."""
+    return not _gare_est_filtree(gare) and train == "Tous" and sens == "Tous" and limiter_ligne
+
+
+CACHE_HISTORIQUE_MAX_AGE = pd.Timedelta(minutes=30)  # ~2x la cadence cron (15 min, rafraichir_caches_historique.py) : au-delà, un cron en panne ne doit pas servir des données trop périmées.
+
+
+def _lire_cache_graphique_historique(connexion):
+    """Lit la ligne unique de cache_graphique_historique (écrite par
+    rafraichir_caches_historique.py) — renvoie le contexte déjà construit
+    (même forme que _construire_reponse_graphique) si présent et pas trop
+    ancien, sinon None (table/ligne absente, JSON corrompu, ou cron en
+    panne) : dans tous les cas l'appelant retombe sur le calcul SQL live,
+    jamais d'erreur remontée pour ce seul motif."""
+    try:
+        row = connexion.execute(
+            "SELECT derniere_maj_iso, contexte_json FROM cache_graphique_historique WHERE id = 1"
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    derniere_maj_iso, contexte_json = row
+    try:
+        if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
+            return None
+        return json.loads(contexte_json)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def _lire_cache_jour_heure_historique(connexion):
+    """Lit la ligne unique de cache_jour_heure_historique (écrite par
+    rafraichir_caches_historique.py) — même principe que
+    _lire_cache_graphique_historique, pour l'onglet desktop Par jour/heure."""
+    try:
+        row = connexion.execute(
+            "SELECT derniere_maj_iso, contexte_json FROM cache_jour_heure_historique WHERE id = 1"
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    derniere_maj_iso, contexte_json = row
+    try:
+        if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
+            return None
+        return json.loads(contexte_json)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
 def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train, sens, limiter_ligne):
     """Porte le bloc `with tab_graphique:` d'app_streamlit.py (période →
     plot_df, agrégation par relevé, calcul des deux séries) — basé sur
@@ -1020,6 +1078,16 @@ def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train
     même tail commun (_construire_reponse_graphique), pour ne jamais laisser
     leurs textes/tooltips diverger."""
     if periode == "tout l'historique":
+        # Palier 0 : combinaison par défaut (Toutes/Tous/Tous/limiter_ligne)
+        # → résultat déjà précalculé par rafraichir_caches_historique.py
+        # (cron VPS, ~15 min), quasi instantané à lire — la requête complète
+        # ci-dessous (~22-24s mesurés le 2026-08-31) ne sert plus que les
+        # combinaisons non par défaut, ou tant qu'aucun cache n'est encore
+        # disponible (juste après déploiement, ou cron en panne).
+        if _est_combinaison_filtres_par_defaut(gare, train, sens, limiter_ligne):
+            contexte_cache = _lire_cache_graphique_historique(connexion)
+            if contexte_cache is not None:
+                return contexte_cache
         # Repli sur la fenêtre glissante (df_avant_retard, partielle mais
         # pas une erreur) UNIQUEMENT en cas d'échec SQL (ex: DB verrouillée)
         # — un total SQL à 0 est en revanche définitif (l'historique complet
@@ -2397,7 +2465,17 @@ _cache_resultats_jour_heure = {"dernier_poll": None, "resultats": {}}
 def calculer_contexte_jour_heure_sql_avec_cache(connexion, gare, train, sens, limiter_ligne):
     """Enrobe calculer_contexte_jour_heure_sql d'un cache mémoire des
     résultats déjà calculés pour la combinaison de filtres actuelle — voir
-    _cache_resultats_jour_heure ci-dessus."""
+    _cache_resultats_jour_heure ci-dessus. Pour la combinaison par défaut
+    (Toutes/Tous/Tous/limiter_ligne), lit d'abord cache_jour_heure_
+    historique (précalculé toutes les ~15 min par rafraichir_caches_
+    historique.py) : contrairement à _cache_resultats_jour_heure ci-dessous
+    (mémoire du process, froid à chaque redémarrage/nouveau relevé), cette
+    table survit aux redémarrages et n'est jamais recalculée pendant une
+    requête utilisateur."""
+    if _est_combinaison_filtres_par_defaut(gare, train, sens, limiter_ligne):
+        contexte_cache = _lire_cache_jour_heure_historique(connexion)
+        if contexte_cache is not None:
+            return contexte_cache
     dernier_poll = connexion.execute("SELECT MAX(poll_time) FROM observations").fetchone()[0]
     cache = _cache_resultats_jour_heure
     if cache["dernier_poll"] != dernier_poll:
