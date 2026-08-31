@@ -38,6 +38,7 @@ import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 from matplotlib.offsetbox import AnnotationBbox, HPacker, TextArea
 from matplotlib.ticker import AutoMinorLocator
+from matplotlib.transforms import blended_transform_factory
 
 from formatting import (
     PARIS_TZ, build_stop_names, build_trip_data, calculer_periode, choisir_variante,
@@ -637,6 +638,24 @@ def generer(nom_periode, maintenant=None):
 
     ax_titre = fig.add_subplot(gs[0, :])
     ax_titre.axis("off")
+    # x en coordonnées FIGURE (transform mixte), y en coordonnées AXE : le
+    # rapport n°39 (2026-08-28) avait déjà un correctif xlim/ylim ici, mais
+    # insuffisant — repéré sur le n°42 (2026-08-31, décalage de +22pt/595pt
+    # de large) que ce n'était pas le texte qui était mal centré DANS
+    # ax_titre, mais ax_titre lui-même mal positionné SUR LA PAGE :
+    # constrained_layout calcule la largeur des colonnes du GridSpec à
+    # partir de l'encombrement de TOUS les axes qui les partagent, et les
+    # mini-graphiques plus bas (gs[..., :] aussi) ont des étiquettes d'axe Y
+    # seulement à gauche, sans marge symétrique à droite — ça décale toute
+    # la colonne partagée, donc aussi cette ligne de titre, d'une quantité
+    # qui varie selon la largeur de ces étiquettes (donc d'un rapport à
+    # l'autre). transform=blended_transform_factory(fig.transFigure,
+    # ax_titre.transAxes) centre le x sur la page ENTIÈRE (toujours
+    # symétrique, indépendant de ce que fait constrained_layout aux
+    # colonnes) tout en gardant le y relatif à cet axe (même comportement
+    # vertical qu'avant, aucun risque de chevaucher ax_stats juste en
+    # dessous). Même correctif appliqué à ax_entete_circulations plus bas.
+    transform_titre = blended_transform_factory(fig.transFigure, ax_titre.transAxes)
     # "généré le" utilise l'heure réelle d'exécution (maintenant), distincte
     # de fin_local (2h, la borne de la période) depuis que la période n'est
     # plus une fenêtre glissante se terminant "maintenant".
@@ -646,11 +665,11 @@ def generer(nom_periode, maintenant=None):
     # ligne, pas seulement les trains Paris-Cherbourg de bout en bout (ex:
     # Rennes → Caen), l'ancien intitulé laissait penser le contraire.
     ax_titre.text(0.5, 0.75, f"{titre} — Circulations sur l'axe Paris ↔ Cherbourg",
-                  fontsize=15, fontweight="bold", va="top", ha="center")
+                  fontsize=15, fontweight="bold", va="top", ha="center", transform=transform_titre)
     ax_titre.text(0.5, 0.15,
                   f"({texte_periode_rapport(nom_periode, debut_local, fin_local)}"
                   f"   ·   créé le {maintenant_local.strftime('%d/%m/%Y à %Hh%M')})",
-                  fontsize=9, color="#555", va="top", ha="center")
+                  fontsize=9, color="#555", va="top", ha="center", transform=transform_titre)
 
     ax_stats = fig.add_subplot(gs[1, :])
     ax_stats.axis("off")
@@ -906,8 +925,11 @@ def generer(nom_periode, maintenant=None):
     if afficher_top5:
         ax_entete_circulations = fig.add_subplot(gs[2 + lignes_mensuel, :])
         ax_entete_circulations.axis("off")
+        # x en coordonnées FIGURE, y en coordonnées AXE — même correctif et
+        # même raison que transform_titre plus haut (constrained_layout).
+        transform_entete_circulations = blended_transform_factory(fig.transFigure, ax_entete_circulations.transAxes)
         ax_entete_circulations.text(0.5, 0.5, "Évolution du retard gare par gare des 5 circulations les plus perturbées", fontsize=10, fontweight="bold",
-                                     va="center", ha="center")
+                                     va="center", ha="center", transform=transform_entete_circulations)
 
         if top5.empty:
             ax_vide = fig.add_subplot(gs[3 + lignes_mensuel, :])
