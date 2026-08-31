@@ -27,8 +27,8 @@ from datetime import datetime
 from tkinter import ttk, messagebox
 
 from build_reference import (
-    deployer_vers_serveur, lire_feed_version_distante, META_FILE, redemarrer_service_vps,
-    telecharger_et_regenerer,
+    deployer_vers_serveur, lire_feed_version_distante, META_FILE, rafraichir_caches_historique_vps,
+    redemarrer_service_vps, telecharger_et_regenerer,
 )
 from tooltips import SimpleTooltip, TreeviewHeaderTooltips
 from verifier_gtfs import charger_journal, charger_json, lancer_a_distance, LOG_FILE
@@ -382,6 +382,16 @@ class OngletVerificationGTFSMixin:
             # (3h15) — même geste que fait "Lancer la vérification
             # maintenant".
             lancer_a_distance(VPS_HOST)
+            # Même geste pour les 4 caches précalculés (Graphique/Par jour-
+            # heure/Rapports, voir rafraichir_caches_historique.py) : ils
+            # survivent au redémarrage (stockés dans observations.db, pas en
+            # mémoire) mais ignorent que le référentiel vient de changer —
+            # sans ça, ils serviraient des libellés de trajet basés sur
+            # l'ancien référentiel jusqu'au prochain passage cron (~15 min).
+            # Best-effort comme lancer_a_distance ci-dessus : un échec ici
+            # ne doit pas bloquer le déploiement, déjà effectif par
+            # ailleurs — les caches se rattrapent tout seuls au prochain cron.
+            rafraichir_caches_historique_vps(VPS_HOST)
             try:
                 self._rsync_depuis_vps(VPS_GTFS_LOG_PATH, LOG_FILE)
             except Exception:

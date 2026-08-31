@@ -270,5 +270,26 @@ def redemarrer_service_vps(hote, service="train-delay", timeout=15):
         return False
 
 
+def rafraichir_caches_historique_vps(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=60):
+    """Relance rafraichir_caches_historique.py sur la VPS par SSH — même
+    principe que verifier_gtfs.lancer_a_distance, à appeler après
+    redemarrer_service_vps() par le bouton "Déployer vers la VPS". Les 4
+    caches (Graphique/Par jour-heure/Rapports hebdo+mensuel) survivent au
+    redémarrage du service (ils vivent dans observations.db, pas en
+    mémoire) mais ne savent pas que le référentiel vient de changer — sans
+    cet appel, ils continueraient de servir un contenu calculé avec
+    l'ancien référentiel (libellés de trajet notamment) jusqu'au prochain
+    passage du cron (~15 min). Retourne True/False."""
+    commande = f"cd {chemin_distant} && .venv/bin/python3 rafraichir_caches_historique.py"
+    try:
+        subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, commande],
+            capture_output=True, timeout=timeout, check=True,
+        )
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return False
+
+
 if __name__ == "__main__":
     main()
