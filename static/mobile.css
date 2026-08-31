@@ -14,7 +14,7 @@ là-bas) — un retard doit avoir la même couleur partout dans l'appli. */
     que l'appli le pilotait — absent de style.css comme de mobile.css avant
     ce correctif). */
     color-scheme: light;
-    --fond: #f7f8fa;
+    --fond: #eceef0;
     --fond-secondaire: #f0f2f6;
     --fond-tertiaire: #e6e8ed;
     --texte: #262730;
@@ -67,7 +67,7 @@ là-bas) — un retard doit avoir la même couleur partout dans l'appli. */
 
 :root[data-theme="light"] {
     color-scheme: light;
-    --fond: #f7f8fa;
+    --fond: #eceef0;
     --fond-secondaire: #f0f2f6;
     --fond-tertiaire: #e6e8ed;
     --texte: #262730;
@@ -118,7 +118,7 @@ mais jamais rogné/replié. */
 .mobile-entete-ligne {
     display: flex;
     align-items: center;
-    justify-content: space-around;
+    justify-content: space-between;
     gap: 8px;
 }
 .mobile-entete-boutons {
@@ -557,7 +557,23 @@ réutilisée ailleurs sans marge voulue). */
 
 .mobile-favori-bloc {
     position: relative;
-    margin-bottom: 14px;
+}
+/* Espace + ligne de séparation entre 2 favoris (jamais avant le premier) —
+mockup validé par l'utilisateur, 2026-08-31 : un simple margin-bottom
+(14px, avant) laissait la frontière entre la liste "Retards constatés" d'un
+favori (fond --fond-tertiaire, sans grand contraste) et la carte suivante
+(--fond-secondaire) difficile à repérer d'un coup d'œil. */
+.mobile-favori-bloc + .mobile-favori-bloc {
+    margin-top: 28px;
+}
+.mobile-favori-bloc + .mobile-favori-bloc::before {
+    content: "";
+    position: absolute;
+    top: -15px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--bordure);
 }
 .mobile-favori-retirer {
     position: absolute;
@@ -578,10 +594,10 @@ réutilisée ailleurs sans marge voulue). */
 
 .mobile-toast {
     position: fixed;
-    bottom: 74px;
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
-    background: var(--texte);
+    transform: translate(-50%, -50%);
+    background: var(--texte-attenue);
     color: var(--fond);
     padding: 10px 18px;
     border-radius: 10px;

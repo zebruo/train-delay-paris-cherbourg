@@ -18,7 +18,7 @@
     <p class="mobile-info" style="margin-top: -4px;">Dép. à {{ heure }}</p>
     {% endif %}
     {% if jours_circulation %}
-    <p class="mobile-info">Circule : {{ jours_circulation }}</p>
+    <p class="mobile-info">Circule : {{ jours_circulation }} — (voir aide).</p>
     {% endif %}
     {% if horaire_variable_texte %}
     <p class="mobile-info">{{ horaire_variable_texte }}</p>
@@ -52,7 +52,7 @@
     {% if hors_ligne %}
     <span class="mobile-pastille mobile-pastille-grise">Hors axe Paris ↔ Cherbourg</span>
     <p class="mobile-info" style="margin: -4px 0 10px;">
-        Gare de jonction, hors du cœur de ligne suivi par l'appli — (voir aide).
+        Gare de jonction (grisée), hors du cœur de ligne, reste suivi par l'appli — (voir aide).
     </p>
     {% endif %}
     {% if not fiable %}

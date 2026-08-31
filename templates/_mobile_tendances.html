@@ -1,5 +1,4 @@
 <div class="mobile-carte">
-    <p class="mobile-section-titre" style="margin-top: 0;">Retards par heure/jour pour</p>
     <label class="mobile-champ">
         Gare :
         <select name="gare" hx-get="/mobile/contenu" hx-target="#mobile-contenu" hx-trigger="change"
@@ -9,6 +8,7 @@
             {% endfor %}
         </select>
     </label>
+    <p class="mobile-info mobile-info-espace-avant">Calculé sur tout l'historique collecté.</p>
 </div>
 
 <div class="mobile-toggle">
