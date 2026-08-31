@@ -120,23 +120,6 @@ function calculerPlageYGraphique(maxY) {
     return [-margeBas, maxY + margeHaut];
 }
 
-// Paliers plus fins que train.js (0.5/1/2 min) : "retard moyen" est une
-// moyenne, pas un retard brut — pas restreinte aux multiples de 5 min comme
-// les valeurs de "Suivi d'un train" (voir mémoire du projet), une valeur
-// courante genre 2-3 min n'aurait sinon qu'une seule graduation visible
-// ("0") avec un pas de 5.
-function pasYGraphique(maxY) {
-    return maxY <= 2 ? 0.5 : maxY <= 5 ? 1 : maxY <= 10 ? 2 : maxY <= 20 ? 5 :
-        maxY <= 50 ? 10 : maxY <= 100 ? 20 : maxY <= 200 ? 50 : 100;
-}
-
-function calculerTicksYGraphique(maxY) {
-    const pas = pasYGraphique(maxY);
-    const vals = [];
-    for (let v = 0; v <= maxY + pas; v += pas) vals.push(Math.round(v * 100) / 100);
-    return vals;
-}
-
 function dessinerGraphique(donnees) {
     // Mémorisé pour pouvoir redessiner avec les couleurs à jour au bascule
     // clair/sombre (basculerTheme, base.html) — sans ça, gridcolor/bordure/
@@ -167,8 +150,8 @@ function dessinerGraphique(donnees) {
 
     const maxYRetard = maxYDeLaSerie(donnees.retard);
     const maxYPct = maxYDeLaSerie(donnees.pct);
-    const ticksYRetard = calculerTicksYGraphique(maxYRetard);
-    const ticksYPct = calculerTicksYGraphique(maxYPct);
+    const ticksYRetard = calculerTicksYAxe(maxYRetard);
+    const ticksYPct = calculerTicksYAxe(maxYPct);
     const bordure = couleurTheme("--bordure");
 
     const layout = {
@@ -200,20 +183,20 @@ function dessinerGraphique(donnees) {
             // minor.dtick fonctionne, d'où le calcul par pas plutôt que par
             // liste explicite (contrairement aux graduations majeures,
             // volontairement en tableau pour éviter une graduation
-            // négative — voir calculerPlageYGraphique/calculerTicksYGraphique
+            // négative — voir calculerPlageYGraphique/calculerTicksYAxe
             // plus haut). Effet de bord mineur accepté : dtick génère aussi,
             // en toute rigueur, un trait secondaire (sans nombre) juste sous
             // 0 s'il tombe dans la petite marge basse — à peine visible et
             // sans commune mesure avec le vrai bug (une graduation NOMBRÉE
             // en négatif) déjà corrigé sur les majeures.
-            minor: { dtick: pasYGraphique(maxYRetard) / 2, ticks: "outside", ticklen: 3, tickcolor: bordure },
+            minor: { dtick: pasYAxe(maxYRetard) / 2, ticks: "outside", ticklen: 3, tickcolor: bordure },
         },
         yaxis2: {
             domain: [0, 0.42], title: { text: noms.pct },
             range: calculerPlageYGraphique(maxYPct), tickmode: "array", tickvals: ticksYPct,
             zeroline: false, showline: true, linecolor: bordure, gridcolor: bordure,
             ticks: "outside", ticklen: 4, tickcolor: bordure,
-            minor: { dtick: pasYGraphique(maxYPct) / 2, ticks: "outside", ticklen: 3, tickcolor: bordure },
+            minor: { dtick: pasYAxe(maxYPct) / 2, ticks: "outside", ticklen: 3, tickcolor: bordure },
         },
         // Repère "0" pointillé sur les deux sous-graphiques, comme
         // tracer_serie_temporelle (graphiques.py:42) — zeroline (Plotly) ne

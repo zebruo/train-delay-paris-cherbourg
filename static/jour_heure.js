@@ -7,25 +7,11 @@
 // catégories), pas d'axe commun à synchroniser entre eux.
 
 // couleurTheme : voir theme_commun.js (chargé avant ce fichier, base.html).
-
-// Paliers fins (0.5/1/2 min...), comme graphique.js — "retard moyen" est
-// une moyenne continue, pas un retard brut multiple de 5 (voir mémoire du
-// projet). Noms distincts de graphique.js/train.js : ces trois scripts
-// sont chargés ensemble sur toutes les pages (base.html) et partagent le
-// même scope global — un même nom ferait gagner silencieusement la
-// définition chargée en dernier, sans aucune erreur JS (repéré en
-// pratique le 2026-08-06 sur l'onglet Graphique).
-function pasYJourHeure(maxY) {
-    return maxY <= 2 ? 0.5 : maxY <= 5 ? 1 : maxY <= 10 ? 2 : maxY <= 20 ? 5 :
-        maxY <= 50 ? 10 : maxY <= 100 ? 20 : maxY <= 200 ? 50 : 100;
-}
-
-function calculerTicksYJourHeure(maxY) {
-    const pas = pasYJourHeure(maxY);
-    const vals = [];
-    for (let v = 0; v <= maxY + pas; v += pas) vals.push(Math.round(v * 100) / 100);
-    return vals;
-}
+// pasYAxe/calculerTicksYAxe (paliers fins 0.5/1/2 min..., "retard moyen"
+// est une moyenne continue, pas un retard brut multiple de 5, voir mémoire
+// du projet) : idem, viennent aussi de theme_commun.js — étaient dupliqués
+// à l'identique ici sous le nom pasYJourHeure/calculerTicksYJourHeure
+// (audit .js, 2026-08-31).
 
 // Pas de marge négative sous 0 ici (contrairement à calculerPlageY côté
 // train.js/graphique.js) : ces barres partent toujours exactement de 0
@@ -127,10 +113,10 @@ function dessinerBarre(cle, donnees) {
         },
         yaxis: {
             title: { text: config.ylabel }, rangemode: "tozero",
-            tickmode: "array", tickvals: calculerTicksYJourHeure(maxY),
+            tickmode: "array", tickvals: calculerTicksYAxe(maxY),
             showline: true, linecolor: bordure, gridcolor: bordure,
             ticks: "outside", ticklen: 4, tickcolor: bordure,
-            minor: { dtick: pasYJourHeure(maxY) / 2, ticks: "outside", ticklen: 3, tickcolor: bordure },
+            minor: { dtick: pasYAxe(maxY) / 2, ticks: "outside", ticklen: 3, tickcolor: bordure },
         },
         // Repère à 0, plein (pas pointillé) : ax.axhline(0, color="gray",
         // linewidth=0.6) côté viewer.py (_tracer_barres_fiabilite:1919) —
