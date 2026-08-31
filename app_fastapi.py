@@ -913,7 +913,26 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
         )
         connexion_rapport = sqlite3.connect(OBSERVATIONS_DB)
         try:
-            contexte.update(calculer_contexte_rapport_pour_affichage(connexion_rapport, rapports_periode))
+            # Palier 0 : hebdomadaire/mensuel précalculés par rafraichir_
+            # caches_historique.py (~3,7s / 7-19s à froid mesurés le
+            # 2026-08-31, invalidé par le cache mémoire existant à chaque
+            # nouveau relevé, donc repassait à froid très régulièrement) —
+            # quotidien reste déjà rapide (~0,2s), pas concerné. Un seul
+            # cache par période ici (pas de filtre Gare/Train/Sens sur cet
+            # onglet, contrairement à Graphique/Par jour-heure).
+            contexte_cache = None
+            if rapports_periode in ("hebdomadaire", "mensuel"):
+                fin_local = calculer_periode(rapports_periode, pd.Timestamp.now(tz="UTC"))[1]
+                contexte_cache = _lire_cache_rapport_historique(connexion_rapport, rapports_periode, fin_local)
+            if contexte_cache is not None:
+                # format_min_sans_zero : la fonction elle-même (pas une
+                # donnée), retirée avant sérialisation JSON côté
+                # rafraichir_caches_historique.py (non sérialisable) —
+                # ré-attachée ici, identique quel que soit le chemin.
+                contexte.update(contexte_cache)
+                contexte["format_min_sans_zero"] = format_min_sans_zero
+            else:
+                contexte.update(calculer_contexte_rapport_pour_affichage(connexion_rapport, rapports_periode))
         finally:
             connexion_rapport.close()
     elif contexte["vue"] == "gtfs":
@@ -1056,6 +1075,38 @@ def _lire_cache_jour_heure_historique(connexion):
         return None
     derniere_maj_iso, contexte_json = row
     try:
+        if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
+            return None
+        return json.loads(contexte_json)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+
+
+def _lire_cache_rapport_historique(connexion, nom_periode, fin_local):
+    """Lit la ligne de cache_rapport_historique pour nom_periode (écrite par
+    rafraichir_caches_historique.py, une ligne par période — pas de filtre
+    Gare/Train/Sens sur cet onglet, contrairement à Graphique/Par jour-
+    heure) — renvoie le contexte déjà construit (même forme que
+    calculer_contexte_rapport_pour_affichage) si présent, pas trop ancien,
+    ET si la période stockée (fin_local_iso) correspond toujours à la
+    période actuelle : une semaine/un mois qui vient de "rouler" doit
+    invalider même un cache tout frais — même logique que le cache mémoire
+    _cache_resultats_rapport (clé (nom_periode, fin_local) en plus de
+    l'âge). Sinon None, l'appelant retombe sur le calcul live."""
+    try:
+        row = connexion.execute(
+            "SELECT fin_local_iso, derniere_maj_iso, contexte_json FROM cache_rapport_historique "
+            "WHERE nom_periode = ?",
+            (nom_periode,),
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    fin_local_iso, derniere_maj_iso, contexte_json = row
+    try:
+        if fin_local_iso != fin_local.isoformat():
+            return None
         if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
             return None
         return json.loads(contexte_json)
