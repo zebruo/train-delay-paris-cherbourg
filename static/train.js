@@ -121,6 +121,14 @@ function dessinerTrain(donnees) {
             tickvals: donnees.labels.map((_, i) => i),
             ticktext: donnees.labels,
             tickangle: -45,
+            // Sans ça, le nom de gare le plus long (ex: "Bourgtheroulde -
+            // Thuit-Hébert") dépasse la marge basse fixe (margin.b plus
+            // bas) et se fait tronquer par le bord du graphique — repéré
+            // par l'utilisateur, 2026-08-31. automargin laisse Plotly
+            // élargir cette marge au besoin, selon la taille réelle des
+            // étiquettes rendues, plutôt qu'une valeur fixe pensée pour le
+            // cas courant.
+            automargin: true,
             // Plotly trace par défaut une "zeroline" verticale à x=0 (pensée
             // pour un axe numérique) — ici la première gare (Caen) est
             // justement à x=0, donc cette ligne noire tombait pile dessus et
