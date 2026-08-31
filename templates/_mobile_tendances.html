@@ -68,9 +68,12 @@
                 {% endfor %}
             </div>
             {% else %}
-            <div class="mobile-axe">
-                <span>{{ barres_pct.barres[0].label }}</span>
-                <span>{{ barres_pct.barres[-1].label }}</span>
+            <div class="mobile-axe mobile-axe-heure">
+                <span style="left: 2.083%; transform: translateX(-50%);">{{ barres_pct.barres[0].label }}</span>
+                <span style="left: 27.083%; transform: translateX(-50%);">{{ barres_pct.barres[6].label }}</span>
+                <span style="left: 52.083%; transform: translateX(-50%);">{{ barres_pct.barres[12].label }}</span>
+                <span style="left: 77.083%; transform: translateX(-50%);">{{ barres_pct.barres[18].label }}</span>
+                <span style="left: 97.917%; transform: translateX(-50%);">{{ barres_pct.barres[-1].label }}</span>
             </div>
             {% endif %}
         </div>

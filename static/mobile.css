@@ -356,6 +356,22 @@ répartition flex:1 que .mobile-barre-conteneur pour rester aligné. */
     flex: 1;
     text-align: center;
 }
+/* Variante "Par heure" (24 barres, seulement 5 repères 0h/6h/12h/18h/23h) :
+justify-content:space-between (utilisé avant) espace les LABELS entre eux
+uniformément, sans lien avec la position réelle des barres qu'ils sont
+censés désigner — visiblement décalé dès 6h/12h/18h (repéré par
+l'utilisateur, 2026-09-01). Positionnement absolu à la fraction exacte du
+centre de la barre correspondante (barre i sur 24 → centre à (i+0.5)/24)
+à la place. */
+.mobile-axe-heure {
+    position: relative;
+    height: 13px;
+}
+.mobile-axe-heure span {
+    position: absolute;
+    top: 0;
+    white-space: nowrap;
+}
 
 .mobile-section-titre {
     font-size: 10px;
