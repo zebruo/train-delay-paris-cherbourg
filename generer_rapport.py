@@ -602,8 +602,11 @@ def generer(nom_periode, maintenant=None):
     fig = plt.figure(figsize=(8.27, 11.69), constrained_layout=True)
     # Espace supplémentaire entre les graphiques (et les autres blocs) —
     # constrained_layout calcule déjà l'espace nécessaire à partir de
-    # l'encombrement réel de chaque axe, ce pad s'ajoute par-dessus.
-    fig.set_constrained_layout_pads(hspace=0.04)
+    # l'encombrement réel de chaque axe, ce pad s'ajoute par-dessus. w_pad
+    # (marge gauche/droite entre le cadre des graphiques et le bord de la
+    # page, au lieu de la valeur par défaut de matplotlib ~0.042 pouce) :
+    # demande explicite de l'utilisateur, 2026-09-01.
+    fig.set_constrained_layout_pads(hspace=0.04, w_pad=0.15)
     # Le top 5 des circulations les plus perturbées ne représente presque
     # rien à l'échelle d'un mois (5 sur ~1500-1800, sous 0,5 %, contre ~4 %
     # pour un rapport quotidien) et fait doublon avec "Vue d'ensemble du
@@ -772,23 +775,22 @@ def generer(nom_periode, maintenant=None):
         ax_d.axis("off")
         ax_d.set_xlim(0, 1)
         ax_d.set_ylim(0, 1)
-        ax_d.text(0, 0.7, "Vue d'ensemble du mois", fontsize=10, fontweight="bold", va="center")
-        if moyenne_mois is not None:
-            if moyenne_mois_precedent is not None:
-                delta = moyenne_mois - moyenne_mois_precedent
-                couleur_delta = "#c0392b" if delta > 0 else "#2f855a"
-                texte_comparaison = (
-                    f"{moyenne_mois:.0f} % de circulations perturbées ce mois-ci, contre "
-                    f"{moyenne_mois_precedent:.0f} % le mois précédent "
-                    f"({'+' if delta >= 0 else ''}{delta:.0f} points)"
-                )
-            else:
-                couleur_delta = "#555"
-                texte_comparaison = (
-                    f"{moyenne_mois:.0f} % de circulations perturbées ce mois-ci "
-                    "(comparaison au mois précédent indisponible)"
-                )
-            ax_d.text(0, 0.15, texte_comparaison, fontsize=8.5, color=couleur_delta, va="center")
+        # Ni titre "Vue d'ensemble du mois" (les 5 graphiques juste en
+        # dessous ont déjà chacun leur propre titre explicite) ni phrase de
+        # repli quand la comparaison est indisponible (elle ne faisait que
+        # reformuler le % déjà donné dans la barre de stats juste au-dessus,
+        # sans aucune information nouvelle) — demande explicite de
+        # l'utilisateur, 2026-09-01. Cette ligne ne s'affiche donc que
+        # lorsqu'elle apporte une vraie comparaison.
+        if moyenne_mois is not None and moyenne_mois_precedent is not None:
+            delta = moyenne_mois - moyenne_mois_precedent
+            couleur_delta = "#c0392b" if delta > 0 else "#2f855a"
+            texte_comparaison = (
+                f"{moyenne_mois:.0f} % de circulations perturbées ce mois-ci, contre "
+                f"{moyenne_mois_precedent:.0f} % le mois précédent "
+                f"({'+' if delta >= 0 else ''}{delta:.0f} points)"
+            )
+            ax_d.text(0, 0.5, texte_comparaison, fontsize=8.5, color=couleur_delta, va="center")
 
         ax_a = fig.add_subplot(gs[3, :])
         ax_b = fig.add_subplot(gs[4, :])
@@ -813,7 +815,7 @@ def generer(nom_periode, maintenant=None):
         else:
             ax_a.plot(jours_periode, pct_par_jour.values, color="#c2410c", marker="o", markersize=3, linewidth=1.3)
             marquer_ligne_moyenne(ax_a, moyenne_mois, "#c2410c", " %")
-            ax_a.set_title("% de circulations perturbées, jour par jour", fontsize=9, fontweight="bold", loc="left")
+            ax_a.set_title("% de circulations perturbées, jour par jour", fontsize=9, fontweight="bold", loc="center")
             ax_a.set_ylabel("% perturbées", fontsize=8)
             ax_a.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m"))
             ax_a.tick_params(labelsize=7)
@@ -827,7 +829,7 @@ def generer(nom_periode, maintenant=None):
             # dépend que de la forme de la montée (linéaire vs. tardive) et
             # n'est pas un repère comparatif utile — jugé peu pertinent par
             # l'utilisateur, 2026-08-03.
-            ax_b.set_title("Retard cumulé sur le mois (croissant)", fontsize=9, fontweight="bold", loc="left")
+            ax_b.set_title("Retard cumulé sur le mois (croissant)", fontsize=9, fontweight="bold", loc="center")
             ax_b.set_ylabel("Heures cumulées", fontsize=8)
             ax_b.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m"))
             ax_b.tick_params(labelsize=7)
@@ -862,7 +864,7 @@ def generer(nom_periode, maintenant=None):
                 "Retard moyen par gare", stats_gare_mois, "moyenne", GARES_LIGNE_ORDRE, str,
                 lambda v: f"{v:.1f} min", SEUIL_FIABLE_MENSUEL,
             )
-            ax_c.set_title(titre_gare_mois, fontsize=9, fontweight="bold", loc="left")
+            ax_c.set_title(titre_gare_mois, fontsize=9, fontweight="bold", loc="center")
             ax_c.set_ylabel("min", fontsize=8)
             ax_c.tick_params(axis="y", labelsize=7)
             ax_c.axhline(0, color="gray", linewidth=0.6)
@@ -887,7 +889,7 @@ def generer(nom_periode, maintenant=None):
                 "Retard moyen par jour", stats_jour_mois, "moyenne", JOURS_SEMAINE_ORDRE, str.lower,
                 lambda v: f"{v:.1f} min", SEUIL_FIABLE_MENSUEL,
             )
-            ax_e.set_title(titre_jour_mois, fontsize=9, fontweight="bold", loc="left")
+            ax_e.set_title(titre_jour_mois, fontsize=9, fontweight="bold", loc="center")
             ax_e.set_ylabel("min", fontsize=8)
             ax_e.tick_params(axis="y", labelsize=7)
             ax_e.axhline(0, color="gray", linewidth=0.6)
@@ -915,7 +917,7 @@ def generer(nom_periode, maintenant=None):
                 "Retard moyen par heure", stats_heure_mois, "moyenne", labels_heure_mois, lambda l: f"à {l}",
                 lambda v: f"{v:.1f} min", SEUIL_FIABLE_MENSUEL,
             )
-            ax_f.set_title(titre_heure_mois, fontsize=9, fontweight="bold", loc="left")
+            ax_f.set_title(titre_heure_mois, fontsize=9, fontweight="bold", loc="center")
             ax_f.set_ylabel("min", fontsize=8)
             ax_f.tick_params(axis="y", labelsize=7)
             ax_f.axhline(0, color="gray", linewidth=0.6)
