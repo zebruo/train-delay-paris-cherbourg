@@ -7,23 +7,28 @@ frise / "Suivi d'un train" de viewer.py, mais sans dépendance à Tkinter
 
 Usage : python generer_rapport.py quotidien|hebdomadaire|mensuel
 
-Tourne sur le Pi 4 (aarch64, matplotlib a un paquet précompilé sur cette
-architecture — contrairement à l'ancien Pi ARM32 évoqué en mémoire du
+Tourne sur un Raspberry Pi (aarch64, matplotlib a un paquet précompilé sur
+cette architecture — contrairement à l'ancien Pi ARM32 évoqué en mémoire du
 projet, 2026-07-24, où ce n'était pas le cas), via executer_rapport_pi.sh,
-planifié par cron sur le Pi. observations.db/alertes.csv sont rapatriés
-depuis la VPS par ce même script juste avant l'appel à ce fichier (la VPS
-est la seule source de collecte depuis le 2026-08-14, le Pi ne collecte
-plus lui-même — voir mémoire du projet) — pas par ce module, qui reste
-volontairement seulement responsable de la génération, pas du
-rapatriement. executer_rapport.sh (Planificateur de tâches Windows) reste
-disponible pour un lancement ponctuel depuis le PC, sur sa propre copie
-locale (rapatriée par viewer.py).
+planifié par cron. Depuis le 2026-09-01 : quotidien/hebdomadaire tournent
+sur Pi 2, mensuel sur Pi 4 — "mensuel" est le plus gourmand en mémoire
+(mois courant + mois précédent + 3 graphiques gare/jour/heure) et a été tué
+par l'OOM killer sur Pi 2 (~942 Mo de RAM) le tout premier mois où ce cron
+a eu l'occasion de tourner ; Pi 4 (3,7 Go) l'encaisse sans souci (voir
+mémoire du projet). observations.db/alertes.csv/le référentiel GTFS sont
+rapatriés depuis la VPS par ce même script juste avant l'appel à ce fichier
+(la VPS est la seule source de collecte depuis le 2026-08-14, le Pi ne
+collecte plus lui-même — voir mémoire du projet) — pas par ce module, qui
+reste volontairement seulement responsable de la génération, pas du
+rapatriement. L'ancienne chaîne PC/Planificateur de tâches Windows
+(executer_rapport.sh/envoyer_rapport_nas.sh) a été retirée le 2026-09-01 :
+maintenir le PC allumé en permanence irait à l'encontre de l'intérêt même
+de la bascule vers le Pi/VPS.
 
 Écrit dans rapports/<periode>/NNNN_rapport_<periode>_JJ-MM-AAAA.pdf (un
 fichier par génération, numéroté, jamais écrasé — historique conservé comme
 pour backups/). Envoyé ensuite vers le NAS par envoyer_rapport_nas_pi.sh
-(rsync/SSH) — pas envoyer_rapport_nas.sh (powershell.exe/UNC), qui ne
-fonctionne que depuis le PC.
+(rsync/SSH).
 """
 import json
 import os
