@@ -3,11 +3,11 @@
     (listes déroulantes ouvertes, ascenseurs...) — sans ça, leur apparence
     dépend du thème système plutôt que du thème choisi dans l'appli. */
     color-scheme: light;
-    --fond: #f7f8fa;
+    --fond: #dbe1e6;
     --fond-secondaire: #f0f2f6;
     --texte: #262730;
     --texte-attenue: #555b66;
-    --bordure: #e0e2e6;
+    --bordure: #bcbfc5;
     --accent: #b01678;
     --pastille-fond: rgba(33, 197, 94, 0.16);
     --pastille-texte: #16a34a;
@@ -54,11 +54,11 @@ enregistré), seule la règle @media ci-dessus s'applique. */
 
 :root[data-theme="light"] {
     color-scheme: light;
-    --fond: #f7f8fa;
+    --fond: #dbe1e6;
     --fond-secondaire: #f0f2f6;
     --texte: #262730;
     --texte-attenue: #555b66;
-    --bordure: #e0e2e6;
+    --bordure: #bcbfc5;
     --accent: #b01678;
     --pastille-fond: rgba(33, 197, 94, 0.16);
     --pastille-texte: #16a34a;
@@ -504,15 +504,44 @@ permanence, plus de vrai bascule ouvert/fermé (repéré par l'utilisateur,
    l'utilisateur, 2026-08-06). Beaucoup de contenu (~14 sections + sources) :
    hauteur plafonnée avec défilement interne plutôt que de déborder de
    l'écran, et position: relative pour ancrer la croix de fermeture. */
+/* Le <dialog> lui-même reste un élément aussi "nu" que possible (pas de
+   position/display personnalisés) : le centrage au clic sur "?" et la
+   fermeture (croix, bouton "Fermer", touche Échap) reposent sur le
+   comportement natif du navigateur pour un <dialog> modal — fiable et
+   utilisé sans souci sur ce site pendant des mois. Deux tentatives
+   précédentes de personnaliser position/display DIRECTEMENT sur le
+   <dialog> (display: flex pour la mise en page interne, puis position:
+   fixed + inset: 0 + margin: auto pour un centrage "explicite") ont chacune
+   cassé quelque chose de différent, constaté par l'utilisateur sur
+   plusieurs navigateurs y compris en navigation privée : dialogue mal
+   dimensionné, puis fermeture totalement impossible alors même que
+   `dialogueAide.open` finissait par valoir `false` en console — signe
+   que le navigateur perdait le fil du cycle de vie/repaint du <dialog>
+   modal une fois sa propre position/display personnalisés, pas un
+   problème de notre JS de fermeture. La mise en page interne (en-tête
+   fixe + corps défilant) est maintenant portée entièrement par
+   .aide-mise-en-page ci-dessous, un simple <div> enfant — jamais par le
+   <dialog> lui-même. 2026-09-01. */
 dialog#dialogue-aide {
-    position: relative;
     max-width: 52rem;
     max-height: 85vh;
-    overflow-y: auto;
+    overflow: hidden;
     border: 2px solid var(--bordure);
     background: var(--fond);
     color: var(--texte);
-    padding: 1.25rem 1.75rem;
+    padding: 0;
+}
+
+/* Porte la mise en page interne (en-tête fixe + corps défilant) que le
+   <dialog> parent ne doit plus porter lui-même (voir commentaire
+   ci-dessus) — même logique flex qu'avant : max-height clamps la hauteur
+   de ce wrapper à 85vh, ce qui force .aide-corps (flex: 1, min-height: 0)
+   à se rétrécir et défiler plutôt que de pousser le contenu au-delà. */
+.aide-mise-en-page {
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh;
+    overflow: hidden;
 }
 
 dialog#dialogue-aide::backdrop {
@@ -522,17 +551,43 @@ dialog#dialogue-aide::backdrop {
 dialog#dialogue-aide h2 {
     margin-top: 0;
     font-size: 1.1rem;
+    text-align: center;
 }
 
-/* Collée en haut (position: sticky, reste visible pendant le défilement du
-   dialogue), alignée à droite via margin-left: auto plutôt qu'un float
-   (peu fiable combiné à sticky) : premier élément focusable du dialogue,
-   pas le bouton "Fermer" tout en bas — sans elle, showModal() focalisait
-   ce bouton par défaut et le dialogue s'ouvrait déjà défilé jusqu'en bas
-   (repéré par l'utilisateur, 2026-08-06). */
+/* Titre + intro (.aide-entete-fixe) reste visible en haut du dialogue
+   pendant le défilement — demande explicite de l'utilisateur, 2026-09-01.
+   Plutôt qu'un position: sticky sur un dialogue entièrement scrollable
+   (essayé d'abord, deux bugs constatés par l'utilisateur : le contenu
+   défilé traversait visiblement l'en-tête/le pied de page, capture
+   d'écran ; puis la barre de scroll du dialogue remontait visuellement
+   jusque dans l'en-tête, puisqu'elle reflétait le scroll du dialogue en
+   entier), le dialogue est maintenant un flex column : .aide-entete-fixe
+   est un item flex normal (flex-shrink: 0, pas de position/scroll
+   particulier) et .aide-corps ci-dessous est le SEUL élément qui défile
+   (overflow-y: auto) — la barre de scroll n'apparaît donc plus que le
+   long de .aide-corps, jamais à côté de l'en-tête. min-height: 0 est
+   nécessaire pour qu'un enfant flex avec overflow:auto puisse réellement
+   se rétrécir et défiler au lieu de pousser le dialogue au-delà de sa
+   max-height. */
+.aide-entete-fixe {
+    flex-shrink: 0;
+    padding: 1.25rem 1.75rem 0.5rem;
+}
+
+.aide-corps {
+    overflow-y: auto;
+    min-height: 0;
+    padding: 0 1.75rem;
+}
+
+.aide-pied-fixe {
+    padding-top: 0.75rem;
+    padding-bottom: 1.25rem;
+    margin-top: 1.25rem;
+    border-top: 1px solid var(--bordure);
+}
+
 .dialogue-fermer {
-    position: sticky;
-    top: 0;
     display: block;
     margin-left: auto;
     margin-bottom: -1.6rem;
@@ -553,7 +608,7 @@ dialog#dialogue-aide h2 {
 
 /* Paragraphes "Sources des données" nus (pas dans .aide-section, contenu
    plus court/plat) — même gabarit que .aide-section > p. */
-dialog#dialogue-aide > p {
+.aide-pied-fixe > p {
     font-size: 0.85rem;
     margin: 0.5rem 0;
 }

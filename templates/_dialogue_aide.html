@@ -1,12 +1,16 @@
 <dialog id="dialogue-aide">
-    <button type="button" class="dialogue-fermer" aria-label="Fermer"
-            onclick="this.closest('dialog').close()">×</button>
-    <h2>Comment lire les statistiques</h2>
-    <p class="info">
-        Guide de référence — ce que veut dire chaque chiffre, avec un exemple concret,
-        que ce soit dans l'application de suivi ou dans les rapports quotidien/hebdomadaire/mensuel.
-    </p>
+    <div class="aide-mise-en-page">
+    <div class="aide-entete-fixe">
+        <button type="button" class="dialogue-fermer" aria-label="Fermer"
+                onclick="this.closest('dialog').close()">×</button>
+        <h2>Comment lire les statistiques</h2>
+        <p class="info">
+            Guide de référence — ce que veut dire chaque chiffre, avec un exemple concret,
+            que ce soit dans l'application de suivi ou dans les rapports quotidien/hebdomadaire/mensuel.
+        </p>
+    </div>
 
+    <div class="aide-corps">
     <h3 class="aide-theme">1. Combien de trains ont été touchés ?</h3>
 
     <section class="aide-section">
@@ -32,16 +36,18 @@
             à Cherbourg sera compté comme 100 % ponctuel dans les statistiques officielles,
             ignorant la perturbation subie par les voyageurs descendant à Lison. Notre indicateur
             compte tout train ayant subi un retard à un moment quelconque de son trajet, même s'il
-            a été rattrapé ensuite. La ponctualité officielle évalue la performance au terminus ;
-            le taux de « circulations perturbées » reflète l'impact réel vécu tout au long de la ligne.
+            a été rattrapé ensuite — mais seulement les circulations avec un retard réellement
+            connu et confirmées arrivées à leur terminus. La ponctualité officielle évalue la
+            performance au terminus ; le taux de « circulations perturbées » reflète l'impact réel
+            vécu tout au long de la ligne.
         </p>
         <p class="aide-pourquoi">
             Le tooltip précise aussi « issues de X trains différents parmi les Y du référentiel » —
-            X peut dépasser Y sans que ce soit un souci en cours. Ce chiffre porte sur toute la
-            collecte depuis le début : un train observé un jour où le référentiel ne le connaissait
-            pas encore reste compté dans X même après une mise à jour qui l'a depuis intégré. Ce
-            n'est donc pas un indicateur de fraîcheur du référentiel à l'instant présent — voir
-            « Vérification GTFS » plus bas pour ça.
+            X peut dépasser Y sans que ce soit un problème actuel. Le référentiel est reconstruit à
+            partir d'un export SNCF limité à une fenêtre glissante d'environ 151 jours : une
+            variante d'horaire ancienne peut en sortir au fil des régénérations et disparaître du
+            référentiel, même si le train a bien circulé et reste compté dans X. Pour savoir si le
+            référentiel est à jour maintenant, voir « Vérification GTFS » plus bas.
         </p>
     </section>
 
@@ -410,15 +416,18 @@
         </p>
     </section>
 
-    <h3 class="aide-theme">Sources des données</h3>
-    <p>Retards en temps réel : proxy.transport.data.gouv.fr (flux GTFS-RT SNCF, public, sans clé)</p>
-    <p>Météo actuelle : api.open-meteo.com (gratuit, sans clé)</p>
-    <p>Horaires théoriques (référence des trajets/arrêts) : eu.ftp.opendatasoft.com/sncf/plandata (GTFS statique SNCF)</p>
-    <p>Jours fériés : calendrier.api.gouv.fr</p>
-    <p>Vacances scolaires (zone B) : data.education.gouv.fr</p>
-    <p>Toutes ces sources sont publiques et gratuites, sans authentification.</p>
+    <div class="aide-pied-fixe">
+        <h3 class="aide-theme">Sources des données</h3>
+        <p>Retards en temps réel : proxy.transport.data.gouv.fr (flux GTFS-RT SNCF, public, sans clé)</p>
+        <p>Météo actuelle : api.open-meteo.com (gratuit, sans clé)</p>
+        <p>Horaires théoriques (référence des trajets/arrêts) : eu.ftp.opendatasoft.com/sncf/plandata (GTFS statique SNCF)</p>
+        <p>Jours fériés : calendrier.api.gouv.fr</p>
+        <p>Vacances scolaires (zone B) : data.education.gouv.fr</p>
+        <p>Toutes ces sources sont publiques et gratuites, sans authentification.</p>
 
-    <form method="dialog">
-        <button type="submit">Fermer</button>
-    </form>
+        <form method="dialog">
+            <button type="submit">Fermer</button>
+        </form>
+    </div>
+    </div>
 </dialog>
