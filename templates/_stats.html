@@ -9,7 +9,7 @@
             <div class="stat-valeur">
                 {{ stats_ratio.en_retard }} / {{ stats_ratio.total }}
                 {% if pct_perturbe is not none %}
-                    <span class="pastille">{{ "%.0f"|format(pct_perturbe) }} %</span>
+                    <span class="pastille pastille-rouge">{{ "%.0f"|format(pct_perturbe) }} %</span>
                 {% endif %}
             </div>
         </div>
@@ -47,7 +47,7 @@
             <div class="stat-label">Circulations annulées <span class="icone-info" title="Nombre de circulations annulées sur cette période (voir aussi onglet Perturbations), touchant au moins une des 11 gares de la ligne — invisibles des autres stats, un trajet annulé n'atteignant jamais son terminus dans les données (donc jamais considéré comme « arrivé »).">ℹ</span></div>
             <div class="stat-valeur">
                 {{ annulations|length }}
-                {% if annulations %}<span class="pastille">{{ annulations|join(", ") }}</span>{% endif %}
+                {% if annulations %}<span class="pastille pastille-rouge">{{ annulations|join(", ") }}</span>{% endif %}
             </div>
         </div>
     {% endif %}

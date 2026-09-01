@@ -11,6 +11,8 @@
     --accent: #b01678;
     --pastille-fond: rgba(33, 197, 94, 0.16);
     --pastille-texte: #16a34a;
+    --rouge-fond: rgba(239, 68, 68, 0.14);
+    --rouge-texte: #dc2626;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +26,8 @@
         --accent: #c21758;
         --pastille-fond: rgba(34, 197, 94, 0.2);
         --pastille-texte: #4ade80;
+        --rouge-fond: rgba(248, 113, 113, 0.14);
+        --rouge-texte: #f87171;
     }
 }
 
@@ -44,6 +48,8 @@ enregistré), seule la règle @media ci-dessus s'applique. */
     --accent: #c21758;
     --pastille-fond: rgba(34, 197, 94, 0.2);
     --pastille-texte: #4ade80;
+    --rouge-fond: rgba(248, 113, 113, 0.14);
+    --rouge-texte: #f87171;
 }
 
 :root[data-theme="light"] {
@@ -56,6 +62,8 @@ enregistré), seule la règle @media ci-dessus s'applique. */
     --accent: #b01678;
     --pastille-fond: rgba(33, 197, 94, 0.16);
     --pastille-texte: #16a34a;
+    --rouge-fond: rgba(239, 68, 68, 0.14);
+    --rouge-texte: #dc2626;
 }
 
 * {
@@ -711,6 +719,16 @@ de l'utilisateur, 2026-08-14. */
     color: var(--pastille-texte);
     font-size: 0.75rem;
     font-weight: 600;
+}
+/* Circulations perturbées/annulées (voir _stats.html) : ces deux chiffres
+sont négatifs, contrairement à "Trajets sans perturbation" qui garde le
+vert par défaut — le vert de .pastille (même variable que le badge "à
+l'heure") envoyait un signal positif contradictoire, repéré par
+l'utilisateur, 2026-09-01 (mockup validé, variante rouge). Même famille de
+couleur que tr.retard-fort (Tableau) et --rouge-fond/-texte côté mobile. */
+.pastille-rouge {
+    background: var(--rouge-fond);
+    color: var(--rouge-texte);
 }
 
 .info {
