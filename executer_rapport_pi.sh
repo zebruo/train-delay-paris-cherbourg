@@ -21,6 +21,19 @@ PERIODE="$1"
 
 SSH_OPTS_VPS="-i $SSH_KEY_VPS -o BatchMode=yes"
 rsync -az -e "ssh $SSH_OPTS_VPS" "$VPS_HOST:train-delay-paris-cherbourg/observations.db" observations.db
+# Comme observations.db (pas best-effort) : "Déployer vers la VPS"
+# (viewer.py) ne pousse le référentiel régénéré QUE vers la VPS, jamais
+# vers les Pi — un référentiel local resté sur le disque du Pi peut donc
+# dériver silencieusement de celui de la VPS pendant des semaines (repéré
+# le 2026-09-01 : référentiel du Pi daté du 12/08, celui de la VPS mis à
+# jour la veille, rapport PDF et onglet web en désaccord sur la quasi-
+# totalité des statistiques du mois, pas seulement les annulations). Mieux
+# vaut un rapport qui échoue franchement (VPS injoignable) qu'un rapport
+# généré avec un référentiel qu'on sait daté.
+rsync -az -e "ssh $SSH_OPTS_VPS" "$VPS_HOST:train-delay-paris-cherbourg/reference_paris_cherbourg.csv" reference_paris_cherbourg.csv
+rsync -az -e "ssh $SSH_OPTS_VPS" \
+    "$VPS_HOST:train-delay-paris-cherbourg/reference_paris_cherbourg_calendrier.csv" \
+    reference_paris_cherbourg_calendrier.csv
 # Best-effort : contrairement à observations.db, l'absence d'alertes.csv (ex:
 # aucune alerte pertinente détectée depuis le début de la collecte sur la
 # VPS) ne doit pas empêcher la génération du rapport — generer_rapport.py
