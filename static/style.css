@@ -13,6 +13,8 @@
     --pastille-texte: #16a34a;
     --rouge-fond: rgba(239, 68, 68, 0.14);
     --rouge-texte: #dc2626;
+    --bleu-fond: rgba(59, 130, 246, 0.14);
+    --bleu-texte: #3b82f6;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -28,6 +30,8 @@
         --pastille-texte: #4ade80;
         --rouge-fond: rgba(248, 113, 113, 0.14);
         --rouge-texte: #f87171;
+        --bleu-fond: rgba(96, 165, 250, 0.16);
+        --bleu-texte: #60a5fa;
     }
 }
 
@@ -50,6 +54,8 @@ enregistré), seule la règle @media ci-dessus s'applique. */
     --pastille-texte: #4ade80;
     --rouge-fond: rgba(248, 113, 113, 0.14);
     --rouge-texte: #f87171;
+    --bleu-fond: rgba(96, 165, 250, 0.16);
+    --bleu-texte: #60a5fa;
 }
 
 :root[data-theme="light"] {
@@ -64,6 +70,8 @@ enregistré), seule la règle @media ci-dessus s'applique. */
     --pastille-texte: #16a34a;
     --rouge-fond: rgba(239, 68, 68, 0.14);
     --rouge-texte: #dc2626;
+    --bleu-fond: rgba(59, 130, 246, 0.14);
+    --bleu-texte: #3b82f6;
 }
 
 * {
@@ -786,6 +794,24 @@ couleur que tr.retard-fort (Tableau) et --rouge-fond/-texte côté mobile. */
     color: var(--rouge-texte);
 }
 
+/* Bleu (pas rouge) : un arrêt ajouté n'est pas un problème en soi,
+contrairement à annulé/supprimé — juste une info (le train dessert une gare
+hors référentiel théorique, voir formatting.format_heure_reelle et mémoire
+du projet). Même forme que .pastille-rouge, seule la couleur change. */
+.pastille-bleu {
+    background: var(--bleu-fond);
+    color: var(--bleu-texte);
+}
+
+/* Plus petite que le 0.75rem par défaut (.pastille ci-dessus) : les
+colonnes Train/Gare du Tableau restent étroites, demande explicite de
+l'utilisateur, 2026-09-02. N'affecte que .zone-scroll (le Tableau), pas
+les pastilles de la barre de stats (Circulations perturbées/annulées). */
+.zone-scroll .pastille {
+    font-size: 0.6rem;
+    font-weight: normal;
+}
+
 .info {
     font-size: 0.8rem;
     color: var(--texte-attenue);
@@ -1369,19 +1395,29 @@ distincts (voir .zone-scroll plus haut) — table-layout:fixed sans largeur
 explicite répartirait les colonnes de chaque <tr> indépendamment les unes
 des autres. Proportions reprises des largeurs naturelles observées
 précédemment (contenu le plus large en premier). */
-th:nth-child(1), td:nth-child(1) { width: 13%; }
-th:nth-child(2), td:nth-child(2) { width: 7%; }
-th:nth-child(3), td:nth-child(3) { width: 11%; }
-th:nth-child(4), td:nth-child(4) { width: 13%; }
-th:nth-child(5), td:nth-child(5) { width: 8%; }
-th:nth-child(6), td:nth-child(6) { width: 6%; }
+/* Train/Gare élargies (7%→14%, 13%→21%) pour laisser la place aux
+pastilles ANNULÉ/ARRÊT SUPPRIMÉ/ARRÊT AJOUTÉ (2026-09-02, plus grandes que
+les anciens badges à bordure qu'elles remplacent, voir .pastille-rouge/
+-bleu plus haut) — même dans le pire cas (gare la plus longue + badge le
+plus long sur la même ligne, ex: "Évreux Normandie" + "ARRÊT SUPPRIMÉ"),
+vérifié sans débordement (mesuré via getBoundingClientRect, pas juste à
+l'œil). Repris sur Heure théo./Arr./Dép./Temp./Pluie/Vent/Arrêts : leur
+contenu réel (heures courtes, petits nombres, "~17:25"...) tient largement
+dans ces largeurs réduites, marge vérifiée avant de trimmer. Somme
+toujours 100%. */
+th:nth-child(1), td:nth-child(1) { width: 8%; }
+th:nth-child(2), td:nth-child(2) { width: 10%; }
+th:nth-child(3), td:nth-child(3) { width: 9%; }
+th:nth-child(4), td:nth-child(4) { width: 15%; }
+th:nth-child(5), td:nth-child(5) { width: 9%; }
+th:nth-child(6), td:nth-child(6) { width: 7%; }
 th:nth-child(7), td:nth-child(7) { width: 6%; }
 th:nth-child(8), td:nth-child(8) { width: 6%; }
-th:nth-child(9), td:nth-child(9) { width: 8%; }
-th:nth-child(10), td:nth-child(10) { width: 8%; }
-th:nth-child(11), td:nth-child(11) { width: 4%; }
+th:nth-child(9), td:nth-child(9) { width: 6%; }
+th:nth-child(10), td:nth-child(10) { width: 6%; }
+th:nth-child(11), td:nth-child(11) { width: 6%; }
 th:nth-child(12), td:nth-child(12) { width: 6%; }
-th:nth-child(13), td:nth-child(13) { width: 4%; }
+th:nth-child(13), td:nth-child(13) { width: 6%; }
 
 tr.separateur td {
     padding: 0;
@@ -1432,29 +1468,106 @@ Arr./Dép.) — un trajet entièrement annulé garde son dernier retard prédit
 avant l'annulation dans le Tableau (observations.db ne reçoit plus rien
 après, voir calculer_contexte_travaux), sans quoi rien n'y distingue un
 train qui a vraiment circulé d'un train jamais parti — repéré par
-l'utilisateur sur le train 852610, 2026-08-19. */
-.badge-annule {
-    display: inline-block;
-    padding: 0.05rem 0.35rem;
-    border-radius: 3px;
-    border: 1px solid #ef4444;
-    color: #ef4444;
-    font-size: 0.7em;
-    font-weight: 600;
-    vertical-align: middle;
+l'utilisateur sur le train 852610, 2026-08-19. Style pastille (.pastille/
+.pastille-rouge/.pastille-bleu, voir plus haut) plutôt qu'un badge à
+bordure dédié — même traitement visuel que "Circulations perturbées"/
+"Circulations annulées", demande explicite de l'utilisateur, 2026-09-02 ;
+classes appliquées directement dans templates/_tableau.html. */
+
+/* Onglet Quizz (voir _quizz.html/quizz.js) — contenu statique, pas de
+mise en page particulière héritée d'un autre onglet à réutiliser. */
+.zone-quizz {
+    max-width: 40rem;
+    margin: 0 auto;
 }
 
-/* Bleu (pas rouge comme .badge-annule ci-dessus) : un arrêt ajouté n'est
-pas un problème en soi, contrairement à annulé/supprimé — juste une info
-(le train dessert une gare hors référentiel théorique, voir
-formatting.format_heure_reelle et mémoire du projet). */
-.badge-ajoute {
-    display: inline-block;
-    padding: 0.05rem 0.35rem;
-    border-radius: 3px;
-    border: 1px solid #3b82f6;
-    color: #3b82f6;
-    font-size: 0.7em;
+.quizz-intro {
+    color: var(--texte-attenue);
+    font-size: 0.9rem;
+    margin: 0.25rem 0 1.25rem;
+}
+
+#quizz-progression {
     font-weight: 600;
-    vertical-align: middle;
+    margin-bottom: 1rem;
+}
+
+#quizz-question-texte {
+    font-size: 0.9rem;
+    margin: 0 0 1rem;
+}
+
+#quizz-choix {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.quizz-choix-bouton {
+    text-align: left;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--bordure);
+    border-radius: 0.5rem;
+    background: var(--fond-secondaire);
+    color: var(--texte);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.quizz-choix-bouton:hover:not(:disabled) {
+    border-color: var(--accent);
+}
+
+.quizz-choix-bouton:disabled {
+    cursor: default;
+}
+
+/* Même famille de couleurs que .pastille/.pastille-rouge (_stats.html) —
+un choix correct/incorrect est le même genre de signal positif/négatif. */
+.quizz-choix-bouton.quizz-correct {
+    border-color: var(--pastille-texte);
+    background: var(--pastille-fond);
+    color: var(--pastille-texte);
+}
+
+.quizz-choix-bouton.quizz-incorrect {
+    border-color: var(--rouge-texte);
+    background: var(--rouge-fond);
+    color: var(--rouge-texte);
+}
+
+#quizz-feedback {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--bordure);
+    border-radius: 0.5rem;
+    background: var(--fond-secondaire);
+}
+
+#quizz-feedback-texte {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+}
+
+#quizz-bouton-suivant,
+#quizz-fin button {
+    padding: 0.5rem 1.1rem;
+    border: 1px solid var(--bordure);
+    border-radius: 0.5rem;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#quizz-fin {
+    text-align: center;
+    margin-top: 1.5rem;
+}
+
+#quizz-score-final {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
 }

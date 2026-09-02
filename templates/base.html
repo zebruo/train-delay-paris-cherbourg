@@ -40,6 +40,7 @@
     <script src="/static/train.js"></script>
     <script src="/static/jour_heure.js"></script>
     <script src="/static/rapports.js"></script>
+    <script src="/static/quizz.js"></script>
 </head>
 <body>
     <div id="toast" onclick="masquerToast()">
@@ -72,9 +73,13 @@
         Raspberry Pi"/route /rafraichir, retirés le 2026-08-13 : rien à
         rapatrier depuis un serveur distant), donc l'auto-refresh se
         contente de recharger la vue actuelle pour afficher les données
-        déjà à jour localement. -->
+        déjà à jour localement. Onglet Quizz exclu (vue-active !== "quizz") :
+        contenu 100% statique, aucune donnée à rafraîchir — un rechargement
+        ré-exécute le <script>demarrerQuizz()</script> de _quizz.html et
+        remettait le score à zéro en plein milieu d'une partie, repéré par
+        l'utilisateur, 2026-09-02. -->
         <div id="auto-refresh-trigger" hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres, #filtres-train, #filtres-gtfs, #filtres-rapports"
-             hx-trigger="every 300s [document.getElementById('auto-refresh').checked]"
+             hx-trigger="every 300s [document.getElementById('auto-refresh').checked && document.getElementById('vue-active').value !== 'quizz']"
              style="display:none"></div>
         {% include "_dialogue_aide.html" %}
         <form id="filtres" hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change" hx-include="#periode">
@@ -126,7 +131,7 @@
                 <span class="icone-info" title="Un train reste inclus tant qu'il a eu du retard à un moment de son trajet, même si ses relevés les plus récents sont revenus à 0 min — le tableau n'affichant que les 300 dernières lignes, ce retard peut ne plus être visible dans les lignes affichées.">ℹ</span>
             </div>
         </form>
-        <div id="stats" {% if vue in ("graphique", "train", "rapports") %}style="display:none"{% endif %}>
+        <div id="stats" {% if vue in ("graphique", "train", "rapports", "quizz") %}style="display:none"{% endif %}>
             {% include "_stats.html" %}
         </div>
         <nav id="onglets">
@@ -164,6 +169,17 @@
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
                     hx-vals='{"vue": "rapports"}' onclick="activerOnglet(this, 'rapports')">
                 Rapports
+            </button>
+            <!-- Masqué (display:none) : onglet pas encore prêt à publier,
+            demande explicite de l'utilisateur, 2026-09-02 — le reste (route
+            /contenu?vue=quizz, templates/_quizz.html, static/quizz.js) reste
+            déployé et fonctionnel, juste sans lien visible dans la barre
+            d'onglets tant que ce commentaire n'est pas retiré. -->
+            <button type="button" class="onglet {% if vue == 'quizz' %}actif{% endif %}"
+                    style="display:none"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "quizz"}' onclick="activerOnglet(this, 'quizz')">
+                Quizz
             </button>
         </nav>
     </header>
@@ -300,7 +316,7 @@
             // cas ; les autres gardent Gare/Train/Sens visibles même
             // lorsqu'ils ne les utilisent pas, ex: Travaux/Vérification
             // GTFS — coexistence assumée, pas une incohérence à corriger).
-            document.getElementById("filtres").style.display = vue === "rapports" ? "none" : "";
+            document.getElementById("filtres").style.display = vue === "rapports" || vue === "quizz" ? "none" : "";
             document.getElementById("case-limiter-ligne").style.display = vue === "train" ? "none" : "";
             document.getElementById("case-limiter-retard").style.display =
                 vue === "train" || vue === "graphique" || vue === "jour_heure" ? "none" : "";

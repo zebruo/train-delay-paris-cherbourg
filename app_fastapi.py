@@ -937,6 +937,11 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
             connexion_rapport.close()
     elif contexte["vue"] == "gtfs":
         contexte.update(calculer_contexte_gtfs(request))
+    elif contexte["vue"] == "quizz":
+        # Contenu entièrement statique (banque de questions dans
+        # static/quizz.js) — rien à calculer côté serveur, _quizz.html se
+        # suffit du contexte commun déjà posé par preparer_contexte_commun.
+        pass
     else:
         evenements_df = charger_evenements(PERTURBATIONS_FILE)
         annules = evenements_df[evenements_df["type"] == "trajet_annule"]

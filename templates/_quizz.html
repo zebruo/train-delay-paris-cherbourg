@@ -1,0 +1,30 @@
+<div class="zone-quizz">
+    <p class="quizz-intro">
+        Teste tes connaissances sur les statistiques de l'application — les questions et leurs
+        explications reprennent le contenu du guide « Comment lire les statistiques » (bouton
+        « ? » en haut à droite).
+    </p>
+
+    <div id="quizz-progression">
+        Question <span id="quizz-numero">1</span> / <span id="quizz-total">?</span>
+        — Score : <span id="quizz-score">0</span>
+    </div>
+
+    <div id="quizz-question-zone">
+        <h3 id="quizz-question-texte"></h3>
+        <div id="quizz-choix"></div>
+        <div id="quizz-feedback" style="display:none">
+            <p id="quizz-feedback-texte"></p>
+            <button type="button" id="quizz-bouton-suivant" onclick="quizzSuivant()">Suivant</button>
+        </div>
+    </div>
+
+    <div id="quizz-fin" style="display:none">
+        <h3>Partie terminée !</h3>
+        <p id="quizz-score-final"></p>
+        <button type="button" onclick="demarrerQuizz()">Recommencer</button>
+    </div>
+</div>
+<script>
+    demarrerQuizz();
+</script>
