@@ -2,19 +2,42 @@
 <div class="zone-rapports">
     <div class="ligne-periode" id="filtres-rapports">
         <div class="champ">
-            <label for="rapports_periode">Période</label>
-            <select id="rapports_periode" name="rapports_periode"
-                    hx-get="/contenu" hx-target="#zone-contenu" hx-trigger="change"
-                    hx-include="#filtres, this" hx-vals='{"vue": "rapports"}'>
+            <label>Période</label>
+            <!-- Segmented control (3 boutons) plutôt qu'un <select> —
+            trop discret, demande explicite de l'utilisateur, 2026-09-03,
+            mockup validé (option A). L'input caché ci-dessous conserve le
+            nom "rapports_periode" pour que #auto-refresh-trigger
+            (hx-include="#filtres-rapports", base.html) continue de
+            renvoyer la période actuellement affichée à chaque
+            rafraîchissement automatique — les boutons eux-mêmes passent
+            leur valeur directement en hx-vals, pas besoin de lire cet
+            input pour leur propre requête. -->
+            <input type="hidden" id="rapports_periode" name="rapports_periode" value="{{ rapports_periode }}">
+            <div class="segmente-periode">
                 {% for option in rapports_periode_options %}
-                    <option value="{{ option }}" {% if option == rapports_periode %}selected{% endif %}>{{ option|capitalize }}</option>
+                    <button type="button" class="segmente-bouton {% if option == rapports_periode %}actif{% endif %}"
+                            hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                            hx-vals='{"vue": "rapports", "rapports_periode": "{{ option }}"}'
+                            onclick="document.getElementById('rapports_periode').value = '{{ option }}';
+                                     document.querySelectorAll('.segmente-bouton').forEach((b) => b.classList.remove('actif'));
+                                     this.classList.add('actif');">
+                        {{ option|capitalize }}
+                    </button>
                 {% endfor %}
-            </select>
+            </div>
         </div>
         {% if rapport_pdf_disponible %}
             <a class="bouton-telecharger-rapport" href="/rapports/{{ rapports_periode }}/telecharger"
                download aria-label="Télécharger le PDF"
-               title="Télécharger le PDF complet de cette période">⬇</a>
+               title="Télécharger le PDF complet de cette période">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <!-- Plateau / Réceptacle -->
+                    <path d="M19 18H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 2 0v1h12v-1a1 1 0 0 1 2 0v2a1 1 0 0 1-1 1Z"/>
+                    <!-- Flèche -->
+                    <path d="M12 13a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0v8a1 1 0 0 1-1 1Z"/>
+                    <path d="M12 15a1 1 0 0 1-.58-.18l-4-3a1 1 0 0 1 1.16-1.64L12 12.76l3.42-2.58a1 1 0 0 1 1.16 1.64l-4 3A1 1 0 0 1 12 15Z"/>
+                </svg>
+            </a>
         {% endif %}
         <p class="info stat-graphique">{{ rapport_periode_texte }}</p>
     </div>

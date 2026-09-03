@@ -1,4 +1,16 @@
 {% if not erreur %}
+{% if annulations_sans_releve %}
+    <div class="banniere-annulations-sans-releve">
+        <span>
+            ⚠ <strong>{{ annulations_sans_releve|length }} annulation{{ "s" if annulations_sans_releve|length > 1 else "" }} sans relevé</strong>
+            non représentée{{ "s" if annulations_sans_releve|length > 1 else "" }} ci-dessous (annulée{{ "s" if annulations_sans_releve|length > 1 else "" }} avant le premier relevé temps réel) :
+            {% for a in annulations_sans_releve %}
+                train {{ a.train }} ({{ a.date }}{% if a.trajet %}, {{ a.trajet }}{% endif %}){% if not loop.last %}, {% endif %}
+            {% endfor %}
+        </span>
+        <button type="button" class="lien-perturbations" onclick="document.getElementById('onglet-travaux').click()">Voir Perturbations →</button>
+    </div>
+{% endif %}
 <div class="zone-scroll">
     <table>
         <thead>

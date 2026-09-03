@@ -335,8 +335,6 @@ h1 {
     border-radius: 0.4rem;
     background: var(--fond-secondaire);
     color: var(--texte);
-    font-size: 1rem;
-    line-height: 1;
     text-decoration: none;
     cursor: pointer;
 }
@@ -502,6 +500,16 @@ permanence, plus de vrai bascule ouvert/fermé (repéré par l'utilisateur,
     background: var(--fond-secondaire);
     color: var(--texte);
     border-color: var(--bordure);
+}
+
+/* Même famille que .pastille-bleu (badge "ARRÊT AJOUTÉ") — utilisé pour le
+toast "Chargement..." (changement d'onglet lent, voir htmx:beforeRequest
+plus bas), .toast-info étant trop peu visible (gris neutre, se fond dans
+le fond) pour ce cas, repéré par l'utilisateur, 2026-09-03. */
+#toast.toast-bleu {
+    background: var(--bleu-fond);
+    color: var(--bleu-texte);
+    border-color: var(--bleu-texte);
 }
 
 /* Contenu du guide statistiques (texte porté depuis generer_guide_
@@ -763,8 +771,21 @@ de l'utilisateur, 2026-08-14. */
 .stat-valeur {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     font-size: 0.9rem;
     font-weight: 600;
+}
+
+/* Détail secondaire atténué à l'intérieur d'une .stat-valeur (ex: "27 % au
+total" à côté du "16 %" recalibré, Circulations perturbées de l'onglet
+Rapports) — normal plutôt que le gras hérité de .stat-valeur, pour reculer
+visuellement derrière la pastille qui porte l'info principale, demande
+explicite de l'utilisateur, 2026-09-04. */
+.stat-attenue {
+    font-weight: 400;
+    margin-left: 0.3rem;
+    color: var(--texte-attenue);
+    font-size: 0.85rem;
 }
 
 .pastille {
@@ -1017,6 +1038,40 @@ display:table (table-layout:fixed) pour continuer à répartir ses cellules
 en colonnes — thead et tbody n'étant plus dans le même contexte de tableau,
 la largeur de chaque colonne doit être fixée explicitement (voir th/td
 nth-child plus bas) pour que les deux s'alignent malgré tout. */
+/* Annulations "silencieuses" (aucun relevé avant l'annulation, ex: train
+13100 le 01/09/2026) : rien à afficher pour elles dans le Tableau lui-même
+(construire_lignes_tableau n'a aucune ligne à laquelle accrocher un badge),
+donc un bandeau au-dessus plutôt qu'une fausse ligne fabriquée — option
+retenue par l'utilisateur après un mockup à 4 variantes, 2026-09-02.
+flex-shrink: 0 : ne doit jamais être compressé par .zone-scroll (flex: 1)
+juste en dessous. */
+.banniere-annulations-sans-releve {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--fond);
+    border: 1px dashed var(--bordure);
+    border-radius: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.78rem;
+    color: var(--texte-attenue);
+}
+
+.lien-perturbations {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    text-decoration: underline;
+    font-size: 0.78rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
 .zone-scroll {
     /* Remplit tout l'espace laissé par #zone-contenu (flex: 1 ci-dessus)
     plutôt qu'un calc(100vh - Npx) figé — voir la note sur #zone-contenu. */
@@ -1066,7 +1121,8 @@ ajoutée le 2026-08-17 (même besoin). */
 .zone-graphique,
 .zone-train,
 .zone-jour-heure,
-.zone-rapports {
+.zone-rapports,
+.zone-quizz {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -1095,6 +1151,41 @@ toucher .champ ailleurs (ex: les filtres Gare/Train/Sens de l'entête). */
 
 .ligne-periode .info {
     margin: 0;
+}
+
+/* Segmented control (quotidien/hebdomadaire/mensuel), remplace un <select>
+jugé trop discret par l'utilisateur — mockup à 2 options validé (celle-ci),
+2026-09-03. Repris ensuite au style du sélecteur origine/destination mobile
+(.mobile-selecteur-gare, static/mobile.css) pour uniformiser les deux
+versions de l'app, demande explicite de l'utilisateur, 2026-09-03 — piste
+"track" arrondie avec un padding interne (pas de bordures entre boutons,
+contrairement à la 1re version), boutons individuellement arrondis. */
+.segmente-periode {
+    display: inline-flex;
+    background: var(--fond-secondaire);
+    border: 1px solid var(--bordure);
+    border-radius: 12px;
+    padding: 3px;
+}
+
+.segmente-bouton {
+    border: none;
+    background: none;
+    color: var(--texte-attenue);
+    border-radius: 9px;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.segmente-bouton:hover:not(.actif) {
+    color: var(--texte);
+}
+
+.segmente-bouton.actif {
+    background: var(--accent);
+    color: var(--texte);
 }
 
 /* Stats propres à l'onglet Graphique (remplacent la ligne de stats
@@ -1485,6 +1576,7 @@ mise en page particulière héritée d'un autre onglet à réutiliser. */
     color: var(--texte-attenue);
     font-size: 0.9rem;
     margin: 0.25rem 0 1.25rem;
+    text-align: justify;
 }
 
 #quizz-progression {
@@ -1495,6 +1587,7 @@ mise en page particulière héritée d'un autre onglet à réutiliser. */
 #quizz-question-texte {
     font-size: 0.9rem;
     margin: 0 0 1rem;
+    text-align: justify;
 }
 
 #quizz-choix {
@@ -1547,6 +1640,35 @@ un choix correct/incorrect est le même genre de signal positif/négatif. */
 #quizz-feedback-texte {
     margin: 0 0 0.75rem;
     font-size: 0.85rem;
+}
+
+/* #quizz-feedback-texte est un <div> (pas un <p>) pour pouvoir contenir un
+.quizz-exemple (voir plus bas) sur les quelques questions qui en ont un
+(explicationHTML, quizz.js) — ses <p> internes n'ont donc pas les marges
+par défaut du navigateur, resserrées ici pour rester cohérentes avec le
+texte simple (textContent) des autres questions. */
+#quizz-feedback-texte p {
+    margin: 0 0 0.5rem;
+}
+
+#quizz-feedback-texte p:last-child {
+    margin-bottom: 0;
+}
+
+/* Même gabarit que .aide-exemple (dialogue d'aide) : un exemple concret
+mis en forme à part de la prose, tableau aligné compris — réutilisé ici
+pour la même famille de contenu ("exemple chiffré"), voir explicationHTML
+dans quizz.js. */
+.quizz-exemple {
+    margin: 0 0 0.5rem;
+    padding: 0.5rem 0.7rem;
+    background: var(--fond);
+    border-radius: 0.3rem;
+    font-family: monospace;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
 }
 
 #quizz-bouton-suivant,

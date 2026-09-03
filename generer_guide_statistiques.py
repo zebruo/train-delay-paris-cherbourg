@@ -383,9 +383,9 @@ GUIDE_PAGES = [
         titre_page="2. Où et sur quel train le retard a-t-il été le plus fort ? (suite)",
         blocs=[
             dict(
-                titre="Les couleurs du Tableau",
+                titre="Les couleurs de l'onglet Circulations",
                 definition=(
-                    "Trois couleurs de texte dans l'onglet Tableau, selon le retard observé\n"
+                    "Trois couleurs de texte dans l'onglet Circulations, selon le retard observé\n"
                     "au dernier relevé d'une ligne — pas de couleur (texte noir) si tout va\n"
                     "bien."
                 ),

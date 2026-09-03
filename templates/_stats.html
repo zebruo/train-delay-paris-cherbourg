@@ -9,7 +9,13 @@
             <div class="stat-valeur">
                 {{ stats_ratio.en_retard }} / {{ stats_ratio.total }}
                 {% if pct_perturbe is not none %}
-                    <span class="pastille pastille-rouge">{{ "%.0f"|format(pct_perturbe) }} %</span>
+                    {% if pct_perturbe_severe is not none %}
+                        <span class="stat-attenue">({{ "%.0f"|format(pct_perturbe) }} % au total —</span>
+                        <span class="pastille pastille-rouge">{{ "%.0f"|format(pct_perturbe_severe) }} %</span>
+                        <span class="stat-attenue">hors perturbations mineures ≤ 5 min)</span>
+                    {% else %}
+                        <span class="pastille pastille-rouge">{{ "%.0f"|format(pct_perturbe) }} %</span>
+                    {% endif %}
                 {% endif %}
             </div>
         </div>
@@ -18,7 +24,13 @@
             <div class="stat-label">Trajets sans perturbation <span class="icone-info" title="{{ tooltip_sans_perturbation }}">ℹ</span></div>
             <div class="stat-valeur">
                 {{ stats_ratio.sans_perturbation }} / {{ stats_ratio.total }}
-                <span class="pastille">{{ pct_sans_perturbation_texte }} %</span>
+                {% if pct_sans_perturbation_large_texte %}
+                    <span class="stat-attenue">({{ pct_sans_perturbation_texte }} % sans aucun retard —</span>
+                    <span class="pastille">{{ pct_sans_perturbation_large_texte }} %</span>
+                    <span class="stat-attenue">avec des perturbations mineures ≤ 5 min)</span>
+                {% else %}
+                    <span class="pastille">{{ pct_sans_perturbation_texte }} %</span>
+                {% endif %}
             </div>
         </div>
     {% endif %}

@@ -776,10 +776,11 @@ def calculer_contexte_frise(df_avant_retard, vue, trajet_choisi):
     tooltip = (
         "Retard moyen par relevé propre à chaque gare ≠ du « Retard moyen par relevé » "
         "affiché en haut, qui suit les filtres actifs sur tout l'historique, alors que "
-        f"cette frise (calculée sur {nb_releves} relevés, limités aux 7 derniers jours) "
-        "reste toujours limitée aux 11 gares de la ligne et ignore « Limiter aux trains "
-        "avec retard ». Gris plein : aucune donnée pour cette gare sous les filtres "
-        "actuels. Contour grisé : gare que le train sélectionné ne dessert pas du tout."
+        f"cette frise (calculée sur {nb_releves} relevés, sur les 7 derniers jours "
+        "seulement) reste toujours restreinte aux 11 gares de la ligne et ignore "
+        "« Limiter aux trains avec retard ». Gris plein : aucune donnée pour cette gare "
+        "sous les filtres actuels. Contour grisé : gare que le train sélectionné ne "
+        "dessert pas du tout."
     )
 
     return {"frise": {
@@ -810,7 +811,12 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     # pas une vue d'ensemble du trafic réel — demande explicite de
     # l'utilisateur, 2026-08-19.
     limiter_retard = lire_checkbox(request, "limiter_retard", False)
-    vue = request.query_params.get("vue") or "tableau"
+    # "rapports" par défaut (pas "tableau") : "Circulations perturbées" du
+    # rapport quotidien est le chiffre le plus directement utile pour un
+    # usager ("comment s'est passée ma journée"), contrairement à la même
+    # stat dans la barre du haut du Tableau qui n'est pas bornée à
+    # aujourd'hui — demande explicite de l'utilisateur, 2026-09-03.
+    vue = request.query_params.get("vue") or "rapports"
 
     contexte = {
         "titre_app": TITRE_APP, "vue": vue,
@@ -957,6 +963,7 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
         contexte.update({
             "entetes": [ENTETES[c] for c in COLONNES],
             "lignes": construire_lignes_tableau(df_filtre, circulations_annulees, arrets_supprimes),
+            "annulations_sans_releve": annulations_sans_releve_dans_fenetre(df, annules),
         })
 
     # Frise (#pied-de-page, base.html) : comme le badge d'onglet, présente
@@ -1040,6 +1047,8 @@ def _est_combinaison_filtres_par_defaut(gare, train, sens, limiter_ligne):
 
 
 CACHE_HISTORIQUE_MAX_AGE = pd.Timedelta(minutes=30)  # ~2x la cadence cron (15 min, rafraichir_caches_historique.py) : au-delà, un cron en panne ne doit pas servir des données trop périmées.
+
+FENETRE_ANNULATIONS_SANS_RELEVE_MIN = pd.Timedelta(hours=24)  # voir annulations_sans_releve_dans_fenetre : plancher, la fenêtre des 300 lignes seule ne couvrant qu'~1h50 en période dense, contre ~1 annulation sans relevé tous les 1,75 jour en moyenne — sans plancher, quasi jamais visible.
 
 
 def _lire_cache_graphique_historique(connexion):
@@ -2155,6 +2164,43 @@ def _circulations_et_trains_stats_sql(
     return ligne[0] or 0, ligne[1] or 0, ligne[2] or 0
 
 
+def _pct_perturbees_severes_sql(connexion, gare, train, sens, limiter_ligne, debut_iso=None, fin_iso=None):
+    """% de circulations perturbées "sévères" (retard > SEUIL_RETARD_MOYEN,
+    strictement, à un moment du trajet, OU annulée) parmi le total de la
+    période — affiché à côté de « Circulations perturbées » (pct_perturbe,
+    _circulations_et_trains_stats_sql) dans l'onglet Rapports uniquement
+    (templates/_stats.html) pour distinguer les vraies perturbations des
+    micro-retards largement rattrapés, souvent la majorité du total
+    affiché — demande explicite de l'utilisateur, 2026-09-04.
+
+    Seuil strict (>), pas >= : les retards de ce flux SNCF sont souvent
+    rapportés par paliers de 5 min pile (constaté en vérifiant sur un vrai
+    cas — 5, 10, 15, 20... jamais de valeur intermédiaire), donc un seuil
+    >= SEUIL_RETARD_MOYEN comptait à tort les circulations à exactement
+    5 min comme "sévères" alors qu'elles doivent tomber du côté "mineure"
+    (voir templates/_stats.html, "hors perturbations mineures ≤ 5 min") —
+    bug réel trouvé en vérifiant les chiffres avant déploiement (exemple
+    réel : 45/167 perturbées un jour donné, mais seules 27 dépassent
+    strictement 5 min, soit 16% plutôt que 27% — avec >=, les 45 ressortaient
+    toutes "sévères", aucune baisse). Annulée comptée comme sévère, même
+    raison que dans _circulations_et_trains_stats_sql (pire qu'un simple
+    retard). Suppose circulations_annulees déjà matérialisée (voir
+    _materialiser_circulations_annulees)."""
+    where, params = _construire_where_sql(gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso)
+    expr_retard = "COALESCE(arrival_delay_s, departure_delay_s)"
+    expr_annulee = "(trip_id || '|' || start_date) IN (SELECT cle FROM circulations_annulees)"
+    total, severe = connexion.execute(
+        f"""
+        SELECT COUNT(DISTINCT trip_id || '|' || start_date) AS total,
+               COUNT(DISTINCT CASE WHEN {expr_retard} / 60.0 > ? OR {expr_annulee}
+                                    THEN trip_id || '|' || start_date END) AS severe
+        FROM observations WHERE {where}
+        """,
+        [SEUIL_RETARD_MOYEN] + params,
+    ).fetchone()
+    return (100 * severe / total) if total else None
+
+
 def calculer_stats_globales_sql(
     connexion, gare, train, sens, limiter_ligne, limiter_retard,
     debut_iso=None, fin_iso=None, depuis_debut_collecte=False,
@@ -2297,6 +2343,16 @@ def _calculer_stats_globales_sql_interne(
     pct_sans_perturbation_texte = (
         f"{100 * sans_perturbation / total:.1f}".replace(".", ",") if total else None
     )
+    # Version "élargie" (sans perturbation OU seulement mineure ≤5min) —
+    # miroir de pct_perturbe_severe côté Rapports (templates/_stats.html),
+    # même écart réel constaté ici : 79,6% stricte vs 89,2% élargie sur
+    # l'historique complet — demande explicite de l'utilisateur, 2026-09-04.
+    pct_perturbe_severe = _pct_perturbees_severes_sql(
+        connexion, gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
+    )
+    pct_sans_perturbation_large_texte = (
+        f"{100 - pct_perturbe_severe:.1f}".replace(".", ",") if pct_perturbe_severe is not None else None
+    )
 
     debut_collecte = connexion.execute("SELECT MIN(poll_time) FROM observations").fetchone()[0]
     fin_collecte = connexion.execute("SELECT MAX(poll_time) FROM observations").fetchone()[0]
@@ -2436,6 +2492,7 @@ def _calculer_stats_globales_sql_interne(
         "stats_ratio": {"total": total, "en_retard": en_retard, "sans_perturbation": sans_perturbation},
         "pct_perturbe": pct_perturbe,
         "pct_sans_perturbation_texte": pct_sans_perturbation_texte,
+        "pct_sans_perturbation_large_texte": pct_sans_perturbation_large_texte,
         "stats": stats,
         "format_min_sans_zero": format_min_sans_zero,
         "tooltip_ratio_retard": tooltip_ratio_retard,
@@ -3096,6 +3153,9 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
         contexte.update(calculer_stats_globales_sql(
             connexion, "Toutes", "Tous", "Tous", True, False, debut_iso=debut_iso, fin_iso=fin_iso,
         ))
+        contexte["pct_perturbe_severe"] = _pct_perturbees_severes_sql(
+            connexion, "Toutes", "Tous", "Tous", True, debut_iso=debut_iso, fin_iso=fin_iso,
+        )
         temp_moy, vent_moy, pluie_totale = _meteo_periode_sql(connexion)
         contexte["meteo"] = {"temp_moy": temp_moy, "vent_moy": vent_moy, "pluie_totale": pluie_totale}
         contexte["alertes"] = alertes_periode(charger_alertes(LOCAL_ALERTES), debut_local, fin_local)
@@ -3218,8 +3278,9 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
     calculer_detail (données brutes) vs calculer_contexte_train (labels,
     JSON, texte) juste au-dessus.
 
-    stats/stats_ratio/pct_perturbe/tooltips/format_min_sans_zero (déjà au
-    niveau racine de ctx, voir calculer_contexte_rapport_sql) sont
+    stats/stats_ratio/pct_perturbe/pct_perturbe_severe/tooltips/format_min_
+    sans_zero (déjà au niveau racine de ctx, voir calculer_contexte_rapport_
+    sql) sont
     reportées telles quelles dans le résultat — directement consommables
     par _stats.html. PAS resume_collecte/tooltip_resume_collecte : ces deux
     clés existent aussi dans ctx (période courante), mais préparer_
@@ -3238,7 +3299,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
     resultat = {
         cle: valeur for cle, valeur in ctx.items()
         if cle in (
-            "stats", "stats_ratio", "pct_perturbe", "format_min_sans_zero",
+            "stats", "stats_ratio", "pct_perturbe", "pct_perturbe_severe", "format_min_sans_zero",
             "tooltip_ratio_retard", "tooltip_cumule", "tooltip_moyen",
             "tooltip_retard_max", "tooltip_pire_gare", "annulations",
         )
@@ -3781,6 +3842,59 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
     }
     contexte["donnees_json"] = json_pour_script(donnees)
     return contexte
+
+
+def annulations_sans_releve_dans_fenetre(df, annules):
+    """Trains annulés avant tout relevé temps réel (ex: train 13100,
+    01/09/2026 — annoncé annulé par le flux SNCF avant sa première position,
+    donc zéro ligne dans observations pour lui) : construire_lignes_tableau
+    ne peut rien afficher pour eux, faute d'une seule ligne à laquelle
+    accrocher le badge "ANNULÉ" habituel (repéré par l'utilisateur,
+    2026-09-02) — contrairement au cas déjà géré (train 852610, 2026-08-19)
+    où au moins un relevé existait avant l'annulation.
+
+    Renvoie la liste (train, date, trajet) de ces annulations "silencieuses"
+    à signaler dans un bandeau au-dessus du Tableau plutôt que comme une
+    fausse ligne fabriquée — seulement celles dont la détection tombe dans
+    la fenêtre temporelle des 300 lignes les plus récentes de TOUT le
+    trafic (df, jamais df_filtre) — même logique que le reste du Tableau
+    (une fenêtre glissante, pas une durée fixe), mais volontairement
+    indépendante du filtre Gare/Train/Sens actuellement appliqué : baser la
+    fenêtre sur df_filtre faisait réapparaître de vieilles annulations dès
+    qu'on filtrait sur un train précis (ses 300 relevés remontent alors sur
+    plusieurs semaines, un seul train produisant peu de lignes par jour) —
+    repéré par l'utilisateur en filtrant sur le train 13100, 2026-09-02.
+
+    Plancher à 24h (FENETRE_ANNULATIONS_SANS_RELEVE_MIN) : mesuré le même
+    jour, la fenêtre des 300 lignes ne couvre en réalité qu'environ 1h50 en
+    période de forte collecte (11 gares, plusieurs trains, toutes les
+    5 min) — alors que ce type d'annulation n'arrive qu'environ une fois
+    tous les 1,75 jour en moyenne (16 cas sur 28 jours d'historique). Sans
+    ce plancher, le bandeau n'aurait eu qu'~5% de chances d'être visible au
+    moment où quelqu'un consulte l'app ; avec 24h, cette chance remonte à
+    ~57%. Le plancher ne remplace pas la fenêtre glissante : en période
+    creuse, si les 300 lignes couvrent naturellement plus de 24h, c'est
+    cette fenêtre plus large qui l'emporte (min des deux bornes)."""
+    if annules.empty or df.empty:
+        return []
+    circulations_avec_releve = set(zip(df["trip_id"], df["start_date"].astype(str)))
+    sans_releve = annules[
+        ~annules.apply(lambda r: (r["trip_id"], str(r["start_date"])) in circulations_avec_releve, axis=1)
+    ]
+    if sans_releve.empty:
+        return []
+    fenetre_min_300_lignes = pd.to_datetime(df.tail(300)["poll_time"], utc=True).min()
+    fenetre_min_plancher = pd.Timestamp.now(tz="UTC") - FENETRE_ANNULATIONS_SANS_RELEVE_MIN
+    fenetre_min = min(fenetre_min_300_lignes, fenetre_min_plancher)
+    sans_releve = sans_releve[sans_releve["poll_time"] >= fenetre_min]
+    resultat = []
+    for _, ligne in sans_releve.sort_values("poll_time", ascending=False).iterrows():
+        resultat.append({
+            "train": format_numero_train(ligne["train"]),
+            "date": _format_start_date(ligne["start_date"]),
+            "trajet": trajet_origine_destination(ligne["trip_id"], reference_donnees["variantes"]),
+        })
+    return resultat
 
 
 def construire_lignes_tableau(df_filtre, circulations_annulees, arrets_supprimes):

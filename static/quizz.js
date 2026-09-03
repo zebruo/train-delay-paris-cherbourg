@@ -28,15 +28,15 @@ const QUIZZ_QUESTIONS = [
         explication: "Le référentiel est reconstruit à partir d'un export SNCF limité à une fenêtre glissante d'environ 151 jours : une variante d'horaire ancienne peut en sortir au fil des régénérations et disparaître du référentiel, même si le train a bien circulé et reste compté dans X.",
     },
     {
-        question: "Un train a eu du retard à 2 gares au cours de son trajet, mais son dernier relevé (à l'arrivée) montre 0 min de retard partout. Est-il compté dans le « Retard cumulé » ?",
+        question: "Un train a eu du retard à 2 gares au cours de son trajet, mais son dernier relevé (à l'arrivée) montre 0 min de retard partout. Quelle est sa contribution au « Retard cumulé » ?",
         choix: [
-            "Oui, la totalité de son retard observé est additionnée",
-            "Non — seul le dernier retard connu à chaque passage compte, donc 0 min ici",
-            "Oui, mais seulement à moitié",
-            "Non, il est alors exclu de toutes les statistiques",
+            "La somme de tous les retards observés à un moment ou un autre, même rattrapés",
+            "Seul le dernier retard connu à chaque passage compte, sa contribution sera comptée pour 0 min.",
+            "Seule la moitié du retard initial est comptée",
+            "Il est totalement exclu du calcul, comme un train jamais parti",
         ],
         correct: 1,
-        explication: "« Retard cumulé » ne garde que le dernier retard connu par gare, pas à chaque fois que le système a vérifié ce train — si le dernier relevé montre 0 min partout, aucun « passage impacté » n'est comptabilisé pour lui, même si des retards ont pu être observés plus tôt.",
+        explication: "« Retard cumulé » ne garde que le dernier retard connu par gare, pas la totalité des valeurs observées au fil du temps — si le dernier relevé montre 0 min partout, sa contribution au total est 0, même si des retards ont pu être observés plus tôt puis rattrapés. Le train reste inclus dans le calcul, il n'apporte simplement rien au total.",
     },
     {
         question: "Pourquoi le « Retard moyen / relevé » affiche souvent une valeur minuscule (ex: 0.1 min) alors que le retard max du jour est de 45 min ?",
@@ -59,6 +59,41 @@ const QUIZZ_QUESTIONS = [
         ],
         correct: 2,
         explication: "Retard cumulé « reflète l'état final réel » : il ne garde que le dernier retard connu à chaque passage en gare. Retard moyen / relevé « reflète toute l'histoire des prédictions même corrigées » : il moyenne chaque relevé individuel du système, y compris les signaux d'alerte temporaires vus en temps réel puis rattrapés — une sorte de « volatilité » des prédictions plutôt qu'un résultat final, d'où sa valeur souvent bien plus petite.",
+        explicationHTML:
+            "<p>Retard cumulé « reflète l'état final réel » : il ne garde que le dernier retard connu à chaque passage en gare. Retard moyen / relevé « reflète toute l'histoire des prédictions même corrigées » : il moyenne chaque relevé individuel du système, y compris les signaux d'alerte temporaires vus en temps réel puis rattrapés.</p>" +
+            "<p>Exemple : 2 trains, interrogés toutes les 5 min à chacune de leurs gares (comme le fait vraiment le collecteur).</p>" +
+            "<pre class=\"quizz-exemple\">Train 1 — Gare A : 0, 0, 0, 0, 0            (5 relevés, dernier = 0)\n" +
+            "Train 1 — Gare B : 0, 0, 0                  (3 relevés, dernier = 0)\n" +
+            "Train 1 — Gare C (terminus) : 0, 0, 5, 8, 8 (5 relevés, dernier = 8)\n\n" +
+            "Train 2 — Gare A : 0, 0, 0, 0               (4 relevés, dernier = 0)\n" +
+            "Train 2 — Gare B : 0, 0, 0, 3, 3            (5 relevés, dernier = 3)\n" +
+            "Train 2 — Gare C (terminus) : 0, 0, 10, 15, 15, 15 (6 relevés, dernier = 15)\n\n" +
+            "Retard cumulé (dernier relevé, 1 fois par passage — 6 passages) :\n" +
+            "(0 + 0 + 8) + (0 + 3 + 15) = 26 min\n\n" +
+            "Retard moyen / relevé (tous les relevés, sans exception — 28 relevés) :\n" +
+            "82 ÷ 28 ≈ 2,93 min</pre>" +
+            "<p>19 des 28 relevés sont à 0 min (trains à l'heure la plupart du temps) — ils ne comptent pour rien dans le Retard cumulé (seul le dernier par passage compte), mais pèsent pleinement dans le Retard moyen / relevé. D'où l'écart : 26 ÷ 6 passages ferait 4,33 min, très différent des 2,93 min réellement obtenus.</p>",
+    },
+    {
+        question: "La stat « Retard moyen / relevé » (barre du haut) et la courbe de l'onglet Graphique donnent souvent des valeurs légèrement différentes (ex: 1.1 min vs 1 min) sur la même période. Pourquoi ?",
+        choix: [
+            "Un bug fait dériver les deux calculs l'un de l'autre au fil du temps",
+            "« Retard moyen / relevé » moyenne à plat chaque relevé individuel ; la courbe du Graphique moyenne d'abord instant par instant, puis moyenne ces points entre eux — deux définitions différentes de « moyenne » appliquées à la même donnée",
+            "La courbe du Graphique exclut automatiquement les gares hors ligne, pas la barre du haut",
+            "Ce sont deux périodes différentes (24 dernières heures vs 7 derniers jours)",
+        ],
+        correct: 1,
+        explication: "« Retard moyen / relevé » est une moyenne à plat de tous les relevés individuels. La courbe du Graphique calcule une moyenne différente : instant par instant (moyenne des circulations actives à ce moment précis), puis ces points-résultats sont eux-mêmes moyennés entre eux — un calcul en deux étages. Même donnée brute, deux résultats différents : ce n'est pas un bug, ce sont deux définitions de « moyenne » différentes.",
+        explicationHTML:
+            "<p>« Retard moyen / relevé » est une moyenne à plat de tous les relevés individuels. La courbe du Graphique calcule une moyenne différente : instant par instant (moyenne des circulations actives à ce moment précis), puis ces points-résultats sont eux-mêmes moyennés entre eux — un calcul en deux étages.</p>" +
+            "<p>Exemple : train A a 3 relevés (0, 0, 2 min), train B en a 2 (0, 4 min).</p>" +
+            "<pre class=\"quizz-exemple\">Instant    Train A    Train B    Moyenne à l'instant\n" +
+            "1          0 min      0 min      0 min\n" +
+            "2          0 min      4 min      2 min\n" +
+            "3          2 min      —          2 min\n\n" +
+            "Courbe du Graphique : (0 + 2 + 2) ÷ 3 ≈ 1.33 min\n" +
+            "Retard moyen / relevé : (0 + 0 + 2 + 0 + 4) ÷ 5 = 1.2 min</pre>" +
+            "<p>Même donnée brute, deux résultats différents — le train B, moins souvent relevé, pèse autant que A à chaque instant dans la courbe, alors qu'il pèse moins dans la moyenne à plat (2 relevés contre 3). Ce n'est pas un bug, ce sont deux définitions de « moyenne » différentes.</p>",
     },
     {
         question: "Le flux temps réel SNCF confirme-t-il explicitement qu'un train est bien arrivé à son terminus ?",
@@ -72,7 +107,7 @@ const QUIZZ_QUESTIONS = [
         explication: "Le flux temps réel SNCF ne confirme jamais explicitement l'arrivée d'un train : le trajet disparaît simplement du flux une fois terminé, souvent juste après l'heure d'arrivée prévue. Le retard max (et toute valeur affichée pour un trajet) correspond donc à la dernière prédiction connue avant cette disparition, pas à une confirmation réelle.",
     },
     {
-        question: "Dans l'onglet Tableau, le chiffre de la colonne « Dép. » (retard au départ) apparaît en doré (jaune) pour une circulation. Que signifie cette couleur ?",
+        question: "Dans l'onglet Circulations, le chiffre de la colonne « Dép. » (retard au départ) apparaît en doré (jaune) pour une circulation. Que signifie cette couleur ?",
         choix: [
             "Le train est arrivé avec plus de 10 min de retard",
             "Le train a été annulé",
@@ -83,7 +118,7 @@ const QUIZZ_QUESTIONS = [
         explication: "Le doré existe pour un cas précis qui resterait sinon invisible : un train arrivé pile à l'heure n'a aucune couleur d'alerte si on ne regarde que le retard à l'arrivée, alors qu'il peut être en train d'accumuler un vrai retard de départ, pas encore visible ailleurs.",
     },
     {
-        question: "Dans l'onglet Tableau, le chiffre de la colonne « Dép. » devient doré quand un train arrive correctement (< 5 min) mais reste immobilisé plus longtemps que prévu au départ d'une gare. Ce doré peut signaler un incident tout frais... ou un aléa connu depuis le début du trajet. L'application fait-elle la différence automatiquement entre ces deux cas ?",
+        question: "Dans l'onglet Circulations, le chiffre de la colonne « Dép. » devient doré quand un train arrive correctement (< 5 min) mais reste immobilisé plus longtemps que prévu au départ d'une gare. Ce doré peut signaler un incident tout frais... ou un aléa connu depuis le début du trajet. L'application fait-elle la différence automatiquement entre ces deux cas ?",
         choix: [
             "Oui, une icône distingue les deux cas",
             "Non — il faut comparer ce retard de départ aux relevés précédents via l'onglet « Suivi d'un train » pour savoir si c'est nouveau ou stable",
@@ -136,6 +171,28 @@ const QUIZZ_QUESTIONS = [
         ],
         correct: 0,
         explication: "Les horaires SNCF publiés en ligne ne couvrent jamais que les ~151 prochains jours, une fenêtre qui avance d'un jour chaque jour — un train déjà prévu par la SNCF mais plus loin dans le temps devient visible d'un coup le jour où cette fenêtre l'atteint. D'où la règle : ne pas s'inquiéter d'un chiffre isolé, mais surveiller si « Nouveaux » reste supérieur à zéro plusieurs jours de suite.",
+    },
+    {
+        question: "Cette fois, la colonne « Nouveaux » reste supérieure à zéro plusieurs jours de suite (pas un chiffre isolé qui retombe) — donc un vrai changement durable, pas un effet de la fenêtre glissante. Qui doit s'en occuper ?",
+        choix: [
+            "Rien à faire, ça finit toujours par se résorber tout seul au bout de 151 jours",
+            "N'importe quel utilisateur de cette version web, via un bouton dédié",
+            "L'administrateur de l'application, via les boutons « Régénérer »/« Déployer vers la VPS » de l'application desktop — pas accessible depuis cette version web",
+            "La SNCF corrige automatiquement la référence utilisée par l'application",
+        ],
+        correct: 2,
+        explication: "Mettre à jour la référence est une action volontaire, réservée à l'administrateur de l'application (« Régénérer » télécharge l'horaire SNCF du jour et reconstruit la référence en local, « Déployer vers la VPS » l'envoie ensuite là où elle compte vraiment) — les deux boutons n'existent que dans l'application desktop, cette version web reste volontairement en lecture seule.",
+    },
+    {
+        question: "Parmi les indicateurs de la barre du haut, lequel répond le mieux à « puis-je compter sur cette ligne aujourd'hui/cette semaine » pour un usager ?",
+        choix: [
+            "« Retard cumulé », le total de temps perdu sur la ligne",
+            "« Circulations perturbées » (ou « Trajets sans perturbation »), le seul conçu pour donner une idée d'ensemble en un coup d'œil",
+            "« Retard moyen / relevé », la moyenne de tous les relevés du système",
+            "« Retard max », le pire retard observé sur la période",
+        ],
+        correct: 1,
+        explication: "« Circulations perturbées » est le seul indicateur explicitement pensé pour répondre à « à quel point la journée a été mauvaise » en un coup d'œil. « Retard cumulé » sert plutôt à comparer des périodes ou construire un dossier SNCF ; « Retard moyen / relevé » est dilué par des milliers de relevés à 0 min, peu parlant pour un usager ; « Retard max » n'est qu'un seul cas extrême, pas représentatif du reste de la ligne.",
     },
 ];
 
@@ -206,7 +263,17 @@ function quizzChoisirReponse(rangChoisi) {
 
     if (quizzChoixOrdreCourant[rangChoisi] === question.correct) quizzScore++;
     document.getElementById("quizz-score").textContent = quizzScore;
-    document.getElementById("quizz-feedback-texte").textContent = question.explication;
+    const feedbackEl = document.getElementById("quizz-feedback-texte");
+    // explicationHTML : réservé aux quelques questions avec un exemple mis
+    // en forme (tableau aligné, voir .quizz-exemple) — contenu écrit à la
+    // main ici, jamais dérivé d'une entrée utilisateur, donc sûr en
+    // innerHTML. Toutes les autres questions n'ont que `explication`
+    // (texte brut) et passent par textContent comme avant.
+    if (question.explicationHTML) {
+        feedbackEl.innerHTML = question.explicationHTML;
+    } else {
+        feedbackEl.textContent = question.explication;
+    }
     document.getElementById("quizz-feedback").style.display = "";
 }
 

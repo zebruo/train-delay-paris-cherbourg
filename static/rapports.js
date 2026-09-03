@@ -182,8 +182,25 @@ function dessinerTop5(indice, donnees) {
     };
 
     requestAnimationFrame(() => {
+        // Remplace le conteneur par un élément vierge avant de dessiner —
+        // même parade que jour_heure.js (dessinerJourHeure) pour un bug
+        // Plotly déjà rencontré dans ce projet : un Plotly.newPlot sur un
+        // div qui a déjà porté un graphique laisse parfois un état interne
+        // corrompu (cause exacte non identifiée côté Plotly.js, ni
+        // Plotly.purge() seul ni un reflow forcé n'ont suffi à corriger ça
+        // de façon fiable) — ici, le survol (tooltip "X min" au clic sur un
+        // point) cessait de fonctionner après un changement de période
+        // (dropdown, htmx) alors qu'un rechargement complet de la page le
+        // réparait, symptôme différent de celui de jour_heure.js (qui
+        // cassait la mise en page) mais même famille de bug, repéré par
+        // l'utilisateur, 2026-09-03. Seul un DOM vraiment neuf répare ça de
+        // façon fiable.
+        const ancien = document.getElementById("top5-plot-" + indice);
+        const conteneur = document.createElement("div");
+        conteneur.id = ancien.id;
+        ancien.replaceWith(conteneur);
         Plotly.newPlot(
-            "top5-plot-" + indice, traces, layout,
+            conteneur, traces, layout,
             // displayModeBar: false — marge du haut trop fine (margin.t: 8
             // ci-dessus, ce mini-graphique n'a pas de titre Plotly, juste
             // .top5-entete au-dessus dans le HTML) : la barre d'outils au

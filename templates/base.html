@@ -135,10 +135,15 @@
             {% include "_stats.html" %}
         </div>
         <nav id="onglets">
+            <button type="button" class="onglet {% if vue == 'rapports' %}actif{% endif %}"
+                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
+                    hx-vals='{"vue": "rapports"}' onclick="activerOnglet(this, 'rapports')">
+                Rapports
+            </button>
             <button type="button" class="onglet {% if vue == 'tableau' %}actif{% endif %}"
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
                     hx-vals='{"vue": "tableau"}' onclick="activerOnglet(this, 'tableau')">
-                Tableau
+                Circulations
             </button>
             <button type="button" class="onglet {% if vue == 'graphique' %}actif{% endif %}"
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
@@ -155,7 +160,7 @@
                     hx-vals='{"vue": "jour_heure"}' onclick="activerOnglet(this, 'jour_heure')">
                 Par jour / heure
             </button>
-            <button type="button" class="onglet {% if vue == 'travaux' %}actif{% endif %}"
+            <button type="button" id="onglet-travaux" class="onglet {% if vue == 'travaux' %}actif{% endif %}"
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
                     hx-vals='{"vue": "travaux"}' onclick="activerOnglet(this, 'travaux')">
                 <span id="badge-travaux">{{ libelle_travaux }}</span>
@@ -165,18 +170,7 @@
                     hx-vals='{"vue": "gtfs"}' onclick="activerOnglet(this, 'gtfs')">
                 Vérification GTFS
             </button>
-            <button type="button" class="onglet {% if vue == 'rapports' %}actif{% endif %}"
-                    hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
-                    hx-vals='{"vue": "rapports"}' onclick="activerOnglet(this, 'rapports')">
-                Rapports
-            </button>
-            <!-- Masqué (display:none) : onglet pas encore prêt à publier,
-            demande explicite de l'utilisateur, 2026-09-02 — le reste (route
-            /contenu?vue=quizz, templates/_quizz.html, static/quizz.js) reste
-            déployé et fonctionnel, juste sans lien visible dans la barre
-            d'onglets tant que ce commentaire n'est pas retiré. -->
             <button type="button" class="onglet {% if vue == 'quizz' %}actif{% endif %}"
-                    style="display:none"
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
                     hx-vals='{"vue": "quizz"}' onclick="activerOnglet(this, 'quizz')">
                 Quizz
@@ -209,8 +203,8 @@
         // (style.css) plutôt qu'une simple transition d'opacité : permet de
         // savoir précisément quand la sortie est terminée avant de
         // réinitialiser les classes.
-        const TOAST_ICONES = { succes: "✓", erreur: "✕", avertissement: "⚠", info: "ℹ" };
-        const TOAST_DUREES = { succes: 4000, erreur: 4000, avertissement: 6000, info: 4000 };
+        const TOAST_ICONES = { succes: "✓", erreur: "✕", avertissement: "⚠", info: "ℹ", bleu: "ℹ" };
+        const TOAST_DUREES = { succes: 4000, erreur: 4000, avertissement: 6000, info: 4000, bleu: 4000 };
 
         function afficherToast(type, message, dureeMs) {
             const toast = document.getElementById("toast");
@@ -285,6 +279,52 @@
             const elt = e.detail.elt;
             if (elt.id === "periode" && elt.value === "tout l'historique") {
                 afficherToast("info", "Chargement de tout l'historique en cours (~15 secondes)...", 25000);
+            }
+        });
+
+        // Toast "Chargement..." pour un changement d'onglet OU de période
+        // (Rapports : quotidien/hebdomadaire/mensuel) anormalement lent (ex:
+        // premier chargement du Tableau juste après un redémarrage du
+        // service, ou rapport mensuel avec cache périmé, ~16s observé —
+        // repéré par l'utilisateur, 2026-09-03) — mesuré, pas affiché
+        // systématiquement : un délai (_minuteurToastOnglet, 1200ms) avant
+        // affichage évite un flash inutile pour l'immense majorité des
+        // changements, déjà rapides.
+        //
+        // htmx:beforeRequest : e.detail.elt est fiable, c'est encore
+        // l'élément d'origine (bouton d'onglet OU #rapports_periode).
+        // htmx:afterRequest, en revanche : PAS fiable pour e.detail.elt —
+        // vérifié en instrumentant l'événement en direct, 2026-09-03 :
+        // pour #rapports_periode (qui vit DANS #zone-contenu, détruit par
+        // son propre swap), e.detail.elt ne pointe plus sur le <select>
+        // d'origine à ce stade mais sur #zone-contenu lui-même (htmx
+        // retombe dessus une fois l'élément d'origine disparu) — un
+        // premier essai basé sur elt.id ne masquait donc jamais le toast
+        // pour ce cas précis, il restait affiché jusqu'à la durée fixe
+        // (20s). Corrigé en se basant sur e.detail.target (la cible du
+        // swap, #zone-contenu dans tous les cas de ce projet) plutôt que
+        // sur elt pour la fermeture — cible stable, jamais détruite
+        // puisque c'est justement l'ancêtre dont on remplace le contenu.
+        function estDeclencheurChargementLent(elt) {
+            // "rapports_periode" : ancien id du <select> période — remplacé
+            // par un segmented control (.segmente-bouton, _rapports.html),
+            // l'id vit maintenant sur un input caché non cliquable, gardé
+            // en test par précaution (inoffensif, ne matche plus rien).
+            return (elt.classList && (elt.classList.contains("onglet") || elt.classList.contains("segmente-bouton")))
+                || elt.id === "rapports_periode";
+        }
+        let _minuteurToastOnglet = null;
+        document.body.addEventListener("htmx:beforeRequest", (e) => {
+            const elt = e.detail.elt;
+            if (estDeclencheurChargementLent(elt)) {
+                clearTimeout(_minuteurToastOnglet);
+                _minuteurToastOnglet = setTimeout(() => afficherToast("bleu", "Chargement en cours…", 20000), 1200);
+            }
+        });
+        document.body.addEventListener("htmx:afterRequest", (e) => {
+            if (e.detail.target && e.detail.target.id === "zone-contenu") {
+                clearTimeout(_minuteurToastOnglet);
+                masquerToast();
             }
         });
 
