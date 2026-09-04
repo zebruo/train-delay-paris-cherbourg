@@ -67,6 +67,14 @@ SEUIL_FIABLE_MENSUEL = 10
 # usage réel, rapport n°39, 2026-08-28, 10 annulations le même jour — ce
 # cas précis tient déjà sur une ligne sans plafonnement, vérifié visuellement).
 SEUIL_TRAINS_ANNULES_AFFICHES = 10
+# Même seuil que SEUIL_RETARD_MOYEN (app_fastapi.py/viewer.py) — pas
+# d'import direct, même raisonnement que SEUIL_FIABLE_MENSUEL ci-dessus.
+# Sépare une perturbation "significative" (> 5 min à un moment du trajet)
+# d'une perturbation mineure, pour l'affichage recalibré "22 % au total —
+# 9 % de perturbations significatives > 5 min" (demande explicite de
+# l'utilisateur, 2026-09-04, même narratif que le second pourcentage déjà
+# affiché sur Circulations perturbées/Trajets sans perturbation côté appli).
+SEUIL_RETARD_MOYEN = 5
 
 OBSERVATIONS_DB = "observations.db"
 ALERTES_FILE = "alertes.csv"
@@ -276,6 +284,16 @@ def _compte_perturbees(df_periode):
     return en_retard, total
 
 
+def _compte_severes(df_periode):
+    """Nombre de circulations avec un retard dépassant SEUIL_RETARD_MOYEN
+    (perturbation "significative", > 5 min) à un moment quelconque du
+    trajet — même principe que _compte_perturbees (n'importe quel relevé
+    au-delà du seuil suffit), mais avec ce seuil plutôt que > 0."""
+    circulation = cle_circulation(df_periode)
+    total = circulation.nunique()
+    return circulation[df_periode["retard_min"] > SEUIL_RETARD_MOYEN].nunique() if total else 0
+
+
 def stats_perturbees_periode(df, evenements, variantes, calendrier, debut_utc, fin_utc):
     """(en_retard, total) circulations perturbées sur [debut_utc, fin_utc) —
     factorisé pour être réutilisable sur une période différente de celle du
@@ -384,6 +402,7 @@ def generer(nom_periode, maintenant=None):
     df_periode_complet, df_periode = filtrer_periode_arrivees(df, evenements, variantes, calendrier, debut_utc, fin_utc)
 
     en_retard, total = _compte_perturbees(df_periode)
+    severe = _compte_severes(df_periode)
     # Une seule valeur par passage réel (dernier relevé connu), pas par
     # relevé — même dédoublonnement que "Retard cumulé" dans viewer.py (voir
     # mémoire du projet, 2026-07-28), sinon un même retard vu 20-40 fois par
@@ -689,6 +708,13 @@ def generer(nom_periode, maintenant=None):
     # tronquer. Seul le chiffre principal ("N/M trains en retard") reste en
     # gras ; le détail (moyenne/max/gare) passe en petits caractères, même
     # style que la météo juste en dessous.
+    #
+    # "Retard cumulé/Retard max" (ligne2) a sa PROPRE ligne, plutôt que
+    # d'être accolé à la ligne "circulations perturbées" comme avant : une
+    # fois les deux pourcentages (recalibré compris) ajoutés à cette
+    # dernière, le texte combiné dépassait la largeur imprimable et se
+    # faisait tronquer net (repéré en testant, 2026-09-04) — même leçon déjà
+    # apprise pour "Gare la + touchée" ci-dessous.
     if total:
         fraction = f"{en_retard}/{total}"
         # "circulations perturbées" — même libellé que viewer.py (pas "trains
@@ -696,26 +722,28 @@ def generer(nom_periode, maintenant=None):
         # SNCF/ART (calculée au terminus uniquement) — ce compteur inclut
         # toute circulation ayant eu du retard à un moment de son trajet,
         # même rattrapé avant l'arrivée.
-        reste_ligne1 = f" circulations perturbées ({100 * en_retard / total:.0f} %)"
+        reste_ligne1 = f" circulations perturbées ({100 * en_retard / total:.0f} % au total — "
+        # Second pourcentage recalibré (perturbations "significatives",
+        # > 5 min) — même narratif que Circulations perturbées/Trajets
+        # sans perturbation côté appli (base.html/_stats.html), demande
+        # explicite de l'utilisateur, 2026-09-04 : un chiffre "au total"
+        # peut sembler alarmant sans être très parlant, dilué par de
+        # simples minutes vite rattrapées.
+        texte_severe = f"{100 * severe / total:.0f} %"
+        reste_ligne1_suite = " de perturbations significatives > 5 min)"
         heures_cumulees, minutes_cumulees = divmod(round(retard_cumule), 60)
         # Volontairement peu chiffré (pas de "N passages impactés", pas de
         # "retard moyen / relevé" — trop sujet à mauvaise lecture, voir
         # mémoire du projet) : juste de quoi situer l'ampleur (cumulé, pire
         # cas) sans noyer le lecteur sous les chiffres — demande explicite de
-        # l'utilisateur, 2026-07-30. "Gare la + touchée" (avec sa valeur,
-        # demande explicite du 2026-08-18) n'est PLUS sur cette même ligne :
-        # un nom de gare long + "→ moy X min" dépassait la largeur imprimable
-        # de la page A4 et se faisait tronquer net (repéré en testant après
-        # l'ajout de la valeur) — sa propre ligne juste en dessous à la
-        # place, où toute la largeur de la page est disponible.
-        ligne2 = (
-            f"  · Retard cumulé {heures_cumulees} h {minutes_cumulees:02d} min · "
-            f"Retard max : {retard_max_texte}"
-        )
+        # l'utilisateur, 2026-07-30.
+        ligne2 = f"Retard cumulé {heures_cumulees} h {minutes_cumulees:02d} min · Retard max : {retard_max_texte}"
         texte_pire_gare = f"{label_pire_gare} : {pire_gare}"
     else:
         fraction = ""
         reste_ligne1 = "Aucune circulation arrivée sur cette période."
+        texte_severe = ""
+        reste_ligne1_suite = ""
         ligne2 = ""
         texte_pire_gare = ""
     # Sur une seule ligne mais plusieurs styles (fraction en couleur, reste
@@ -728,22 +756,14 @@ def generer(nom_periode, maintenant=None):
         children=[
             TextArea(fraction, textprops=dict(fontsize=9, fontweight="bold", color="#c2410c")),
             TextArea(reste_ligne1, textprops=dict(fontsize=9, fontweight="bold")),
-            TextArea(ligne2, textprops=dict(fontsize=8, color="#555")),
+            TextArea(texte_severe, textprops=dict(fontsize=9, fontweight="bold", color="#dc2626")),
+            TextArea(reste_ligne1_suite, textprops=dict(fontsize=9, fontweight="bold")),
         ],
         align="baseline", pad=0, sep=0,
     )
     ax_stats.add_artist(AnnotationBbox(
         boite_stats, (0, 0.97), xycoords="axes fraction", box_alignment=(0, 1), frameon=False,
     ))
-    # Répartition régulière sur les 5 lignes (0.97 → 0.11, 4 intervalles
-    # égaux de 0.215, légèrement plus espacés que les 0.205 d'origine —
-    # demande explicite de l'utilisateur, 2026-08-20) — l'ajout de "Gare la
-    # + touchée" (sa propre ligne, 2026-08-18) avait déjà appris cette
-    # leçon (les avait tassées vers le haut sans retoucher l'espacement
-    # d'origine) : "Circulations annulées" (2026-08-20) reprend le même
-    # espacement complet plutôt que de s'ajouter sans y toucher.
-    if texte_pire_gare:
-        ax_stats.text(0, 0.755, texte_pire_gare, fontsize=8, color="#555", va="top", ha="left")
     if pd.notna(temp_moy):
         texte_meteo = (
             f"Météo sur la période : {temp_moy:.1f}°C en moyenne · "
@@ -751,12 +771,10 @@ def generer(nom_periode, maintenant=None):
         )
     else:
         texte_meteo = "Météo : non disponible sur cette période."
-    ax_stats.text(0, 0.54, texte_meteo, fontsize=8, color="#555", va="top", ha="left")
     texte_alertes = (
         f"Perturbations sur la période : {len(alertes_periode)} alerte(s) active(s) (détail ci-dessous)."
         if has_alertes else "Perturbations sur la période : aucune alerte connue."
     )
-    ax_stats.text(0, 0.325, texte_alertes, fontsize=8, color="#555", va="top", ha="left")
     # Invisible des stats de retard ci-dessus (voir circulation_est_arrivee)
     # — d'où sa propre ligne, plutôt qu'un chiffre de plus noyé dans ligne2.
     if nb_annulations > SEUIL_TRAINS_ANNULES_AFFICHES:
@@ -771,7 +789,22 @@ def generer(nom_periode, maintenant=None):
         f"Circulations annulées  : {nb_annulations} ({noms_texte})."
         if nb_annulations else "Circulations annulées  : aucune."
     )
-    ax_stats.text(0, 0.11, texte_annulations, fontsize=8, color="#555", va="top", ha="left")
+    # Un seul ax_stats.text() multi-lignes (\n) pour tout ce détail, plutôt
+    # que 5 appels séparés à des fractions d'axe choisies à la main : chaque
+    # ax.text() a sa propre boîte de police, dont la hauteur réelle dépend
+    # des glyphes présents sur CETTE ligne (accents, hampes montantes...) —
+    # un même pas fixe en fraction d'axe donnait donc un espacement
+    # visuellement irrégulier d'une ligne à l'autre (jusqu'à ~5pt de
+    # recouvrement mesuré entre "Gare la + touchée" et "Météo"), pas
+    # seulement entre la 1re ligne et les suivantes comme supposé au
+    # premier correctif — repéré par l'utilisateur sur quotidien et
+    # hebdomadaire (pas mensuel, par coïncidence de contenu ce jour-là, pas
+    # une vraie différence structurelle), 2026-09-04. matplotlib calcule
+    # lui-même un interlignage cohérent pour un bloc multi-lignes unique
+    # (linespacing, en multiples de la taille de police) — beaucoup plus
+    # robuste que de deviner des fractions à la main.
+    lignes_detail = [l for l in [ligne2, texte_pire_gare] if l] + [texte_meteo, texte_alertes, texte_annulations]
+    ax_stats.text(0, 0.75, "\n".join(lignes_detail), fontsize=8, color="#555", va="top", ha="left", linespacing=1.8)
     ax_stats.set_xlim(0, 1)
     ax_stats.set_ylim(0, 1)
 

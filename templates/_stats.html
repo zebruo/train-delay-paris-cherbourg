@@ -12,7 +12,7 @@
                     {% if pct_perturbe_severe is not none %}
                         <span class="stat-attenue">({{ "%.0f"|format(pct_perturbe) }} % au total —</span>
                         <span class="pastille pastille-rouge">{{ "%.0f"|format(pct_perturbe_severe) }} %</span>
-                        <span class="stat-attenue">hors perturbations mineures ≤ 5 min)</span>
+                        <span class="stat-attenue">de perturbations significatives > 5 min)</span>
                     {% else %}
                         <span class="pastille pastille-rouge">{{ "%.0f"|format(pct_perturbe) }} %</span>
                     {% endif %}
@@ -27,7 +27,7 @@
                 {% if pct_sans_perturbation_large_texte %}
                     <span class="stat-attenue">({{ pct_sans_perturbation_texte }} % sans aucun retard —</span>
                     <span class="pastille">{{ pct_sans_perturbation_large_texte }} %</span>
-                    <span class="stat-attenue">avec des perturbations mineures ≤ 5 min)</span>
+                    <span class="stat-attenue">en tolérant les perturbations mineures ≤ 5 min)</span>
                 {% else %}
                     <span class="pastille">{{ pct_sans_perturbation_texte }} %</span>
                 {% endif %}

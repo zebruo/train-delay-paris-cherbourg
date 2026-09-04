@@ -1135,7 +1135,7 @@ ajoutée le 2026-08-17 (même besoin). */
     gap: 1rem;
     font-size: 0.75rem;
     justify-content: center;
-    margin-bottom: 0.5rem;
+    margin: 0.4rem 0 0.4rem;
 }
 
 /* .champ a son propre font-size (0.85rem), qui l'emporte sur l'héritage

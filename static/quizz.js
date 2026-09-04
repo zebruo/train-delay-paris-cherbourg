@@ -194,6 +194,17 @@ const QUIZZ_QUESTIONS = [
         correct: 1,
         explication: "« Circulations perturbées » est le seul indicateur explicitement pensé pour répondre à « à quel point la journée a été mauvaise » en un coup d'œil. « Retard cumulé » sert plutôt à comparer des périodes ou construire un dossier SNCF ; « Retard moyen / relevé » est dilué par des milliers de relevés à 0 min, peu parlant pour un usager ; « Retard max » n'est qu'un seul cas extrême, pas représentatif du reste de la ligne.",
     },
+    {
+        question: "« Circulations perturbées » et « Trajets sans perturbation » affichent deux pourcentages. Pourquoi ?",
+        choix: [
+            "C'est une correction de bug, le premier chiffre était faux",
+            "Le premier chiffre compte tout retard, même 1 minute rattrapée aussitôt — un total qui peut sembler alarmant sans être très parlant ; le second exclut les perturbations mineures (≤ 5 min) pour isoler ce qui compte vraiment pour un usager",
+            "Le second chiffre porte sur une période différente du premier",
+            "Les deux mesurent des choses indépendantes, sans lien entre elles",
+        ],
+        correct: 1,
+        explication: "« Circulations perturbées » compte tout retard à un moment quelconque du trajet, même quelques minutes vite rattrapées — un chiffre « au total » qui peut donner une impression trompeuse. Le second pourcentage applique le même seuil de 5 min déjà utilisé ailleurs dans l'appli (onglet Circulations) pour exclure ces perturbations mineures et isoler les cas qui affectent vraiment un trajet.",
+    },
 ];
 
 let quizzOrdre = [];

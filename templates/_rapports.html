@@ -1,8 +1,8 @@
 {% if not erreur %}
 <div class="zone-rapports">
     <div class="ligne-periode" id="filtres-rapports">
+        <p class="info stat-graphique">{{ rapport_periode_texte }}</p>
         <div class="champ">
-            <label>Période</label>
             <!-- Segmented control (3 boutons) plutôt qu'un <select> —
             trop discret, demande explicite de l'utilisateur, 2026-09-03,
             mockup validé (option A). L'input caché ci-dessous conserve le
@@ -39,7 +39,6 @@
                 </svg>
             </a>
         {% endif %}
-        <p class="info stat-graphique">{{ rapport_periode_texte }}</p>
     </div>
 
     <div class="grille-stats-rapport">
