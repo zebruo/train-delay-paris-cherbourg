@@ -30,6 +30,7 @@ mockup_*.png
 calendar_cache.json
 verification_gtfs_etat.json
 verification_gtfs.log
+meteofrance_etat.json
 
 # Anciennes sauvegardes/tri, redondants avec git
 backups_code/

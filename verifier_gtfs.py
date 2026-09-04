@@ -310,7 +310,12 @@ def envoyer_sms_free_mobile(message):
         return
     params = urllib.parse.urlencode({"user": FREE_MOBILE_USER, "pass": FREE_MOBILE_PASS, "msg": message})
     try:
-        with urllib.request.urlopen(f"https://smsapi.free-mobile.fr/sendmsg?{params}", timeout=15) as r:
+        # 30s : la réponse HTTP de smsapi.free-mobile.fr depuis la VPS peut
+        # mettre plus de 15s à revenir, alors que le SMS part bien avant —
+        # un timeout à 15s faisait logger un faux "échec d'envoi" pour un
+        # SMS pourtant bien reçu (repéré par l'utilisateur en testant le
+        # même mécanisme côté collect_realtime.py, 2026-09-04).
+        with urllib.request.urlopen(f"https://smsapi.free-mobile.fr/sendmsg?{params}", timeout=30) as r:
             if r.status == 200:
                 print(f"[{horodatage()}] Alerte SMS envoyée.")
             else:

@@ -16,3 +16,12 @@ CHEMIN_DISTANT_VPS = "~/train-delay-paris-cherbourg"
 # + clé API) sont affichées ensemble sur cette même page.
 FREE_MOBILE_USER = ""
 FREE_MOBILE_PASS = ""
+
+# Utilisé par collect_realtime.py pour les données d'observation Météo-
+# France (précipitations réelles, réseau RADOME/ETENDU) — repli automatique
+# sur Open-Meteo si absent ou en cas d'échec (voir fetch_weather_
+# meteofrance). Portail : portail-api.meteofrance.fr -> compte -> "Mes
+# APIs" -> souscrire à "Données d'observation" -> "Générer token" (type
+# "API Key", durée longue conseillée, ex. 315360000 = 10 ans, le token ne
+# se régénère pas tout seul).
+METEOFRANCE_API_KEY = ""
