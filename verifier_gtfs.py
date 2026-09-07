@@ -301,12 +301,21 @@ def envoyer_sms_free_mobile(message):
     un échec d'envoi ne doit jamais faire planter la vérification GTFS
     elle-même. urllib.request, comme le reste de ce fichier (pas requests).
     FREE_MOBILE_USER/FREE_MOBILE_PASS : voir config.example.py — jamais
-    logués en clair ici, même en cas d'échec."""
+    logués en clair ici, même en cas d'échec.
+
+    Messages internes SANS préfixe "[horodatage]" (contrairement au reste
+    du fichier) : charger_journal() démarre une toute nouvelle entrée
+    d'historique à chaque ligne préfixée ainsi, quel que soit son contenu —
+    un message ici deviendrait donc sa propre entrée fantôme, classée
+    "Échec" à tort (elle ne contient jamais "X communs"), même si la
+    vérification GTFS elle-même a parfaitement réussi. Sans préfixe, la
+    ligne est simplement rattachée comme texte de détail à l'entrée en
+    cours (celle du résumé, imprimé juste avant par main()) — repéré par
+    l'utilisateur sur l'onglet Vérification GTFS, 2026-09-07."""
     try:
         from config import FREE_MOBILE_USER, FREE_MOBILE_PASS
     except ImportError:
-        print(f"[{horodatage()}] Alerte SMS : FREE_MOBILE_USER/FREE_MOBILE_PASS "
-              f"absents de config.py, SMS non envoyé.")
+        print("Alerte SMS : FREE_MOBILE_USER/FREE_MOBILE_PASS absents de config.py, SMS non envoyé.")
         return
     params = urllib.parse.urlencode({"user": FREE_MOBILE_USER, "pass": FREE_MOBILE_PASS, "msg": message})
     try:
@@ -317,11 +326,11 @@ def envoyer_sms_free_mobile(message):
         # même mécanisme côté collect_realtime.py, 2026-09-04).
         with urllib.request.urlopen(f"https://smsapi.free-mobile.fr/sendmsg?{params}", timeout=30) as r:
             if r.status == 200:
-                print(f"[{horodatage()}] Alerte SMS envoyée.")
+                print("Alerte SMS envoyée.")
             else:
-                print(f"[{horodatage()}] Alerte SMS : réponse inattendue (code {r.status}).")
+                print(f"Alerte SMS : réponse inattendue (code {r.status}).")
     except Exception as e:
-        print(f"[{horodatage()}] Alerte SMS : échec d'envoi ({e}).")
+        print(f"Alerte SMS : échec d'envoi ({e}).")
 
 
 def main():
@@ -380,14 +389,14 @@ def main():
     alerte_sms_envoyee = etat.get("alerte_sms_envoyee", False)
     if jours_consecutifs_nouveaux == 0:
         alerte_sms_envoyee = False  # réarme pour un futur épisode
-    elif jours_consecutifs_nouveaux >= SEUIL_JOURS_ALERTE_SMS and not alerte_sms_envoyee:
-        envoyer_sms_free_mobile(
-            f"Vérification GTFS : « Nouveaux » > 0 depuis {jours_consecutifs_nouveaux} "
-            f"jours consécutifs ({resultat['nouveaux']} aujourd'hui) — référentiel "
-            f"probablement à régénérer."
-        )
-        alerte_sms_envoyee = True
+    envoyer_sms = jours_consecutifs_nouveaux >= SEUIL_JOURS_ALERTE_SMS and not alerte_sms_envoyee
 
+    # Résumé imprimé AVANT l'envoi du SMS (ci-dessous) : envoyer_sms_free_
+    # mobile fait un appel réseau qui peut prendre plusieurs secondes, et
+    # ses propres messages n'ont plus de préfixe "[horodatage]" (voir son
+    # docstring) pour être rattachés à CETTE entrée plutôt que de démarrer
+    # la leur — encore faut-il qu'une entrée soit déjà ouverte, d'où cet
+    # ordre.
     if ecart <= dernier_ecart_signale:
         print(f"{ligne_resume} Pas d'aggravation depuis la dernière alerte, "
               f"régénération toujours en attente si tu veux la faire.")
@@ -414,6 +423,14 @@ def main():
               "télécharger le nouveau GTFS puis python3 build_reference.py")
         print()
         dernier_ecart_signale = ecart
+
+    if envoyer_sms:
+        envoyer_sms_free_mobile(
+            f"Vérification GTFS : « Nouveaux » > 0 depuis {jours_consecutifs_nouveaux} "
+            f"jours consécutifs ({resultat['nouveaux']} aujourd'hui) — référentiel "
+            f"probablement à régénérer."
+        )
+        alerte_sms_envoyee = True
 
     with open(ETAT_FILE, "w", encoding="utf-8") as f:
         json.dump({
