@@ -62,10 +62,16 @@
         (minimum recommandé : {{ seuil_fiable }}) — (voir aide).
     </p>
     {% endif %}
-    {% set pct_retard = 100 - pct_a_lheure %}
-    <div class="mobile-bandeau {{ 'mobile-bandeau-gris' if hors_ligne else 'mobile-bandeau-rouge' if pct_retard >= 15 else 'mobile-bandeau-orange' if pct_retard >= 8 else 'mobile-bandeau-vert' }}" style="margin: 12px 0;">
-        <span class="mobile-bandeau-nombre">{{ pct_a_lheure }} %</span>
-        <span class="mobile-bandeau-texte">à l'heure sur les 90 derniers jours</span>
+    {% set pct_retard = 100 - pct_a_lheure_tolerant %}
+    <div class="mobile-bandeau mobile-bandeau-empile {{ 'mobile-bandeau-gris' if hors_ligne else 'mobile-bandeau-rouge' if pct_retard >= 15 else 'mobile-bandeau-orange' if pct_retard >= 8 else 'mobile-bandeau-vert' }}" style="margin: 12px 0;">
+        <span class="mobile-bandeau-label">à l'heure sur les 90 derniers jours :</span>
+        {% if pct_a_lheure != pct_a_lheure_tolerant %}
+            <span class="mobile-bandeau-strict">{{ pct_a_lheure }} %</span>
+        {% endif %}
+        <span class="mobile-bandeau-nombre">{{ pct_a_lheure_tolerant }} %</span>
+        {% if pct_a_lheure != pct_a_lheure_tolerant %}
+            <span class="mobile-bandeau-tolerance">en tolérant les perturbations mineures ≤ 5 min</span>
+        {% endif %}
     </div>
 
     <div class="mobile-callouts">

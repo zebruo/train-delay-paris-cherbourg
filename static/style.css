@@ -1060,6 +1060,14 @@ juste en dessous. */
     color: var(--texte-attenue);
 }
 
+/* Même rouge que .pastille-rouge (Circulations perturbées/annulées) —
+demande explicite de l'utilisateur, 2026-09-07 : le "⚠" n'avait jusque-là
+aucune couleur propre, il héritait simplement du gris atténué de la
+bannière. */
+.icone-avertissement {
+    color: var(--rouge-texte);
+}
+
 .lien-perturbations {
     flex-shrink: 0;
     background: none;

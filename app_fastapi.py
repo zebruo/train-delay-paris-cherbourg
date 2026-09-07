@@ -1832,6 +1832,12 @@ def calculer_carte_stats_train_sql(connexion, train, gare="Toutes", jours=90, li
     # "dernier connu, pire cas" que Retard max ailleurs dans l'appli.
     retards = [r for _, _, r in lignes]
     pct_a_lheure = 100 * sum(1 for r in retards if r == 0) / len(retards)
+    # Second pourcentage recalibré (tolère les perturbations mineures
+    # ≤ 5 min) — même seuil et même narratif que Circulations perturbées/
+    # Trajets sans perturbation côté desktop, demande explicite de
+    # l'utilisateur, 2026-09-07 : le "à l'heure" strict ci-dessus peut
+    # sembler sévère pour un simple retard vite rattrapé.
+    pct_a_lheure_tolerant = 100 * sum(1 for r in retards if r <= SEUIL_RETARD_MOYEN) / len(retards)
     retard_max_periode = max(retards)
     # Gare hors ligne (Autres gares (jonction), voir gares_options_mobile) :
     # même convention que tr.hors-ligne (desktop, style.css) — prioritaire
@@ -1871,6 +1877,7 @@ def calculer_carte_stats_train_sql(connexion, train, gare="Toutes", jours=90, li
     return {
         "donnees_disponibles": True,
         "pct_a_lheure": round(pct_a_lheure, 1),
+        "pct_a_lheure_tolerant": round(pct_a_lheure_tolerant, 1),
         "retard_moyen": round(sum(retards) / len(retards), 1),
         "retard_max": retard_max_periode,
         # Repères de l'axe Y du mini-graphique (mobile.css .mobile-axe-y) —
@@ -2445,12 +2452,7 @@ def _calculer_stats_globales_sql_interne(
             else "issus des filtres actifs ci-dessus, pas seulement sur les 300 dernières "
                  "lignes affichées dans le tableau"
         )
-        tooltip_moyen = (
-            f"Moyenne brute sur les {nb_releves} relevés {portee_releves_texte} — un même "
-            "passage réel est vu à plusieurs relevés tant qu'il reste dans la fenêtre du "
-            "flux temps réel, d'où une moyenne « par relevé » très diluée par rapport au "
-            "retard cumulé réel."
-        )
+        tooltip_moyen = "Moyenne à plat de chaque relevé individuel du système (voir quizz)."
         tooltip_pire_gare = (
             f"Gare avec le retard moyen / relevé le plus élevé, sur les {nb_releves} "
             f"relevés {portee_releves_texte} — une moyenne brute (voir « Retard moyen / "
@@ -2458,27 +2460,21 @@ def _calculer_stats_globales_sql_interne(
             "sondé à répétition tant qu'il reste dans le flux temps réel, plutôt que "
             "refléter une vraie difficulté récurrente de cette gare."
         )
-        jours_cumules, heures_restantes = divmod(heures, 24)
         depuis_texte = (
             "sur cette période" if not depuis_debut_collecte
             else f"depuis le tout début de la collecte, le {date_debut_collecte}"
         )
         tooltip_cumule = (
-            "Additionne le dernier retard connu pour chaque passage impacté (un train "
-            f"à une gare précise), {depuis_texte}. Son intérêt est surtout de donner une "
-            f"idée de l'ampleur du volume total de retard généré par la ligne sur toute "
-            f"cette période (soit environ {jours_cumules} jours et {heures_restantes} h cumulés)."
+            f"Plutôt pensé pour construire un dossier SNCF. "
+            f"Calculé {depuis_texte}."
         )
     else:
         stats = None
         tooltip_moyen = tooltip_pire_gare = tooltip_cumule = ""
 
     tooltip_retard_max = (
-        "Le plus grand retard observé, avec le train concerné. Peut provenir d'une "
-        "circulation ancienne dont l'horaire théorique a changé depuis (la SNCF republie "
-        "régulièrement des ajustements) — dans ce cas, l'onglet « Suivi d'un train » "
-        "affichera « trajet théorique introuvable », mais le retard lui-même reste bien "
-        "réel et compté."
+        "Un seul cas extrême. Peut provenir d'une circulation ancienne dont l'horaire "
+        "théorique a changé."
     )
 
     tooltip_pct_a_lheure = (

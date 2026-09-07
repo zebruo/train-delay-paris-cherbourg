@@ -118,7 +118,7 @@ const QUIZZ_QUESTIONS = [
         explication: "Le doré existe pour un cas précis qui resterait sinon invisible : un train arrivé pile à l'heure n'a aucune couleur d'alerte si on ne regarde que le retard à l'arrivée, alors qu'il peut être en train d'accumuler un vrai retard de départ, pas encore visible ailleurs.",
     },
     {
-        question: "Dans l'onglet Circulations, le chiffre de la colonne « Dép. » devient doré quand un train arrive correctement (< 5 min) mais reste immobilisé plus longtemps que prévu au départ d'une gare. Ce doré peut signaler un incident tout frais... ou un aléa connu depuis le début du trajet. L'application fait-elle la différence automatiquement entre ces deux cas ?",
+        question: "Dans l'onglet Circulations, le chiffre de la colonne « Dép. » devient doré quand le retard au départ d'une gare atteint 5 min, sans que l'arrivée dans cette même gare soit déjà en retard — y compris à la toute première gare du trajet. Ce doré peut signaler un incident tout frais... ou un aléa connu depuis le début du trajet. L'application fait-elle la différence automatiquement entre ces deux cas ?",
         choix: [
             "Oui, une icône distingue les deux cas",
             "Non — il faut comparer ce retard de départ aux relevés précédents via l'onglet « Suivi d'un train » pour savoir si c'est nouveau ou stable",
@@ -195,15 +195,49 @@ const QUIZZ_QUESTIONS = [
         explication: "« Circulations perturbées » est le seul indicateur explicitement pensé pour répondre à « à quel point la journée a été mauvaise » en un coup d'œil. « Retard cumulé » sert plutôt à comparer des périodes ou construire un dossier SNCF ; « Retard moyen / relevé » est dilué par des milliers de relevés à 0 min, peu parlant pour un usager ; « Retard max » n'est qu'un seul cas extrême, pas représentatif du reste de la ligne.",
     },
     {
-        question: "« Circulations perturbées » et « Trajets sans perturbation » affichent deux pourcentages. Pourquoi ?",
+        question: "« Trajets sans perturbation » affichent deux pourcentages. Pourquoi ?",
         choix: [
             "C'est une correction de bug, le premier chiffre était faux",
-            "Le premier chiffre compte tout retard, même 1 minute rattrapée aussitôt — un total qui peut sembler alarmant sans être très parlant ; le second exclut les perturbations mineures (≤ 5 min) pour isoler ce qui compte vraiment pour un usager",
+            "Le premier chiffre compte tout retard, même 1 minute rattrapée aussitôt — un total qui peut sembler alarmant sans être très parlant ; le second tolère les perturbations mineures (≤ 5 min) pour isoler ce qui compte vraiment pour un usager",
             "Le second chiffre porte sur une période différente du premier",
             "Les deux mesurent des choses indépendantes, sans lien entre elles",
         ],
         correct: 1,
         explication: "« Circulations perturbées » compte tout retard à un moment quelconque du trajet, même quelques minutes vite rattrapées — un chiffre « au total » qui peut donner une impression trompeuse. Le second pourcentage applique le même seuil de 5 min déjà utilisé ailleurs dans l'appli (onglet Circulations) pour exclure ces perturbations mineures et isoler les cas qui affectent vraiment un trajet.",
+    },
+    {
+        question: "« X % des relevés du flux temps réel SNCF indiquent un train à l'heure » et « Trajets sans perturbation » (en tolérant les perturbations mineures) sont parfois très proches. Quelle est la différence entre ces deux pourcentages ?",
+        choix: [
+            "Ce sont deux façons différentes d'arrondir exactement le même calcul",
+            "Le premier compte chaque passage en gare séparément (un train qui dessert 10 gares compte pour 10, à 0 min pile), le second compte chaque train une seule fois, avec une tolérance de 5 min",
+            "Le premier porte sur les 90 derniers jours, le second sur toute la collecte",
+            "Le premier exclut les circulations annulées, le second les inclut",
+        ],
+        correct: 1,
+        explication: "« X % des relevés... » compte chaque passage en gare individuellement, à 0 min de retard pile (aucune tolérance) — un train qui dessert 10 gares avec un seul retard compte déjà pour 9 passages « à l'heure » sur 10. « Trajets sans perturbation » compte chaque circulation une seule fois, quel que soit son nombre d'arrêts, et tolère jusqu'à 5 min de retard n'importe où sur le trajet. Les deux chiffres peuvent se ressembler un jour donné par coïncidence, sans être liés par le calcul.",
+        explicationHTML:
+            "<p>« X % des relevés... » compte chaque passage en gare individuellement, à 0 min de retard pile (aucune tolérance). « Trajets sans perturbation » compte chaque circulation une seule fois, quel que soit son nombre d'arrêts, et tolère jusqu'à 5 min de retard n'importe où sur le trajet.</p>" +
+            "<p>Exemple : 2 trains, 3 gares chacun.</p>" +
+            "<pre class=\"quizz-exemple\">Gare        Train A    Train B\n" +
+            "1           0 min      0 min\n" +
+            "2           0 min      0 min\n" +
+            "3           0 min      8 min\n\n" +
+            "« X % des relevés... à l'heure » (passages à 0 min pile, sur 6 passages) :\n" +
+            "5 ÷ 6 ≈ 83,3 %\n\n" +
+            "Trajets sans perturbation (tolérant ≤ 5 min, sur 2 trains) :\n" +
+            "seul Train A qualifie (max 0 min) ; Train B culmine à 8 min (> 5 min) → 1 ÷ 2 = 50 %</pre>" +
+            "<p>Deux trains, deux définitions différentes de « à l'heure » : 83,3 % côté relevés, 50 % côté circulations. Un jour donné, ces deux pourcentages peuvent se rapprocher par coïncidence — ils ne mesurent pas la même chose.</p>",
+    },
+    {
+        question: "Le tooltip « Retard max » peut correspondre à une circulation pour laquelle « Suivi d'un train » affiche pourtant « trajet théorique introuvable ». Comment est-ce possible ?",
+        choix: [
+            "C'est une incohérence entre les deux onglets, à corriger",
+            "Une circulation ancienne peut avoir un horaire théorique qui a changé depuis (la SNCF republie régulièrement des ajustements) — le référentiel actuel ne retrouve plus la bonne variante, mais le retard mesuré à l'époque reste bien réel",
+            "« Suivi d'un train » ne couvre que les 7 derniers jours, contrairement à Retard max",
+            "Le train concerné a été supprimé du référentiel SNCF",
+        ],
+        correct: 1,
+        explication: "La SNCF republie régulièrement des ajustements d'horaires théoriques. Un retard peut avoir été mesuré à l'époque par rapport à l'horaire alors en vigueur, mais si cet horaire a changé depuis, le référentiel actuel ne retrouve plus la bonne variante pour reconstruire le trajet théorique — d'où « trajet théorique introuvable » dans Suivi d'un train. Le retard, lui, reste parfaitement réel et compté dans les statistiques.",
     },
 ];
 

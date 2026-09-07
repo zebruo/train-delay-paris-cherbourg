@@ -402,6 +402,41 @@ centre de la barre correspondante (barre i sur 24 → centre à (i+0.5)/24)
 .mobile-bandeau-nombre { font-size: 20px; font-weight: 800; }
 .mobile-bandeau-texte { line-height: 1.3; }
 
+/* Variante empilée (carte "Mon train") : libellé/pourcentage strict/gros
+pourcentage recalibré/clause de tolérance, chacun sur sa ligne, plutôt que
+la disposition en ligne par défaut ci-dessus (réutilisée telle quelle par
+Alertes) — mockup validé par l'utilisateur, 2026-09-07. Libellé, strict et
+tolérance restent toujours atténués, quelle que soit la couleur du
+bandeau (rouge/orange/vert/gris) — seul le gros pourcentage recalibré
+porte cette couleur, demande explicite de l'utilisateur. */
+.mobile-bandeau-empile {
+    display: block;
+    text-align: center;
+}
+.mobile-bandeau-empile .mobile-bandeau-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--texte-attenue);
+    margin-bottom: 6px;
+}
+.mobile-bandeau-empile .mobile-bandeau-strict {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--texte);
+    margin-bottom: 2px;
+}
+.mobile-bandeau-empile .mobile-bandeau-nombre {
+    display: block;
+    font-size: 26px;
+}
+.mobile-bandeau-empile .mobile-bandeau-tolerance {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--texte-attenue);
+    margin-top: 4px;
+}
+
 .mobile-carte-train-entete {
     display: flex;
     align-items: baseline;
