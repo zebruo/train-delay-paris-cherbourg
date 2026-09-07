@@ -25,6 +25,7 @@ rapports/
 guide_statistiques.pdf
 organigramme_application.png
 mockup_*.png
+quizz_questions.md
 
 # Caches / état runtime
 calendar_cache.json

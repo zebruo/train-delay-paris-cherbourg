@@ -16,13 +16,15 @@ plus bas), parce qu'il est sur le même réseau local que le NAS,
 contrairement à la VPS (serveur public).
 
 - **VPS** — collecte en continu et héberge l'appli web en production. Cron :
-  - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, écrit dans `observations.db` (SQLite, écritures atomiques, colonnes typées).
+  - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, enrichit chaque relevé avec la météo réelle de la gare (Météo-France, réseau RADOME/ETENDU — repli automatique sur Open-Meteo en cas d'échec/absence de clé) et écrit dans `observations.db` (SQLite, écritures atomiques, colonnes typées).
   - `collect_alertes.py` (toutes les heures) : perturbations/travaux signalés, écrit `alertes.csv`.
   - `verifier_gtfs.py` (03:15) : compare le référentiel local aux horaires théoriques publiés par la SNCF, détecte quand `reference_paris_cherbourg.csv` devient obsolète.
   - `rafraichir_caches_historique.py` (toutes les ~15 min) : précalcule le résultat des onglets Graphique ("tout l'historique") et Par jour/heure pour la combinaison de filtres par défaut (la plus consultée), dans une table dédiée d'`observations.db` — évite de rescanner toute la base à chaque requête.
   - `app_fastapi.py` tourne en continu (`systemd`, `train-delay.service`) derrière nginx + HTTPS (Let's Encrypt), lit directement `observations.db` — pas de rapatriement réseau, la collecte et l'appli sont sur la même machine.
-- **Raspberry Pi** — ne collecte plus (`collect_realtime.py`/`collect_alertes.py` retirés de son cron, plus présents du tout sur le Pi depuis le nettoyage du 2026-08-16) ; reste allumé uniquement comme relais vers le NAS (même IP privée que lui, contrairement à la VPS, serveur public) :
-  - `executer_rapport_pi.sh` (quotidien 03:30, hebdomadaire 03:35 le lundi, mensuel 03:40 le 1er du mois) rapatrie d'abord `observations.db`/`alertes.csv` depuis la VPS par rsync, génère le rapport (`generer_rapport.py`), puis l'envoie au NAS (`envoyer_rapport_nas_pi.sh`) et pousse une copie à nom fixe (toujours écrasée, pas d'historique) vers la VPS (`envoyer_rapport_vps_pi.sh`) pour le bouton de téléchargement de l'onglet "Rapports" — seule exception au sens de circulation habituel (VPS -> Pi), la VPS ne pouvant pas atteindre le Pi/NAS elle-même.
+- **Raspberry Pi** — ne collecte plus (`collect_realtime.py`/`collect_alertes.py` retirés de son cron, plus présents du tout sur le Pi depuis le nettoyage du 2026-08-16) ; reste allumé uniquement comme relais vers le NAS (même IP privée que lui, contrairement à la VPS, serveur public). Deux Raspberry Pi, un seul actif à la fois (l'autre garde les mêmes lignes commentées dans son crontab, prêt à reprendre le relais) :
+  - **Pi 4** (`PI4_HOST`) — source active de production depuis le 2026-09-07 : `executer_rapport_pi.sh` quotidien (03:30), hebdomadaire (03:35 le lundi), mensuel (03:40 le 1er du mois), `sauvegarder_observations_nas.sh` (03:45). Bascule décidée après un blocage du Pi 2 le 2026-09-04 (`rsync observations.db` resté figé, insensible à `kill -9`, résolu seulement par un redémarrage complet) — le Pi 4 (3,7 Go de RAM, contre ~942 Mo au Pi 2) prenait déjà seul le rapport mensuel en charge depuis le 2026-09-01 pour la même raison de RAM.
+  - **Pi 2** (`PI2_HOST`) — en secours, cron commenté ; le réactiver nécessite de d'abord commenter les mêmes lignes côté Pi 4, pour éviter une double génération/numérotation (compteurs de `rapports/.compteur.json` synchronisés entre les deux à chaque bascule).
+  - `executer_rapport_pi.sh` rapatrie d'abord `observations.db`/`alertes.csv` depuis la VPS par rsync, génère le rapport (`generer_rapport.py`), puis l'envoie au NAS (`envoyer_rapport_nas_pi.sh`) et pousse une copie à nom fixe (toujours écrasée, pas d'historique) vers la VPS (`envoyer_rapport_vps_pi.sh`) pour le bouton de téléchargement de l'onglet "Rapports" — seule exception au sens de circulation habituel (VPS -> Pi), la VPS ne pouvant pas atteindre le Pi/NAS elle-même.
   - `sauvegarder_observations_nas.sh` (quotidien 03:45, indépendant de la génération de rapport) : sauvegarde datée d'`observations.db` (rapatrié depuis la VPS) vers le NAS, ne garde que les 3 sauvegardes les plus récentes.
 - **PC** — `viewer.py` (Tkinter) : rapatrie `observations.db` depuis la VPS par rsync (bouton "Rafraîchir depuis la VPS"), même fonctionnalités que l'appli web plus l'onglet "Guide statistiques" et les actions qui écrivent sur la VPS (boutons de l'onglet "Vérification GTFS"). `app_fastapi.py` peut aussi tourner en local sur le PC (utile pour tester une modification avant de la déployer, ou en secours hors-ligne) — il lit alors la copie locale d'`observations.db`, elle aussi rapatriée par `viewer.py`, sans se rafraîchir tout seul.
 - **NAS** — destination des rapports PDF, et depuis le 2026-08-15 d'une sauvegarde quotidienne d'`observations.db` (voir `sauvegarder_observations_nas.sh` ci-dessus, 3 sauvegardes les plus récentes conservées). L'ancien historique CSV collecté par le Pi jusqu'au 2026-08-14 (`observations.csv`/`alertes.csv`/`backups/`) reste archivé séparément, figé à cette date (`backup_local.sh`/`backup_to_nas.sh`, retirés du cron, supprimés depuis).
@@ -31,11 +33,12 @@ contrairement à la VPS (serveur public).
 
 Communes aux deux interfaces :
 
-- **Tableau** — dernier relevé par gare/train, code couleur (rouge/orange/doré) selon le retard à l'arrivée et au départ.
+- **Circulations** (anciennement "Tableau") — dernier relevé par gare/train, code couleur (rouge/orange/doré) selon le retard à l'arrivée et au départ.
 - **Graphique / Par jour-heure** — vue d'ensemble des retards sur la période.
 - **Suivi d'un train** — évolution du retard relevé par relevé pour une circulation donnée.
 - **Perturbations** — alertes SNCF officielles et trajets annulés/arrêts supprimés détectés en temps réel.
 - **Vérification GTFS** — écart entre le référentiel utilisé par l'appli et les horaires SNCF actuellement publiés (disparus/modifiés/nouveaux/renommés).
+- **Quizz** — questions à choix multiples sur la bonne lecture des statistiques affichées (contenu statique dérivé du guide statistiques, `static/quizz.js`).
 
 Propre à `viewer.py` :
 
@@ -87,16 +90,23 @@ cp config.example.py config.py
 cp config.sh.example config.sh
 ```
 
-Puis renseigner `PI4_HOST`, `VPS_HOST`, `NAS_HOST`, `CHEMIN_DISTANT_PI` et
-`CHEMIN_DISTANT_VPS` dans `config.py` (`PI2_HOST` optionnel, uniquement si
-un 2e Raspberry Pi de secours est présent sur le réseau local), et
-`NAS_HOST`/`SSH_KEY_NAS`/
+Puis renseigner `PI2_HOST`, `PI4_HOST`, `VPS_HOST`, `NAS_HOST`,
+`CHEMIN_DISTANT_PI` et `CHEMIN_DISTANT_VPS` dans `config.py` (voir
+Architecture ci-dessus pour le rôle actuel de chaque Pi — `PI4_HOST` est la
+source active de production, `PI2_HOST` optionnel si un seul Pi suffit),
+et `NAS_HOST`/`SSH_KEY_NAS`/
 `VPS_HOST`/`SSH_KEY_VPS` dans `config.sh` (utilisé par les scripts bash
 tournant sur le Pi, notamment `executer_rapport_pi.sh`), avec tes propres
 valeurs. `FREE_MOBILE_USER`/`FREE_MOBILE_PASS` dans `config.py` sont
 optionnels — uniquement sur la VPS, pour l'alerte SMS de `verifier_gtfs.py`
 quand « Nouveaux » reste > 0 plusieurs jours de suite (identifiants dans
-l'Espace Abonné Free -> Notifications par SMS).
+l'Espace Abonné Free -> Notifications par SMS), et pour celle de
+`collect_realtime.py` quand Météo-France ne répond plus depuis 48h.
+`METEOFRANCE_API_KEY` dans `config.py` est optionnel — uniquement sur la
+VPS, pour la météo réelle par station (sans elle, `collect_realtime.py`
+utilise directement Open-Meteo) : clé gratuite sur
+portail-api.meteofrance.fr, souscrire à l'API "Données d'observation" puis
+générer un token de type "API Key".
 
 ### Référentiel initial
 
