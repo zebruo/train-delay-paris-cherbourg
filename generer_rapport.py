@@ -803,8 +803,14 @@ def generer(nom_periode, maintenant=None):
     # lui-même un interlignage cohérent pour un bloc multi-lignes unique
     # (linespacing, en multiples de la taille de police) — beaucoup plus
     # robuste que de deviner des fractions à la main.
+    # linespacing=1.5 -> ~12pt d'écart entre les lignes du bloc (8pt de
+    # police), et 0.727 (au lieu de 0.97, l'ancrage de la 1re ligne juste
+    # au-dessus) -> ~12pt aussi jusqu'à "Retard cumulé" : les deux mesurés
+    # dans un rendu réel (0.22 donnait 10.84pt, linespacing=1.8 donnait
+    # ~14.5pt) puis mis à l'échelle pour un écart uniforme de 12pt partout
+    # — validé sur mockup (4 options : 10.84/14.5/12.5/12pt), 2026-09-07.
     lignes_detail = [l for l in [ligne2, texte_pire_gare] if l] + [texte_meteo, texte_alertes, texte_annulations]
-    ax_stats.text(0, 0.75, "\n".join(lignes_detail), fontsize=8, color="#555", va="top", ha="left", linespacing=1.8)
+    ax_stats.text(0, 0.684, "\n".join(lignes_detail), fontsize=8, color="#555", va="top", ha="left", linespacing=1.5)
     ax_stats.set_xlim(0, 1)
     ax_stats.set_ylim(0, 1)
 
