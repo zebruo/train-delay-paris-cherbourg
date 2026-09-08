@@ -376,6 +376,15 @@ GUIDE_PAGES = [
                     "voir si les problèmes se concentrent sur un point précis de la ligne "
                     "(travaux, nœud engorgé) plutôt que d'être répartis partout."
                 ),
+                pourquoi=(
+                    "Cette moyenne compte à plat chaque relevé individuel, pas chaque train — un "
+                    "seul train très en retard, sondé à répétition tant qu'il reste dans le flux "
+                    "temps réel, peut donc suffire à faire basculer ce classement. Rien dans ce "
+                    "chiffre ne permet de savoir si une gare l'emporte à cause d'un vrai problème "
+                    "touchant plusieurs trains, ou simplement parce qu'un train y est resté sondé "
+                    "plus longtemps — un signal à creuser (aller regarder l'onglet Circulations "
+                    "pour cette gare), pas un verdict."
+                ),
             ),
         ],
     ),
@@ -430,8 +439,8 @@ GUIDE_PAGES = [
                 ],
                 utilite=(
                     "éviter de s'alarmer pour une ligne dorée qui traîne en réalité depuis des "
-                    "heures sans rien de nouveau — mais il faut le vérifier soi-même, l'appli "
-                    "ne le fait pas automatiquement."
+                    "heures sans rien de nouveau — mais l'application ne permet actuellement "
+                    "aucun moyen, ni automatique ni manuel, de le vérifier."
                 ),
                 pourquoi=(
                     "Distinguer les deux cas demanderait de comparer ce retard de départ à ce "
@@ -439,10 +448,11 @@ GUIDE_PAGES = [
                     "— une fonctionnalité jugée utile seulement en surveillance active de "
                     "l'appli (voir si un problème vient d'apparaître), sans intérêt pour les "
                     "statistiques ou les rapports PDF (qui ne retiennent de toute façon que la "
-                    "dernière valeur connue) — pas construite pour l'instant. En attendant, "
-                    "« Suivi d'un train » permet de vérifier à la main : si le retard de départ "
-                    "est stable sur plusieurs relevés d'affilée, c'est le cas 2 ; s'il vient de "
-                    "changer par rapport au relevé précédent, c'est le cas 1."
+                    "dernière valeur connue) — pas construite pour l'instant. « Suivi d'un "
+                    "train » ne peut pas non plus aider : ses deux vues tracent le retard à "
+                    "l'arrivée dès qu'il est connu et ignorent alors le retard au départ. Ce "
+                    "retard au départ n'est visible nulle part ailleurs que dans la colonne "
+                    "« Dép. » du Tableau."
                 ),
             ),
         ],

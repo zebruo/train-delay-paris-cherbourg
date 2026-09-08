@@ -738,7 +738,7 @@ padding) reste sur chaque règle séparément. */
 .grille-stats-rapport {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.5rem;
+    gap: 1rem;
     justify-content: space-around;
 }
 
@@ -831,6 +831,109 @@ les pastilles de la barre de stats (Circulations perturbées/annulées). */
 .zone-scroll .pastille {
     font-size: 0.6rem;
     font-weight: normal;
+}
+
+/* Détail dépliable de "Circulations perturbées" (Rapports, quotidien/
+hebdomadaire seulement — voir app_fastapi._construire_detail_perturbees_sql)
+— mockup validé par l'utilisateur, 2026-09-08. */
+.bouton-detail {
+    background: none;
+    border: none;
+    color: var(--texte-attenue);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.4rem 0 0;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.bouton-detail .fleche {
+    transition: transform 0.15s ease;
+    font-size: 0.65rem;
+}
+
+.bouton-detail.ouvert .fleche {
+    transform: rotate(90deg);
+}
+
+/* position: fixed (positionné en JS, voir basculerDetailPerturbees,
+rapports.js) plutôt qu'un flux normal sous le bouton : .grille-stats-rapport/
+#stats est une rangée flex (une .stat = une colonne étroite), un tableau de
+100% de large y était écrasé et son ouverture repoussait toute la rangée —
+repéré par l'utilisateur, 2026-09-08. .zone-rapports (parent, overflow-y:
+auto) aurait aussi rogné un position:absolute ancré dans le flux normal ;
+fixed + coordonnées écran (getBoundingClientRect du bouton) l'évite
+entièrement, quel que soit l'ancêtre qui défile. */
+.zone-detail {
+    position: fixed;
+    z-index: 20;
+    max-width: min(1050px, 92vw);
+    max-height: 300px;
+    overflow-y: auto;
+    background: var(--fond-secondaire);
+    border: 1px solid var(--bordure);
+    border-radius: 0.3rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+table.detail-perturbees {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+
+table.detail-perturbees th {
+    color: var(--texte-attenue);
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    position: sticky;
+    top: 0;
+    background: var(--bordure);
+    border-right: 1px solid var(--fond-secondaire);
+}
+
+table.detail-perturbees th:last-child {
+    border-right: none;
+}
+
+table.detail-perturbees td {
+    padding: 0.3rem 0.5rem;
+    border-top: 1px solid var(--bordure);
+    /* Contre tbody td { white-space: nowrap } (règle générique, plus haut,
+    pour le Tableau/les tableaux d'alertes) : ce popover ne fait que 420px de
+    large, "852870 (Rennes → Caen)" ou "Statut (91 significatives)" y
+    tiennent forcément sur plusieurs lignes — le nowrap hérité forçait au
+    contraire chaque cellule sur une seule ligne, gonflant la largeur réelle
+    du tableau à ~680px et poussant Retard max/Statut hors de la zone
+    visible (scrollable horizontalement, mais invisible sans le savoir) —
+    repéré via getBoundingClientRect en vérifiant le popover après son
+    passage en position:fixed, 2026-09-08. */
+    white-space: normal;
+}
+
+table.detail-perturbees td.num {
+    font-variant-numeric: tabular-nums;
+}
+
+.badge-statut {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.badge-significatif,
+.badge-annule {
+    background: var(--rouge-fond);
+    color: var(--rouge-texte);
+}
+
+.badge-mineur {
+    background: var(--bordure);
+    color: var(--texte-attenue);
 }
 
 .info {
@@ -1584,23 +1687,158 @@ mise en page particulière héritée d'un autre onglet à réutiliser. */
     color: var(--texte-attenue);
     font-size: 0.9rem;
     margin: 0.25rem 0 1.25rem;
+    padding: 0 8px;
     text-align: justify;
+}
+
+#quizz-progression-ligne {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
 }
 
 #quizz-progression {
     font-weight: 600;
-    margin-bottom: 1rem;
+}
+
+/* Index dépliable (voir quizz.js, quizzBasculerIndex) — chaque ligne
+reprend l'ordre FIXE de QUIZZ_QUESTIONS (jamais mélangé, contrairement au
+déroulé normal du quizz) : un repère stable pour retrouver une question
+précise, demande explicite de l'utilisateur, 2026-09-08, mockup validé. */
+.quizz-bouton-index {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--bleu-fond);
+    border: 1px solid var(--bordure);
+    border-radius: 0.4rem;
+    color: var(--bleu-texte);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.35rem 0.7rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.quizz-bouton-index:hover {
+    border-color: var(--bleu-texte);
+}
+
+.quizz-bouton-index .fleche {
+    font-size: 0.6rem;
+    transition: transform 0.15s ease;
+}
+
+.quizz-bouton-index.ouvert .fleche {
+    transform: rotate(180deg);
+}
+
+#quizz-index-panneau {
+    margin: -0.4rem 0 1rem;
+    padding: 0.8rem;
+    background: var(--fond);
+}
+
+#quizz-index-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 22rem;
+    overflow-y: auto;
+    padding-right: 0.2rem;
+}
+
+.quizz-index-ligne {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: 100%;
+    text-align: left;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--bordure);
+    border-radius: 0.4rem;
+    background: var(--fond-secondaire);
+    color: var(--texte);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.quizz-index-ligne:hover {
+    border-color: var(--bleu-texte);
+}
+
+.quizz-index-numero {
+    flex-shrink: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    background: var(--fond);
+    color: var(--texte-attenue);
+}
+
+.quizz-index-texte {
+    white-space: normal;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: var(--texte-attenue);
+}
+
+.quizz-index-ligne.quizz-index-courante {
+    border: 2px solid var(--bleu-texte);
+    padding: 0.4rem 0.55rem;
+}
+
+.quizz-index-ligne.quizz-index-courante .quizz-index-numero {
+    background: var(--bleu-texte);
+    color: #fff;
+}
+
+.quizz-index-ligne.quizz-index-courante .quizz-index-texte {
+    color: var(--texte);
+    font-weight: 600;
+}
+
+.quizz-index-ligne.quizz-index-correcte { background: var(--pastille-fond); border-color: var(--pastille-texte); }
+.quizz-index-ligne.quizz-index-correcte .quizz-index-numero { background: var(--pastille-texte); color: #fff; }
+.quizz-index-ligne.quizz-index-correcte .quizz-index-texte { color: var(--texte); }
+
+.quizz-index-ligne.quizz-index-incorrecte { background: var(--rouge-fond); border-color: var(--rouge-texte); }
+.quizz-index-ligne.quizz-index-incorrecte .quizz-index-numero { background: var(--rouge-texte); color: #fff; }
+.quizz-index-ligne.quizz-index-incorrecte .quizz-index-texte { color: var(--texte); }
+
+/* Bandeau "Consultation" (voir quizz.js, quizzAllerA) — affiché seulement
+quand la question à l'écran vient d'un saut depuis l'index, pas de la
+progression normale de la partie, pour éviter de confondre les deux
+(la ligne "Question X/19 — Score" au-dessus continue de refléter la vraie
+progression, inchangée par un saut). */
+#quizz-consultation-bandeau {
+    color: var(--texte-attenue);
+    font-size: 0.8rem;
+    font-style: italic;
+    margin: 0 0 0.75rem;
 }
 
 #quizz-question-texte {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 400;
     margin: 0 0 1rem;
+    padding: 0 8px;
+    color: var(--bleu-texte);
     text-align: justify;
 }
 
 #quizz-choix {
     display: flex;
     flex-direction: column;
+    padding: 0 8px;
     gap: 0.5rem;
 }
 
@@ -1616,7 +1854,7 @@ mise en page particulière héritée d'un autre onglet à réutiliser. */
 }
 
 .quizz-choix-bouton:hover:not(:disabled) {
-    border-color: var(--accent);
+    border-color: var(--bleu-texte);
 }
 
 .quizz-choix-bouton:disabled {
@@ -1684,8 +1922,8 @@ dans quizz.js. */
     padding: 0.5rem 1.1rem;
     border: 1px solid var(--bordure);
     border-radius: 0.5rem;
-    background: var(--accent);
-    color: #fff;
+    background: var(--bleu-fond);
+    color: var(--bleu-texte);
     font-size: 0.9rem;
     font-weight: 600;
     cursor: pointer;

@@ -48,6 +48,14 @@ const QUIZZ_QUESTIONS = [
         ],
         correct: 2,
         explication: "« Retard moyen / relevé » est la moyenne de tous les relevés individuels du système (chaque interrogation, gare par gare) — la plupart à 0 min ou vite corrigés, ce qui dilue fortement la moyenne par rapport à un retard max ponctuel.",
+        explicationHTML:
+            "<p>« Retard moyen / relevé » est la moyenne de tous les relevés individuels du système (chaque interrogation, gare par gare) — la plupart à 0 min ou vite corrigés, ce qui dilue fortement la moyenne par rapport à un retard max ponctuel.</p>" +
+            "<p>Exemple : 450 relevés ce jour-là (plusieurs dizaines de trains, sondés toutes les 5 min à chacune de leurs gares) — un seul incident isolé atteint 45 min, tous les autres relevés sont à 0 min.</p>" +
+            "<pre class=\"quizz-exemple\">449 relevés à 0 min\n" +
+            "1 relevé à 45 min (l'incident, le « retard max » du jour)\n\n" +
+            "Retard moyen / relevé : (449 × 0 + 1 × 45) ÷ 450 ≈ 0,1 min\n" +
+            "Retard max : 45 min</pre>" +
+            "<p>Le retard max capture bien l'incident isolé. Retard moyen / relevé, lui, le noie complètement au milieu des centaines d'autres relevés à l'heure — les deux chiffres sont corrects, ils ne répondent juste pas à la même question.</p>",
     },
     {
         question: "Quelle est la vraie différence entre « Retard cumulé » et « Retard moyen / relevé » ?",
@@ -118,15 +126,15 @@ const QUIZZ_QUESTIONS = [
         explication: "Le doré existe pour un cas précis qui resterait sinon invisible : un train arrivé pile à l'heure n'a aucune couleur d'alerte si on ne regarde que le retard à l'arrivée, alors qu'il peut être en train d'accumuler un vrai retard de départ, pas encore visible ailleurs.",
     },
     {
-        question: "Dans l'onglet Circulations, le chiffre de la colonne « Dép. » devient doré quand le retard au départ d'une gare atteint 5 min, sans que l'arrivée dans cette même gare soit déjà en retard — y compris à la toute première gare du trajet. Ce doré peut signaler un incident tout frais... ou un aléa connu depuis le début du trajet. L'application fait-elle la différence automatiquement entre ces deux cas ?",
+        question: "Le chiffre de la colonne « Dép. » devient doré uniquement quand le retard au départ d'une gare atteint 5 min (y compris à la toute première gare du trajet). Cette couleur peut aussi bien signaler un incident tout frais qu'un aléa connu depuis le début du trajet. L'application fait-elle la différence automatiquement entre ces deux cas ?",
         choix: [
             "Oui, une icône distingue les deux cas",
-            "Non — il faut comparer ce retard de départ aux relevés précédents via l'onglet « Suivi d'un train » pour savoir si c'est nouveau ou stable",
+            "Non — et il n'existe actuellement aucun moyen de le vérifier dans l'application, pas même via « Suivi d'un train »",
             "Oui, mais seulement dans les rapports PDF",
             "Non, ce cas n'est jamais affiché en doré",
         ],
         correct: 1,
-        explication: "Distinguer les deux cas demanderait de comparer ce retard de départ aux relevés précédents de ce même train, pas juste au dernier — pas construit pour l'instant. En attendant, « Suivi d'un train » permet de vérifier à la main : retard stable sur plusieurs relevés = aléa connu ; retard qui vient de changer = incident frais.",
+        explication: "« Suivi d'un train » ne peut pas aider ici : ses deux vues (Escalier et Détail des relevés) tracent le retard à l'arrivée dès qu'il est connu et ignorent alors le retard au départ. Qu'il s'agisse d'un incident tout frais ou d'un aléa récurrent, ce retard au départ n'est visible que dans la colonne « Dép. » du Tableau.",
     },
     {
         question: "Un train Rennes → Caen ne va jamais jusqu'à Paris ni Cherbourg. Apparaît-il dans les statistiques de la ligne Paris ↔ Cherbourg ?",
@@ -177,22 +185,22 @@ const QUIZZ_QUESTIONS = [
         choix: [
             "Rien à faire, ça finit toujours par se résorber tout seul au bout de 151 jours",
             "N'importe quel utilisateur de cette version web, via un bouton dédié",
-            "L'administrateur de l'application, via les boutons « Régénérer »/« Déployer vers la VPS » de l'application desktop — pas accessible depuis cette version web",
+            "L'administrateur de l'application — pas accessible depuis cette version web",
             "La SNCF corrige automatiquement la référence utilisée par l'application",
         ],
         correct: 2,
-        explication: "Mettre à jour la référence est une action volontaire, réservée à l'administrateur de l'application (« Régénérer » télécharge l'horaire SNCF du jour et reconstruit la référence en local, « Déployer vers la VPS » l'envoie ensuite là où elle compte vraiment) — les deux boutons n'existent que dans l'application desktop, cette version web reste volontairement en lecture seule.",
+        explication: "Mettre à jour la référence est une action volontaire, réservée à l'administrateur de l'application — cette version web reste volontairement en lecture seule.",
     },
     {
-        question: "Parmi les indicateurs de la barre du haut, lequel répond le mieux à « puis-je compter sur cette ligne aujourd'hui/cette semaine » pour un usager ?",
+        question: "Parmi les indicateurs de la barre du haut, lequel répond le mieux à « puis-je compter sur cette ligne » pour un usager ?",
         choix: [
             "« Retard cumulé », le total de temps perdu sur la ligne",
-            "« Circulations perturbées » (ou « Trajets sans perturbation »), le seul conçu pour donner une idée d'ensemble en un coup d'œil",
+            "« Circulations perturbées », le seul conçu pour donner une idée d'ensemble en un coup d'œil",
             "« Retard moyen / relevé », la moyenne de tous les relevés du système",
             "« Retard max », le pire retard observé sur la période",
         ],
         correct: 1,
-        explication: "« Circulations perturbées » est le seul indicateur explicitement pensé pour répondre à « à quel point la journée a été mauvaise » en un coup d'œil. « Retard cumulé » sert plutôt à comparer des périodes ou construire un dossier SNCF ; « Retard moyen / relevé » est dilué par des milliers de relevés à 0 min, peu parlant pour un usager ; « Retard max » n'est qu'un seul cas extrême, pas représentatif du reste de la ligne.",
+        explication: "« Circulations perturbées » est le seul indicateur explicitement pensé pour répondre à « à quel point la journée a été mauvaise » en un coup d'œil : un simple pourcentage de circulations touchées, directement compréhensible sans connaître le détail des autres calculs de l'appli.",
     },
     {
         question: "« Trajets sans perturbation » affichent deux pourcentages. Pourquoi ?",
@@ -203,13 +211,13 @@ const QUIZZ_QUESTIONS = [
             "Les deux mesurent des choses indépendantes, sans lien entre elles",
         ],
         correct: 1,
-        explication: "« Circulations perturbées » compte tout retard à un moment quelconque du trajet, même quelques minutes vite rattrapées — un chiffre « au total » qui peut donner une impression trompeuse. Le second pourcentage applique le même seuil de 5 min déjà utilisé ailleurs dans l'appli (onglet Circulations) pour exclure ces perturbations mineures et isoler les cas qui affectent vraiment un trajet.",
+        explication: "« Trajets sans perturbation » affiche un résultat strict, même pour quelques minutes vite rattrapées — un chiffre « au total » qui peut donner une impression trompeuse. Le second pourcentage tolère les perturbations mineures (≤ 5 min) en affichant ce qui compte vraiment pour un usager.",
     },
     {
         question: "« X % des relevés du flux temps réel SNCF indiquent un train à l'heure » et « Trajets sans perturbation » (en tolérant les perturbations mineures) sont parfois très proches. Quelle est la différence entre ces deux pourcentages ?",
         choix: [
             "Ce sont deux façons différentes d'arrondir exactement le même calcul",
-            "Le premier compte chaque passage en gare séparément (un train qui dessert 10 gares compte pour 10, à 0 min pile), le second compte chaque train une seule fois, avec une tolérance de 5 min",
+            "Le premier compte chaque passage en gare séparément à 0 min de retard pile (aucune tolérance), le second compte chaque train une seule fois, avec une tolérance de 5 min",
             "Le premier porte sur les 90 derniers jours, le second sur toute la collecte",
             "Le premier exclut les circulations annulées, le second les inclut",
         ],
@@ -225,7 +233,7 @@ const QUIZZ_QUESTIONS = [
             "« X % des relevés... à l'heure » (passages à 0 min pile, sur 6 passages) :\n" +
             "5 ÷ 6 ≈ 83,3 %\n\n" +
             "Trajets sans perturbation (tolérant ≤ 5 min, sur 2 trains) :\n" +
-            "seul Train A qualifie (max 0 min) ; Train B culmine à 8 min (> 5 min) → 1 ÷ 2 = 50 %</pre>" +
+            "trA qualifié (max 0 min) ; trB culmine à 8 min (> 5 min) → 1trA ÷ (1trA + 1trB) = 50 %</pre>" +
             "<p>Deux trains, deux définitions différentes de « à l'heure » : 83,3 % côté relevés, 50 % côté circulations. Un jour donné, ces deux pourcentages peuvent se rapprocher par coïncidence — ils ne mesurent pas la même chose.</p>",
     },
     {
@@ -239,12 +247,65 @@ const QUIZZ_QUESTIONS = [
         correct: 1,
         explication: "La SNCF republie régulièrement des ajustements d'horaires théoriques. Un retard peut avoir été mesuré à l'époque par rapport à l'horaire alors en vigueur, mais si cet horaire a changé depuis, le référentiel actuel ne retrouve plus la bonne variante pour reconstruire le trajet théorique — d'où « trajet théorique introuvable » dans Suivi d'un train. Le retard, lui, reste parfaitement réel et compté dans les statistiques.",
     },
+    {
+        question: "La frise « État de la ligne » (bas de page) et le tooltip « Retard moyen par relevé » (barre du haut) peuvent afficher des valeurs différentes, même quand aucun filtre n'est actif. Pourquoi ?",
+        choix: [
+            "La frise a un bug d'arrondi",
+            "La frise reste toujours calculée sur les 7 derniers jours et les 11 gares de la ligne, en ignorant « Limiter aux trains avec retard » — la barre du haut, elle, suit tous les filtres actifs sur toute la période choisie",
+            "La frise ne compte que les trains annulés",
+            "Les deux utilisent une source de données différente",
+        ],
+        correct: 1,
+        explication: "La frise reste toujours restreinte à une fenêtre fixe de 7 jours et aux 11 gares de la ligne, et ignore volontairement « Limiter aux trains avec retard » (qui gonflerait artificiellement la moyenne affichée gare par gare, en excluant les trains ponctuels) — alors que le « Retard moyen par relevé » de la barre du haut suit tous les filtres actifs (Gare/Train/Sens/Limiter aux trains avec retard) sur toute la période choisie. Deux indicateurs qui se ressemblent mais ne répondent pas à la même question.",
+    },
+    {
+        question: "« Gare la + touchée » désigne la gare avec le retard moyen par relevé le plus élevé. Un seul train très en retard, resté dans le flux temps réel plusieurs dizaines de minutes (donc sondé à répétition), peut-il à lui seul faire basculer ce classement ?",
+        choix: [
+            "Non, chaque train ne compte qu'une seule fois dans cette moyenne",
+            "Oui — et rien dans ce chiffre ne permet de savoir si une gare l'emporte à cause d'un vrai gros problème ou simplement parce qu'un train y est resté sondé plus longtemps",
+            "Non, seule la dernière valeur connue de chaque train compte",
+            "Oui, mais uniquement si ce train dessert au moins 3 gares différentes",
+        ],
+        correct: 1,
+        explication: "« Gare la + touchée » moyenne à plat tous les relevés individuels, donc un seul train très en retard, sondé à répétition, peut suffire à faire basculer ce classement.",
+        explicationHTML:
+            "<p>« Gare la + touchée » moyenne à plat tous les relevés individuels, donc un seul train très en retard, sondé à répétition, peut suffire à faire basculer ce classement.</p>" +
+            "<p>Exemple : Gare A n'a qu'un seul train perturbé ce jour-là, mais très en retard et resté longtemps dans le flux ; Gare B a 5 trains différents, chacun un peu en retard.</p>" +
+            "<pre class=\"quizz-exemple\">Gare A — 1 train à 60 min, resté 45 min dans le flux (10 relevés) :\n" +
+            "10 relevés à 60 min\n" +
+            "Gare A — 5 autres trains ponctuels, 1 relevé chacun :\n" +
+            "5 relevés à 0 min\n\n" +
+            "Gare B — 5 trains DIFFÉRENTS à 8 min chacun, 1 relevé chacun :\n" +
+            "5 relevés à 8 min\n\n" +
+            "Retard moyen Gare A : (10 × 60 + 5 × 0) ÷ 15 = 40 min\n" +
+            "Retard moyen Gare B : (5 × 8) ÷ 5 = 8 min</pre>" +
+            "<p>Il ne distingue pas un vrai problème touchant plusieurs trains d'un seul train très en retard resté longtemps dans le flux. Son utilité est plutôt de pointer vers quelque chose à vérifier, un signal à creuser (aller regarder l'onglet Circulations pour cette gare) plutôt que de trancher tout seul.</p>",
+    },
 ];
 
 let quizzOrdre = [];
 let quizzIndex = 0;
 let quizzScore = 0;
 let quizzChoixOrdreCourant = [];
+// Historique par question, indexé sur l'ordre FIXE de QUIZZ_QUESTIONS (pas
+// quizzOrdre, mélangé) : null (jamais vue), "correct" ou "incorrect" — sert
+// uniquement à colorer l'index (quizzConstruireIndex), jamais lu par le
+// déroulé normal de la partie (quizzScore/quizzIndex restent la seule
+// source de vérité pour la progression affichée).
+let quizzHistorique = [];
+// Consultation (voir quizzAllerA) : sauter vers une question depuis l'index
+// ne doit PAS perturber la partie en cours (demande explicite de
+// l'utilisateur, 2026-09-08) — quizzIndex/quizzOrdre restent inchangés tant
+// qu'on consulte, quizzQuestionConsultee pointe la question affichée à la
+// place le temps de la consultation.
+let quizzEnConsultation = false;
+let quizzQuestionConsultee = null;
+// Distinct de quizzIndex >= quizzOrdre.length : une fois la partie terminée
+// (écran #quizz-fin), quizzIndex reste à sa dernière valeur valide plutôt
+// que de dépasser quizzOrdre.length — nécessaire pour que quizzIndexFixeActuel
+// (quizzOrdre[quizzIndex]) reste toujours valide pendant une consultation
+// lancée depuis l'écran de fin (l'index reste utilisable après la partie).
+let quizzTermine = false;
 
 function quizzMelanger(tableau) {
     const copie = tableau.slice();
@@ -265,14 +326,81 @@ function demarrerQuizz() {
     quizzOrdre = quizzMelanger(QUIZZ_QUESTIONS.map((_, i) => i));
     quizzIndex = 0;
     quizzScore = 0;
+    quizzHistorique = new Array(QUIZZ_QUESTIONS.length).fill(null);
+    quizzEnConsultation = false;
+    quizzQuestionConsultee = null;
+    quizzTermine = false;
     document.getElementById("quizz-total").textContent = QUIZZ_QUESTIONS.length;
+    document.getElementById("quizz-index-panneau").style.display = "none";
+    document.getElementById("quizz-bouton-index").classList.remove("ouvert");
     document.getElementById("quizz-fin").style.display = "none";
     document.getElementById("quizz-question-zone").style.display = "";
     quizzAfficherQuestion();
 }
 
+// Index de la question actuellement affichée dans l'ordre FIXE de
+// QUIZZ_QUESTIONS, qu'elle vienne de la partie en cours ou d'une
+// consultation — seul point que quizzAfficherQuestion/quizzChoisirReponse
+// interrogent, pour ne jamais avoir à dupliquer ce choix ailleurs.
+function quizzIndexFixeActuel() {
+    return quizzEnConsultation ? quizzQuestionConsultee : quizzOrdre[quizzIndex];
+}
+
+function quizzBasculerIndex() {
+    const panneau = document.getElementById("quizz-index-panneau");
+    const bouton = document.getElementById("quizz-bouton-index");
+    const ouvre = panneau.style.display === "none";
+    if (ouvre) quizzConstruireIndex();
+    panneau.style.display = ouvre ? "" : "none";
+    bouton.classList.toggle("ouvert", ouvre);
+}
+
+function quizzConstruireIndex() {
+    const liste = document.getElementById("quizz-index-liste");
+    liste.innerHTML = "";
+    const indexFixeActuel = quizzIndexFixeActuel();
+    QUIZZ_QUESTIONS.forEach((question, i) => {
+        const ligne = document.createElement("button");
+        ligne.type = "button";
+        ligne.className = "quizz-index-ligne";
+        if (i === indexFixeActuel) ligne.classList.add("quizz-index-courante");
+        else if (quizzHistorique[i] === "correct") ligne.classList.add("quizz-index-correcte");
+        else if (quizzHistorique[i] === "incorrect") ligne.classList.add("quizz-index-incorrecte");
+
+        const numero = document.createElement("span");
+        numero.className = "quizz-index-numero";
+        numero.textContent = i + 1;
+
+        const texte = document.createElement("span");
+        texte.className = "quizz-index-texte";
+        texte.textContent = question.question;
+
+        ligne.appendChild(numero);
+        ligne.appendChild(texte);
+        ligne.onclick = () => quizzAllerA(i);
+        liste.appendChild(ligne);
+    });
+}
+
+function quizzAllerA(i) {
+    quizzEnConsultation = true;
+    quizzQuestionConsultee = i;
+    document.getElementById("quizz-index-panneau").style.display = "none";
+    document.getElementById("quizz-bouton-index").classList.remove("ouvert");
+    // La consultation reste possible après la fin de la partie (écran
+    // #quizz-fin) : il faut alors ré-afficher la zone de question par-dessus
+    // — quizzSuivant restaure l'écran de fin en sortant de consultation si
+    // quizzTermine est resté vrai entre-temps.
+    if (quizzTermine) {
+        document.getElementById("quizz-fin").style.display = "none";
+        document.getElementById("quizz-question-zone").style.display = "";
+    }
+    quizzAfficherQuestion();
+}
+
 function quizzAfficherQuestion() {
-    const question = QUIZZ_QUESTIONS[quizzOrdre[quizzIndex]];
+    const indexFixe = quizzIndexFixeActuel();
+    const question = QUIZZ_QUESTIONS[indexFixe];
     // Choix mélangés aussi (pas seulement l'ordre des questions) : sinon la
     // bonne réponse resterait toujours à la même position d'une manche à
     // l'autre pour une question donnée, facile à mémoriser sans comprendre.
@@ -282,32 +410,58 @@ function quizzAfficherQuestion() {
 
     document.getElementById("quizz-numero").textContent = quizzIndex + 1;
     document.getElementById("quizz-score").textContent = quizzScore;
+    document.getElementById("quizz-consultation-bandeau").style.display = quizzEnConsultation ? "" : "none";
     document.getElementById("quizz-question-texte").textContent = question.question;
     document.getElementById("quizz-feedback").style.display = "none";
 
     const zoneChoix = document.getElementById("quizz-choix");
     zoneChoix.innerHTML = "";
+    // Question déjà répondue (consultée depuis l'index) : ne redemande pas
+    // la réponse, montre directement la bonne en vert (boutons désactivés)
+    // — reconstruire aussi la mauvaise réponse choisie à l'origine
+    // demanderait de la conserver en plus du simple correct/incorrect,
+    // inutile pour ce que l'index sert à faire (retrouver une explication).
+    const dejaRepondue = quizzHistorique[indexFixe] !== null;
     quizzChoixOrdreCourant.forEach((indexOriginal, rang) => {
         const bouton = document.createElement("button");
         bouton.type = "button";
         bouton.className = "quizz-choix-bouton";
         bouton.textContent = question.choix[indexOriginal];
-        bouton.onclick = () => quizzChoisirReponse(rang);
+        if (dejaRepondue) {
+            bouton.disabled = true;
+            if (indexOriginal === question.correct) bouton.classList.add("quizz-correct");
+        } else {
+            bouton.onclick = () => quizzChoisirReponse(rang);
+        }
         zoneChoix.appendChild(bouton);
     });
+    if (dejaRepondue) quizzAfficherFeedback(question);
 }
 
 function quizzChoisirReponse(rangChoisi) {
-    const question = QUIZZ_QUESTIONS[quizzOrdre[quizzIndex]];
+    const indexFixe = quizzIndexFixeActuel();
+    const question = QUIZZ_QUESTIONS[indexFixe];
     const boutons = document.querySelectorAll("#quizz-choix .quizz-choix-bouton");
+    const juste = quizzChoixOrdreCourant[rangChoisi] === question.correct;
     boutons.forEach((bouton, rang) => {
         bouton.disabled = true;
         if (quizzChoixOrdreCourant[rang] === question.correct) bouton.classList.add("quizz-correct");
         else if (rang === rangChoisi) bouton.classList.add("quizz-incorrect");
     });
 
-    if (quizzChoixOrdreCourant[rangChoisi] === question.correct) quizzScore++;
-    document.getElementById("quizz-score").textContent = quizzScore;
+    quizzHistorique[indexFixe] = juste ? "correct" : "incorrect";
+    // Le score affiché ne suit que la progression réelle de la partie —
+    // répondre à une question consultée depuis l'index (hors séquence) ne
+    // doit pas le modifier, sans quoi il pourrait avancer deux fois pour la
+    // même question si son tour normal arrive plus tard dans quizzOrdre.
+    if (!quizzEnConsultation && juste) {
+        quizzScore++;
+        document.getElementById("quizz-score").textContent = quizzScore;
+    }
+    quizzAfficherFeedback(question);
+}
+
+function quizzAfficherFeedback(question) {
     const feedbackEl = document.getElementById("quizz-feedback-texte");
     // explicationHTML : réservé aux quelques questions avec un exemple mis
     // en forme (tableau aligné, voir .quizz-exemple) — contenu écrit à la
@@ -319,12 +473,33 @@ function quizzChoisirReponse(rangChoisi) {
     } else {
         feedbackEl.textContent = question.explication;
     }
+    document.getElementById("quizz-bouton-suivant").textContent = quizzEnConsultation ? "Reprendre" : "Suivant";
     document.getElementById("quizz-feedback").style.display = "";
 }
 
 function quizzSuivant() {
+    // Sortir de consultation revient exactement à la question de la partie
+    // en cours, sans avancer quizzIndex — la consultation n'est qu'une
+    // parenthèse, jamais une progression (voir quizzIndexFixeActuel).
+    // quizzTermine d'abord : si la partie était déjà finie (quizzIndex a
+    // dépassé quizzOrdre.length), rien à réafficher via quizzAfficherQuestion
+    // (qui planterait sur quizzOrdre[quizzIndex] hors bornes) — l'écran de
+    // fin est la bonne chose à restaurer.
+    if (quizzEnConsultation) {
+        quizzEnConsultation = false;
+        quizzQuestionConsultee = null;
+        if (quizzTermine) {
+            document.getElementById("quizz-question-zone").style.display = "none";
+            document.getElementById("quizz-fin").style.display = "";
+        } else {
+            quizzAfficherQuestion();
+        }
+        return;
+    }
+
     quizzIndex++;
     if (quizzIndex >= quizzOrdre.length) {
+        quizzTermine = true;
         document.getElementById("quizz-question-zone").style.display = "none";
         document.getElementById("quizz-fin").style.display = "";
         document.getElementById("quizz-score-final").textContent =

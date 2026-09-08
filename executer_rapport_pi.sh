@@ -52,3 +52,14 @@ CHEMIN_LOCAL=$(echo "$SORTIE" | sed -n 's/^Rapport généré : //p')
 
 ./envoyer_rapport_nas_pi.sh "$CHEMIN_LOCAL"
 ./envoyer_rapport_vps_pi.sh "$PERIODE" "$CHEMIN_LOCAL"
+
+# Ne garde que les 10 PDF les plus récents localement sur le Pi (par
+# période) — le NAS et la VPS ont déjà reçu leur propre copie juste
+# au-dessus, cette suppression locale n'efface donc rien d'irrécupérable.
+# Le nom de fichier trie déjà chronologiquement (compteur 4 chiffres en
+# préfixe), pas besoin de se fier aux dates de mtime. Ne touche jamais
+# .compteur.json : la numérotation doit continuer d'avancer normalement,
+# qu'un vieux fichier ait été supprimé ou non (voir mémoire du projet,
+# incident de numérotation du 2026-09-07 — le compteur n'est jamais
+# l'endroit à corriger). Demande explicite de l'utilisateur, 2026-09-08.
+ls -1 "rapports/$PERIODE"/*.pdf 2>/dev/null | sort | head -n -10 | xargs -r rm --

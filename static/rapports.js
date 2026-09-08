@@ -216,3 +216,108 @@ function dessinerTop5(indice, donnees) {
         });
     });
 }
+
+// Détail dépliable de "Circulations perturbées" (_stats.html, onglet
+// Rapports quotidien/hebdomadaire) — repliée par défaut, pas de contenu
+// chargé à la demande (déjà rendu dans le HTML). bouton (this, pas un id) :
+// _stats.html est rendu deux fois sur la page (barre du haut + zone de
+// contenu, voir hx-swap-oob), un id global serait dupliqué —
+// nextElementSibling reste correct quel que soit le nombre de copies du
+// bloc sur la page.
+//
+// position: fixed plutôt qu'un flux normal (voir .zone-detail, style.css) :
+// positionnée ici en JS (getBoundingClientRect du bouton) plutôt qu'en CSS
+// pur, puisque sa position dépend de l'endroit où le bouton se trouve
+// réellement à l'écran au moment du clic. Fermeture sur clic extérieur/
+// Échap/défilement (position recalculée sinon désynchronisée du bouton) —
+// un seul jeu d'écouteurs à la fois (ajoutés seulement à l'ouverture,
+// retirés à la fermeture) pour ne pas les empiler à chaque clic.
+let _zoneDetailPerturbeesOuverte = null;
+
+function positionnerDetailPerturbees(bouton, zone) {
+    const rect = bouton.getBoundingClientRect();
+    const marge = 8;
+    zone.style.top = `${rect.bottom + 4}px`;
+    // max-width (style.css) déjà connu avant mesure : on ne peut lire
+    // zone.offsetWidth qu'une fois affichée (hidden retiré) — fait juste
+    // avant cet appel, voir basculerDetailPerturbees.
+    const largeur = zone.offsetWidth;
+    const gauche = Math.min(rect.left, window.innerWidth - largeur - marge);
+    zone.style.left = `${Math.max(marge, gauche)}px`;
+}
+
+function fermerDetailPerturbees() {
+    if (!_zoneDetailPerturbeesOuverte) return;
+    const { bouton, zone, surClicExterieur, surEchap, surDefilement } = _zoneDetailPerturbeesOuverte;
+    zone.hidden = true;
+    bouton.classList.remove("ouvert");
+    document.removeEventListener("click", surClicExterieur, true);
+    document.removeEventListener("keydown", surEchap);
+    window.removeEventListener("scroll", surDefilement, true);
+    window.removeEventListener("resize", surDefilement);
+    _zoneDetailPerturbeesOuverte = null;
+}
+
+function basculerDetailPerturbees(bouton) {
+    const zone = bouton.nextElementSibling;
+    if (!zone) return;
+    if (_zoneDetailPerturbeesOuverte) {
+        const rouvre = _zoneDetailPerturbeesOuverte.zone !== zone;
+        fermerDetailPerturbees();
+        if (!rouvre) return;
+    }
+
+    zone.hidden = false;
+    positionnerDetailPerturbees(bouton, zone);
+    bouton.classList.add("ouvert");
+
+    const surClicExterieur = (evenement) => {
+        // bouton.contains (pas juste target !== bouton) : un clic sur la
+        // flèche/le texte à l'intérieur du bouton a pour target ce
+        // sous-élément, pas le bouton lui-même — sans ça, la fermeture ici
+        // (capture, donc avant l'onclick du bouton) puis la réouverture par
+        // cet onclick juste après produisaient un bouton qui semblait ne
+        // jamais se refermer au clic.
+        if (!zone.contains(evenement.target) && !bouton.contains(evenement.target)) fermerDetailPerturbees();
+    };
+    const surEchap = (evenement) => {
+        if (evenement.key === "Escape") fermerDetailPerturbees();
+    };
+    // Ignore le défilement interne du popover lui-même (zone-detail,
+    // overflow-y:auto) : capturé ici aussi puisque les évènements "scroll"
+    // ne remontent pas (bubble) mais SONT bien vus par un écouteur capture
+    // posé sur window/un ancêtre — sans ce garde-fou, faire défiler la
+    // liste la refermait aussitôt au lieu de la laisser défiler, repéré en
+    // vérifiant le popover après son passage en position:fixed, 2026-09-08.
+    const surDefilement = (evenement) => {
+        if (evenement.target === zone || zone.contains(evenement.target)) return;
+        fermerDetailPerturbees();
+    };
+
+    document.addEventListener("click", surClicExterieur, true);
+    document.addEventListener("keydown", surEchap);
+    window.addEventListener("scroll", surDefilement, true);
+    window.addEventListener("resize", surDefilement);
+
+    _zoneDetailPerturbeesOuverte = { bouton, zone, surClicExterieur, surEchap, surDefilement };
+}
+
+// Ferme le popover avant tout htmx:beforeRequest (changement de période via
+// le segmented control, auto-refresh périodique...) : #zone-contenu est
+// remplacé en entier par htmx, ce qui rendrait bouton/zone (fermés dans
+// _zoneDetailPerturbeesOuverte) obsolètes — sans ça, les écouteurs
+// document/window ajoutés à l'ouverture restaient enregistrés indéfiniment
+// sur des éléments détachés du DOM à chaque changement de période effectué
+// popover ouvert. Un seul écouteur enregistré une fois ici (pas par
+// ouverture) — fermerDetailPerturbees() ne fait rien si rien n'est ouvert.
+//
+// DOMContentLoaded : rapports.js est chargé via <script src> dans <head>
+// (base.html), exécuté avant que <body> existe dans le DOM — document.body
+// y vaut encore null à ce moment précis. Sans ce report, l'appel plantait
+// silencieusement (TypeError, jamais remonté nulle part) à CHAQUE chargement
+// de page depuis son ajout, et cet écouteur n'a donc jamais été actif — bug
+// repéré incidemment le 2026-09-08 en vérifiant une tout autre fonctionnalité
+// (l'index du Quizz) via Playwright.
+document.addEventListener("DOMContentLoaded", () => {
+    document.body.addEventListener("htmx:beforeRequest", fermerDetailPerturbees);
+});

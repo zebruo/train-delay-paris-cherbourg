@@ -18,6 +18,53 @@
                     {% endif %}
                 {% endif %}
             </div>
+            {% if detail_perturbees is defined %}
+                {% set nb_perturbees = detail_perturbees|length - nb_annulees_sans_releve %}
+                <button type="button" class="bouton-detail" onclick="basculerDetailPerturbees(this)">
+                    <span class="fleche">▶</span> Voir le détail
+                    ({{ nb_perturbees }} circulation{{ "s" if nb_perturbees > 1 else "" }}{% if nb_annulees_sans_releve %}, {{ nb_annulees_sans_releve }} annulée{{ "s" if nb_annulees_sans_releve > 1 else "" }}{% endif %})
+                </button>
+                <div class="zone-detail" hidden>
+                    <table class="detail-perturbees">
+                        <thead>
+                            <tr>
+                                <th>Train</th>
+                                <th class="num">Retard max</th>
+                                <th>Statut ({{ nb_significatives }} significative{{ "s" if nb_significatives > 1 else "" }})</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in detail_perturbees %}
+                                <tr>
+                                    <td>
+                                        {{ d.train }}
+                                        {% if d.statut != "mineur" %}<span class="stat-attenue">({{ d.sens }})</span>{% endif %}
+                                    </td>
+                                    <td class="num">
+                                        {% if d.statut == "annule" %}
+                                            —
+                                        {% else %}
+                                            {{ format_min_sans_zero(d.retard_max) }} min
+                                            {% if d.retard_max_ligne != d.retard_max %}
+                                                <span class="stat-attenue">({{ format_min_sans_zero(d.retard_max_ligne) }} min sur la ligne)</span>
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if d.statut == "significatif" %}
+                                            <span class="badge-statut badge-significatif">Significatif</span>
+                                        {% elif d.statut == "annule" %}
+                                            <span class="badge-statut badge-annule">Annulé</span>
+                                        {% else %}
+                                            <span class="badge-statut badge-mineur">Mineur</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
         </div>
     {% elif pct_sans_perturbation_texte %}
         <div class="stat">
@@ -56,7 +103,7 @@
     {% endif %}
     {% if vue == "rapports" %}
         <div class="stat">
-            <div class="stat-label">Circulations annulées <span class="icone-info" title="Nombre de circulations annulées sur cette période (voir aussi onglet Perturbations), touchant au moins une des 11 gares de la ligne — invisibles des autres stats, un trajet annulé n'atteignant jamais son terminus dans les données (donc jamais considéré comme « arrivé »).">ℹ</span></div>
+            <div class="stat-label">Circulations annulées <span class="icone-info" title="Nombre de circulations annulées sur cette période (voir aussi onglet Perturbations), touchant au moins une des 11 gares de la ligne — un trajet annulé n'atteignant jamais son terminus dans les données (donc jamais considéré comme « arrivé »).">ℹ</span></div>
             <div class="stat-valeur">
                 {{ annulations|length }}
                 {% if annulations %}<span class="pastille pastille-rouge">{{ annulations|join(", ") }}</span>{% endif %}

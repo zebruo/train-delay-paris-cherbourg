@@ -772,15 +772,19 @@ def calculer_contexte_frise(df_avant_retard, vue, trajet_choisi):
             "texte_retard": texte_retard if sur_trajet else "",
         })
 
-    nb_releves = int(df_avant_retard["retard_min"].count())
+    # Version courte (2026-09-08, demande explicite de l'utilisateur) — la
+    # version précédente détaillait ici pourquoi ce calcul diffère du
+    # « Retard moyen par relevé » affiché en haut (fenêtre 7 jours fixe,
+    # toujours restreinte aux 11 gares de la ligne, ignore « Limiter aux
+    # trains avec retard ») ; cette nuance de calcul est déplacée dans le
+    # quizz plutôt que redite ici, même principe que les tooltips Retard
+    # moyen/cumulé/max simplifiés le même jour. La légende gris plein/
+    # contour grisé reste ici : indispensable à la lecture immédiate du
+    # diagramme, ce n'est pas une nuance de calcul à différer.
     tooltip = (
-        "Retard moyen par relevé propre à chaque gare ≠ du « Retard moyen par relevé » "
-        "affiché en haut, qui suit les filtres actifs sur tout l'historique, alors que "
-        f"cette frise (calculée sur {nb_releves} relevés, sur les 7 derniers jours "
-        "seulement) reste toujours restreinte aux 11 gares de la ligne et ignore "
-        "« Limiter aux trains avec retard ». Gris plein : aucune donnée pour cette gare "
-        "sous les filtres actuels. Contour grisé : gare que le train sélectionné ne "
-        "dessert pas du tout."
+        "Retard moyen par relevé, gare par gare (voir quizz). Gris plein : aucune "
+        "donnée sous les filtres actuels. Contour grisé : gare non desservie par le "
+        "train sélectionné."
     )
 
     return {"frise": {
@@ -2438,28 +2442,15 @@ def _calculer_stats_globales_sql_interne(
             "label_pire_gare": label_pire_gare,
             "pct_a_lheure_texte": f"{pct_a_lheure:.1f}".replace(".", ",") if pct_a_lheure is not None else None,
         }
-        # "filtres actifs ci-dessus"/"300 dernières lignes affichées dans le
-        # tableau" n'ont de sens que pour la barre de stats globale — sur
-        # l'onglet Rapports (depuis_debut_collecte=False), il n'y a ni
-        # filtres (formulaire #filtres entièrement masqué) ni tableau du
-        # tout, référence trompeuse à des éléments d'interface absents.
-        # Repéré en relisant les tooltips affichés en vrai sur cet onglet,
-        # 2026-08-18. Testé sur depuis_debut_collecte, pas debut_iso (voir
-        # portee_texte plus haut) : la barre globale fournit elle aussi des
-        # bornes depuis le 2026-08-24.
-        portee_releves_texte = (
-            "issus de la période" if not depuis_debut_collecte
-            else "issus des filtres actifs ci-dessus, pas seulement sur les 300 dernières "
-                 "lignes affichées dans le tableau"
-        )
         tooltip_moyen = "Moyenne à plat de chaque relevé individuel du système (voir quizz)."
-        tooltip_pire_gare = (
-            f"Gare avec le retard moyen / relevé le plus élevé, sur les {nb_releves} "
-            f"relevés {portee_releves_texte} — une moyenne brute (voir « Retard moyen / "
-            "relevé » ci-dessus) peut donc être dominée par un seul train très en retard, "
-            "sondé à répétition tant qu'il reste dans le flux temps réel, plutôt que "
-            "refléter une vraie difficulté récurrente de cette gare."
-        )
+        # Version courte (2026-09-08, même principe que Retard moyen/cumulé/
+        # max/la frise simplifiés le même jour) — la version précédente
+        # détaillait ici pourquoi une moyenne brute par gare peut être
+        # dominée par un seul train très en retard, sondé à répétition tant
+        # qu'il reste dans le flux temps réel, plutôt que refléter une vraie
+        # difficulté récurrente de cette gare ; cette nuance de calcul est
+        # déplacée dans le quizz plutôt que redite ici.
+        tooltip_pire_gare = "Gare avec le retard moyen le plus élevé sur la période (voir quizz)."
         depuis_texte = (
             "sur cette période" if not depuis_debut_collecte
             else f"depuis le tout début de la collecte, le {date_debut_collecte}"
@@ -2952,6 +2943,155 @@ def _pct_et_cumule_par_jour_sql(connexion, debut_local, fin_local):
     return pct_par_jour, cumule_par_jour_h
 
 
+def _construire_detail_perturbees_sql(
+    connexion, evenements_df, debut_local, fin_local, debut_iso, fin_iso, variantes, calendrier,
+):
+    """Liste complète des circulations perturbées (retard ou annulation) de
+    la période, pour le détail dépliable de "Circulations perturbées"
+    (onglet Rapports, quotidien/hebdomadaire seulement — jamais mensuel,
+    voir calculer_contexte_rapport_sql : la liste dépasserait vite
+    plusieurs centaines de lignes, perdant tout intérêt de vue d'ensemble,
+    demande explicite de l'utilisateur, 2026-09-08).
+
+    Version 2 (2026-09-08) : la version précédente reprenait le critère du
+    Top 5 (_construire_donnees_top5_sql, "dernier retard connu" via
+    derniers_complet_periode) — mauvais choix, repéré par l'utilisateur sur
+    le rapport hebdomadaire réel (222 circulations perturbées annoncées en
+    en-tête, seulement 173 listées ici). "Circulations perturbées" (cette
+    valeur d'en-tête) et "significatives" (le sous-pourcentage) sont en
+    réalité calculées avec un critère DIFFÉRENT du Top 5 :
+    _circulations_et_trains_stats_sql/_pct_perturbees_severes_sql scannent
+    directement observations ("a eu un retard positif à N'IMPORTE QUEL
+    moment du trajet, même rattrapé ensuite"), pas derniers_complet_periode
+    ("dernière valeur connue seulement"). Cette fonction reprend maintenant
+    EXACTEMENT le même WHERE (_construire_where_sql, limiter_ligne=True) et
+    la même expression de retard que ces deux fonctions, pour que le
+    tableau détaillé corresponde toujours au nombre annoncé en en-tête —
+    vérifié sur le rapport hebdomadaire réel : 222 lignes, 91 significatives,
+    identique aux deux fonctions officielles.
+
+    L'annulation (OR sur circulations_annulees, que l'appelant DOIT avoir
+    déjà matérialisée) est intégrée directement dans le HAVING de la
+    requête pour les annulations qui ont AU MOINS un relevé exploitable sur
+    la ligne (exactement le même OR que _circulations_et_trains_stats_sql,
+    donc les mêmes circulations entrent ou non dans le compte "222").
+
+    Version 2.1 (2026-09-08, repéré par l'utilisateur : train 852200
+    annoncé annulé dans le bandeau "Circulations annulées" mais absent de ce
+    tableau — une AUTRE circulation du même train, un autre jour de la même
+    semaine, avait un vrai petit retard et apparaissait seule sous "852200",
+    sans date affichée pour distinguer les deux) : une annulation SANS AUCUN
+    relevé (aucune ligne dans observations, ex. train 13100 ce jour-là,
+    _comme_ 852200 le 07/09) ne peut pas être trouvée par la requête
+    ci-dessus, qui scanne observations — quel que soit le OR ajouté, une
+    circulation absente d'observations ne peut apparaître dans son résultat.
+    Fusionnée séparément depuis evenements_df juste en dessous (comme la V1),
+    mais seulement pour les annulations qui ne sont PAS déjà remontées par le
+    SQL ci-dessus (déjà comptées dans les 222 via le OR) — pour ne pas les
+    lister deux fois. Ces annulations "en plus" font dépasser le total de ce
+    tableau au-delà du nombre annoncé en en-tête (ex: 223 listées pour 222
+    annoncées) : différence attendue et bénigne (une poignée de cas par
+    semaine tout au plus), très différente dans sa nature du bug d'origine
+    (173 au lieu de 222, un mauvais critère de calcul) — ici il ne manque et
+    ne double aucune circulation, seules les annulations invisibles à toute
+    requête sur observations s'ajoutent en plus, list explicite plutôt que
+    silencieuse comme avant.
+
+    retard_max_ligne (retenu pour le tri et le statut significatif/mineur)
+    est restreint aux 11 gares de la ligne (limiter_ligne=True dans le
+    WHERE) ; retard_max (toutes gares, pour le texte "(X min sur la ligne)"
+    si différent) vient d'une 2e requête, limiter_ligne=False — un seul
+    WHERE ne peut pas donner les deux à la fois (limiter_ligne restreint les
+    LIGNES scannées, pas juste une colonne)."""
+    where_ligne, params_ligne = _construire_where_sql(
+        "Toutes", "Tous", "Tous", True, debut_iso=debut_iso, fin_iso=fin_iso,
+    )
+    where_toutes, params_toutes = _construire_where_sql(
+        "Toutes", "Tous", "Tous", False, debut_iso=debut_iso, fin_iso=fin_iso,
+    )
+    expr_retard = "COALESCE(arrival_delay_s, departure_delay_s)"
+    expr_annulee = "(trip_id || '|' || start_date) IN (SELECT cle FROM circulations_annulees)"
+    lignes = connexion.execute(
+        f"""
+        SELECT trip_id, start_date, MAX({expr_retard}) / 60.0 AS retard_max_ligne,
+               MAX(CASE WHEN {expr_annulee} THEN 1 ELSE 0 END) AS annulee
+        FROM observations WHERE {where_ligne}
+        GROUP BY trip_id, start_date
+        HAVING retard_max_ligne > 0 OR annulee
+        """,
+        params_ligne,
+    ).fetchall()
+    retard_max_toutes = dict(connexion.execute(
+        f"""
+        SELECT trip_id || '|' || start_date AS cle, MAX({expr_retard}) / 60.0
+        FROM observations WHERE {where_toutes}
+        GROUP BY trip_id, start_date
+        """,
+        params_toutes,
+    ).fetchall())
+
+    detail = []
+    cles_trouvees_sql = set()
+    for trip_id, start_date, retard_max_ligne, annulee in lignes:
+        cles_trouvees_sql.add(f"{trip_id}|{start_date}")
+        variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+        ordre_gares = variante["gares"] if variante else []
+        train = trip_id.split(":", 1)[0]
+        sens = f"{ordre_gares[0]} → {ordre_gares[-1]}" if len(ordre_gares) >= 2 else ""
+        if annulee:
+            statut = "annule"
+        elif retard_max_ligne > SEUIL_RETARD_MOYEN:
+            statut = "significatif"
+        else:
+            statut = "mineur"
+        retard_max = retard_max_toutes.get(f"{trip_id}|{start_date}")
+        detail.append({
+            "train": format_numero_train(train), "sens": sens,
+            "retard_max": round(float(retard_max), 1) if retard_max is not None else None,
+            "retard_max_ligne": round(float(retard_max_ligne), 1) if retard_max_ligne is not None else None,
+            "statut": statut,
+        })
+
+    # Annulations sans aucun relevé (voir docstring, "Version 2.1") — même
+    # filtre "touche la ligne" que annulations_periode, dupliqué ici plutôt
+    # que réutilisé : annulations_periode ne renvoie que des numéros de
+    # train déjà formatés, pas assez pour reconstruire trip_id/sens/exclure
+    # les doublons déjà trouvés par le SQL ci-dessus.
+    debut_utc = debut_local.tz_convert("UTC")
+    fin_utc = fin_local.tz_convert("UTC")
+    annules = evenements_df[
+        (evenements_df["type"] == "trajet_annule")
+        & (evenements_df["poll_time"] >= debut_utc) & (evenements_df["poll_time"] < fin_utc)
+    ]
+    for _, ligne in annules.iterrows():
+        trip_id, start_date = ligne["trip_id"], str(ligne["start_date"])
+        if f"{trip_id}|{start_date}" in cles_trouvees_sql:
+            continue
+        variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+        if variante is None or not any(g in GARES_LIGNE for g in variante["gares"]):
+            continue
+        ordre_gares = variante["gares"]
+        train = trip_id.split(":", 1)[0]
+        sens = f"{ordre_gares[0]} → {ordre_gares[-1]}" if len(ordre_gares) >= 2 else ""
+        detail.append({
+            "train": format_numero_train(train), "sens": sens,
+            "retard_max": None, "retard_max_ligne": None, "statut": "annule",
+            # sans_releve : distingue une annulation ajoutée ici (invisible
+            # à la requête SQL plus haut, donc en plus des 222/"en_retard"
+            # officiels) d'une annulation qui a AU MOINS un relevé et est
+            # déjà comptée dans les lignes SQL (statut "annule" mais SANS ce
+            # marqueur) — sert à afficher "222 circulations + 2 annulées"
+            # plutôt qu'un total ambigu qui ne correspondrait plus au chiffre
+            # de l'en-tête (calculer_contexte_rapport_sql, nb_annulees_sans_
+            # releve), demande explicite de l'utilisateur, 2026-09-08.
+            "sans_releve": True,
+        })
+
+    ordre_statut = {"significatif": 0, "annule": 1, "mineur": 2}
+    detail.sort(key=lambda e: (ordre_statut[e["statut"]], -(e["retard_max_ligne"] or 0)))
+    return detail
+
+
 def _construire_donnees_top5_sql(connexion, variantes, calendrier):
     """Les 5 circulations les plus retardées de la période (quotidien/
     hebdomadaire, jamais mensuel — voir generer_rapport.py) + leur
@@ -3155,8 +3295,9 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
         temp_moy, vent_moy, pluie_totale = _meteo_periode_sql(connexion)
         contexte["meteo"] = {"temp_moy": temp_moy, "vent_moy": vent_moy, "pluie_totale": pluie_totale}
         contexte["alertes"] = alertes_periode(charger_alertes(LOCAL_ALERTES), debut_local, fin_local)
+        evenements_df = charger_evenements(PERTURBATIONS_FILE)
         contexte["annulations"] = annulations_periode(
-            charger_evenements(PERTURBATIONS_FILE), debut_local, fin_local,
+            evenements_df, debut_local, fin_local,
             reference_donnees["variantes"], reference_donnees["calendrier"],
         )
 
@@ -3210,6 +3351,27 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
         else:
             contexte["top5"] = _construire_donnees_top5_sql(
                 connexion, reference_donnees["variantes"], reference_donnees["calendrier"],
+            )
+            # Détail dépliable de "Circulations perturbées" (quotidien/
+            # hebdomadaire seulement, jamais mensuel : la liste dépasserait
+            # vite plusieurs centaines de lignes, perdant tout intérêt de
+            # vue d'ensemble — demande explicite de l'utilisateur, 2026-09-08).
+            contexte["detail_perturbees"] = _construire_detail_perturbees_sql(
+                connexion, evenements_df, debut_local, fin_local, debut_iso, fin_iso,
+                reference_donnees["variantes"], reference_donnees["calendrier"],
+            )
+            contexte["nb_significatives"] = sum(
+                1 for d in contexte["detail_perturbees"] if d["statut"] != "mineur"
+            )
+            # Distinct de nb_significatives/len(detail_perturbees) : ces
+            # annulations n'ont aucun relevé et ne sont donc jamais comptées
+            # dans le "222" (stats_ratio.en_retard) affiché juste au-dessus —
+            # les compter dans le total du bouton sans le préciser créait un
+            # chiffre ("224") qui ne correspondait plus au "222" de l'en-tête
+            # sans explication, source de confusion repérée par l'utilisateur,
+            # 2026-09-08 (voir _construire_detail_perturbees_sql, "sans_releve").
+            contexte["nb_annulees_sans_releve"] = sum(
+                1 for d in contexte["detail_perturbees"] if d.get("sans_releve")
             )
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
@@ -3298,6 +3460,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
             "stats", "stats_ratio", "pct_perturbe", "pct_perturbe_severe", "format_min_sans_zero",
             "tooltip_ratio_retard", "tooltip_cumule", "tooltip_moyen",
             "tooltip_retard_max", "tooltip_pire_gare", "annulations",
+            "detail_perturbees", "nb_significatives", "nb_annulees_sans_releve",
         )
     }
     resultat["rapport_periode_texte"] = texte_periode_rapport(nom_periode, ctx["debut_local"], ctx["fin_local"])

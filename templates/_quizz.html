@@ -5,12 +5,24 @@
         « ? » en haut à droite).
     </p>
 
-    <div id="quizz-progression">
-        Question <span id="quizz-numero">1</span> / <span id="quizz-total">?</span>
-        — Score : <span id="quizz-score">0</span>
+    <div id="quizz-progression-ligne">
+        <button type="button" class="quizz-bouton-index" id="quizz-bouton-index" onclick="quizzBasculerIndex()">
+            Index <span class="fleche">▾</span>
+        </button>
+        <div id="quizz-progression">
+            Question <span id="quizz-numero">1</span> / <span id="quizz-total">?</span>
+            — Score : <span id="quizz-score">0</span>
+        </div>
+    </div>
+
+    <div id="quizz-index-panneau" style="display:none">
+        <div id="quizz-index-liste"></div>
     </div>
 
     <div id="quizz-question-zone">
+        <p id="quizz-consultation-bandeau" style="display:none">
+            Consultation — la partie en cours reprendra là où tu l'avais laissée.
+        </p>
         <h3 id="quizz-question-texte"></h3>
         <div id="quizz-choix"></div>
         <div id="quizz-feedback" style="display:none">
