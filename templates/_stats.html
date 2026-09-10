@@ -44,9 +44,15 @@
                                         {% if d.statut == "annule" %}
                                             —
                                         {% else %}
-                                            {{ format_min_sans_zero(d.retard_max) }} min
+                                            {% if d.retard_rattrape is not none and d.retard_rattrape == 0 %}
+                                                Pic à {{ format_min_sans_zero(d.retard_max) }} min, entièrement rattrapé
+                                            {% elif d.retard_rattrape is not none %}
+                                                Pic à {{ format_min_sans_zero(d.retard_max) }} min, rattrapé à {{ format_min_sans_zero(d.retard_rattrape) }} min
+                                            {% else %}
+                                                {{ format_min_sans_zero(d.retard_max) }} min
+                                            {% endif %}
                                             {% if d.retard_max_ligne != d.retard_max %}
-                                                <span class="stat-attenue">({{ format_min_sans_zero(d.retard_max_ligne) }} min sur la ligne)</span>
+                                                <span class="stat-attenue">({{ format_min_sans_zero(d.retard_max_ligne) }} min sur l'axe Paris-Cherbourg)</span>
                                             {% endif %}
                                         {% endif %}
                                     </td>
@@ -83,7 +89,47 @@
     {% endif %}
     <div class="stat">
         <div class="stat-label">Retard cumulé <span class="icone-info" title="{{ tooltip_cumule }}">ℹ</span></div>
-        <div class="stat-valeur">{{ stats.heures }} h {{ "%02d"|format(stats.minutes) }} min</div>
+        <div class="stat-valeur">
+            {{ stats.heures }} h {{ "%02d"|format(stats.minutes) }} min
+            {% if vue == "rapports" and detail_retard_cumule is defined %}
+                <span class="stat-attenue">({{ stats.nb_passages_impactes }} passage{{ "s" if stats.nb_passages_impactes > 1 else "" }} impacté{{ "s" if stats.nb_passages_impactes > 1 else "" }})</span>
+            {% endif %}
+        </div>
+        {% if vue == "rapports" and detail_retard_cumule is defined %}
+            <button type="button" class="bouton-detail" onclick="basculerDetailPerturbees(this)">
+                <span class="fleche">▶</span> Voir le détail ({{ stats.nb_passages_impactes }} passage{{ "s" if stats.nb_passages_impactes > 1 else "" }})
+            </button>
+            <div class="zone-detail" hidden>
+                <table class="detail-perturbees">
+                    <thead>
+                        <tr>
+                            <th>Train</th>
+                            <th>Gare</th>
+                            <th class="num">Retard</th>
+                            <th>Statut ({{ nb_significatives_retard_cumule }} significative{{ "s" if nb_significatives_retard_cumule > 1 else "" }})</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in detail_retard_cumule %}
+                            <tr>
+                                <td>{{ d.train }}</td>
+                                <td>{{ d.gares }}</td>
+                                <td class="num">
+                                    {{ format_min_sans_zero(d.retard) }} min{% if d.nb_gares > 1 %} ×{{ d.nb_gares }}{% endif %}
+                                </td>
+                                <td>
+                                    {% if d.statut == "significatif" %}
+                                        <span class="badge-statut badge-significatif">Significatif</span>
+                                    {% else %}
+                                        <span class="badge-statut badge-mineur">Mineur</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
     </div>
     {% if vue != "jour_heure" %}
         <div class="stat">

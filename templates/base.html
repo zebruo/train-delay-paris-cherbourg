@@ -61,7 +61,7 @@
         <h1>{{ titre_app }}</h1>
         <div id="controles">
             <label class="controle-case">
-                <input type="checkbox" id="auto-refresh" checked>
+                <input type="checkbox" id="auto-refresh">
                 Rafraîchissement automatique (5 min)
             </label>
             <a href="/">Réinitialiser</a>
@@ -142,7 +142,8 @@
             </button>
             <button type="button" class="onglet {% if vue == 'tableau' %}actif{% endif %}"
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
-                    hx-vals='{"vue": "tableau"}' onclick="activerOnglet(this, 'tableau')">
+                    hx-vals='{"vue": "tableau"}' hx-trigger="click[!peutUtiliserCacheOnglet('tableau')]"
+                    onclick="activerOnglet(this, 'tableau')">
                 Circulations
             </button>
             <button type="button" class="onglet {% if vue == 'graphique' %}actif{% endif %}"
@@ -162,12 +163,14 @@
             </button>
             <button type="button" id="onglet-travaux" class="onglet {% if vue == 'travaux' %}actif{% endif %}"
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
-                    hx-vals='{"vue": "travaux"}' onclick="activerOnglet(this, 'travaux')">
+                    hx-vals='{"vue": "travaux"}' hx-trigger="click[!peutUtiliserCacheOnglet('travaux')]"
+                    onclick="activerOnglet(this, 'travaux')">
                 <span id="badge-travaux">{{ libelle_travaux }}</span>
             </button>
             <button type="button" class="onglet {% if vue == 'gtfs' %}actif{% endif %}"
                     hx-get="/contenu" hx-target="#zone-contenu" hx-include="#filtres"
-                    hx-vals='{"vue": "gtfs"}' onclick="activerOnglet(this, 'gtfs')">
+                    hx-vals='{"vue": "gtfs"}' hx-trigger="click[!peutUtiliserCacheOnglet('gtfs')]"
+                    onclick="activerOnglet(this, 'gtfs')">
                 Vérification GTFS
             </button>
             <button type="button" class="onglet {% if vue == 'quizz' %}actif{% endif %}"
@@ -328,12 +331,70 @@
             }
         });
 
+        // Cache client (mémoire JS, perdu au F5) pour les 3 onglets SANS
+        // graphique (Circulations/Perturbations/Vérification GTFS) — pas
+        // Rapports/Graphique/Suivi d'un train/Par jour-heure, dont les
+        // graphiques Plotly sont des objets JS vivants, pas du HTML figé
+        // qu'on peut simplement réafficher tel quel ; ni Quizz, déjà exclu
+        // de l'auto-refresh plus haut pour ne pas casser une partie en
+        // cours. But : éviter un aller-retour serveur pour un contenu qui
+        // n'a de toute façon pas pu changer, quand on revient sur un onglet
+        // déjà vu récemment. Clé = onglet + Gare/Train/Sens actuels (pas
+        // seulement l'onglet) : un changement de filtre retombe toujours
+        // sur une combinaison jamais vue, donc redemande normalement au
+        // serveur, sans cas particulier à gérer. Durée choisie (10 min) :
+        // délibérément plus généreuse que les 5 min de cadence réelle de
+        // collect_realtime.py (voir mémoire du projet) — ici on cherche
+        // juste à réduire les allers-retours pendant une session de
+        // navigation active, pas à suivre la fraîcheur des données au plus
+        // près, demande explicite de l'utilisateur, 2026-09-10.
+        const ONGLETS_CACHABLES = ["tableau", "travaux", "gtfs"];
+        const DUREE_CACHE_ONGLET_MS = 10 * 60 * 1000;
+        let _cacheOnglets = {};
+
+        function cleCacheOnglet(vue) {
+            return [vue, document.getElementById("gare").value,
+                     document.getElementById("train").value,
+                     document.getElementById("sens").value].join("|");
+        }
+
+        function peutUtiliserCacheOnglet(vue) {
+            if (!ONGLETS_CACHABLES.includes(vue)) return false;
+            const entree = _cacheOnglets[cleCacheOnglet(vue)];
+            return !!entree && (Date.now() - entree.horodatage) < DUREE_CACHE_ONGLET_MS;
+        }
+
+        // Appelé depuis activerOnglet, avant que htmx (hx-trigger
+        // "click[!peutUtiliserCacheOnglet(...)]" sur les 3 boutons
+        // concernés) ne décide s'il doit ou non lancer sa propre requête —
+        // les deux se basent sur le même test pour rester synchronisés.
+        function utiliserCacheOnglet(vue) {
+            document.getElementById("zone-contenu").innerHTML = _cacheOnglets[cleCacheOnglet(vue)].html;
+        }
+
         function activerOnglet(bouton, nom) {
             document.getElementById("vue-active").value = nom;
             document.querySelectorAll(".onglet").forEach((b) => b.classList.remove("actif"));
             bouton.classList.add("actif");
             mettreAJourVisibiliteFiltres(nom);
+            if (peutUtiliserCacheOnglet(nom)) utiliserCacheOnglet(nom);
         }
+
+        // Alimente le cache ci-dessus à chaque contenu reçu pour un des 3
+        // onglets concernés — qu'il vienne d'un clic d'onglet (première
+        // visite, ou cache expiré) ou d'un changement de filtre (Gare/Train/
+        // Sens) sur l'onglet déjà actif : dans les deux cas, ce contenu tout
+        // juste reçu devient la version la plus fraîche disponible pour
+        // cette combinaison.
+        document.body.addEventListener("htmx:afterSettle", (e) => {
+            const vue = document.getElementById("vue-active").value;
+            if (e.detail.target && e.detail.target.id === "zone-contenu" && ONGLETS_CACHABLES.includes(vue)) {
+                _cacheOnglets[cleCacheOnglet(vue)] = {
+                    horodatage: Date.now(),
+                    html: document.getElementById("zone-contenu").innerHTML,
+                };
+            }
+        });
 
         // "Limiter aux gares de la ligne"/"Limiter aux trains avec retard"
         // sont sans effet sur certains onglets — masquées plutôt que

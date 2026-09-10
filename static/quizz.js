@@ -194,7 +194,7 @@ const QUIZZ_QUESTIONS = [
     {
         question: "Parmi les indicateurs de la barre du haut, lequel répond le mieux à « puis-je compter sur cette ligne » pour un usager ?",
         choix: [
-            "« Retard cumulé », le total de temps perdu sur la ligne",
+            "« Retard cumulé », le total de temps perdu sur l'axe Paris-Cherbourg",
             "« Circulations perturbées », le seul conçu pour donner une idée d'ensemble en un coup d'œil",
             "« Retard moyen / relevé », la moyenne de tous les relevés du système",
             "« Retard max », le pire retard observé sur la période",

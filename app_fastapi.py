@@ -2432,7 +2432,7 @@ def _calculer_stats_globales_sql_interne(
         connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
     )
     if nb_releves:
-        retard_max_texte, heures, minutes, pct_a_lheure, _nb_passages_impactes = _retard_max_et_cumule_sql(
+        retard_max_texte, heures, minutes, pct_a_lheure, nb_passages_impactes = _retard_max_et_cumule_sql(
             connexion, gare, train, sens, limiter_ligne, limiter_retard,
             debut_iso=debut_iso, fin_iso=fin_iso,
         )
@@ -2441,6 +2441,11 @@ def _calculer_stats_globales_sql_interne(
             "retard_max_texte": retard_max_texte, "pire_gare_texte": pire_gare_texte,
             "label_pire_gare": label_pire_gare,
             "pct_a_lheure_texte": f"{pct_a_lheure:.1f}".replace(".", ",") if pct_a_lheure is not None else None,
+            # Affiché seulement sur l'onglet Rapports (templates/_stats.html,
+            # vue == "rapports") — inutile ailleurs, mais aucun coût
+            # supplémentaire à le garder ici (déjà calculé par
+            # _retard_max_et_cumule_sql, ignoré avant ce jour).
+            "nb_passages_impactes": nb_passages_impactes,
         }
         tooltip_moyen = "Moyenne à plat de chaque relevé individuel du système (voir quizz)."
         # Version courte (2026-09-08, même principe que Retard moyen/cumulé/
@@ -3002,7 +3007,18 @@ def _construire_detail_perturbees_sql(
     WHERE) ; retard_max (toutes gares, pour le texte "(X min sur la ligne)"
     si différent) vient d'une 2e requête, limiter_ligne=False — un seul
     WHERE ne peut pas donner les deux à la fois (limiter_ligne restreint les
-    LIGNES scannées, pas juste une colonne)."""
+    LIGNES scannées, pas juste une colonne).
+
+    Version 2.2 (2026-09-10) : ajoute retard_rattrape, la dernière valeur
+    connue sur la ligne quand elle est inférieure au pic ci-dessus — annoté
+    "Pic à X min, rattrapé à Y min" côté template plutôt que de reclasser
+    significatif/mineur sur cette dernière valeur (ce qui ferait diverger le
+    compte de significatives de ce tableau du "91"/"9 %" officiel — vérifié
+    sur le rapport quotidien réel, 2026-09-10 : reclasser sur la dernière
+    valeur connue aurait fait basculer 1 circulation (train 3308, pic 15 ->
+    dernier 0) en mineur, tout en laissant le "5 significatives" de
+    l'en-tête inchangé, car lui reste basé sur le pic). Purement informatif :
+    n'affecte ni le tri, ni le statut, ni aucun total."""
     where_ligne, params_ligne = _construire_where_sql(
         "Toutes", "Tous", "Tous", True, debut_iso=debut_iso, fin_iso=fin_iso,
     )
@@ -3030,6 +3046,28 @@ def _construire_detail_perturbees_sql(
         params_toutes,
     ).fetchall())
 
+    # Dernière valeur connue sur la ligne (derniers_complet_periode, déjà
+    # matérialisée par l'appelant — même table que _construire_donnees_
+    # top5_sql) : sert uniquement à annoter "Pic à X min, rattrapé à Y min"
+    # quand la circulation a depuis rattrapé son pic — jamais à reclasser
+    # significatif/mineur ni à changer le compte total, qui doivent rester
+    # alignés sur "222"/"91" (voir docstring plus haut). Repéré par
+    # l'utilisateur, 2026-09-10 : sans cette annotation, ce même pic pouvait
+    # afficher une valeur différente de celle du Top 5 juste en dessous
+    # (Top 5, lui, se base sur la dernière valeur connue), pour la même
+    # circulation le même jour — l'écart est réel (voir docstring), mais
+    # avait l'air d'une incohérence sans cette explication.
+    gares_placeholders_ligne = ",".join("?" * len(GARES_LIGNE_ORDRE))
+    derniers_ligne = dict(connexion.execute(
+        f"""
+        SELECT trip_id || '|' || start_date AS cle,
+               MAX(CASE WHEN gare IN ({gares_placeholders_ligne}) THEN retard_min END) AS dernier_ligne
+        FROM derniers_complet_periode
+        GROUP BY trip_id, start_date
+        """,
+        list(GARES_LIGNE_ORDRE),
+    ).fetchall())
+
     detail = []
     cles_trouvees_sql = set()
     for trip_id, start_date, retard_max_ligne, annulee in lignes:
@@ -3045,10 +3083,19 @@ def _construire_detail_perturbees_sql(
         else:
             statut = "mineur"
         retard_max = retard_max_toutes.get(f"{trip_id}|{start_date}")
+        dernier_ligne = derniers_ligne.get(f"{trip_id}|{start_date}")
+        # Tolérance 0.05 : évite un faux "rattrapé" sur un simple écart
+        # d'arrondi (retard_min est déjà arrondi à 0.1 dans derniers_complet_
+        # periode, retard_max_ligne ne l'est qu'ici, juste en dessous).
+        rattrape = (
+            not annulee and dernier_ligne is not None
+            and dernier_ligne < retard_max_ligne - 0.05
+        )
         detail.append({
             "train": format_numero_train(train), "sens": sens,
             "retard_max": round(float(retard_max), 1) if retard_max is not None else None,
             "retard_max_ligne": round(float(retard_max_ligne), 1) if retard_max_ligne is not None else None,
+            "retard_rattrape": round(float(dernier_ligne), 1) if rattrape else None,
             "statut": statut,
         })
 
@@ -3090,6 +3137,97 @@ def _construire_detail_perturbees_sql(
     ordre_statut = {"significatif": 0, "annule": 1, "mineur": 2}
     detail.sort(key=lambda e: (ordre_statut[e["statut"]], -(e["retard_max_ligne"] or 0)))
     return detail
+
+
+def _construire_detail_retard_cumule_sql(connexion, debut_iso, fin_iso, variantes, calendrier):
+    """Détail dépliable de "Retard cumulé" (Rapports, quotidien/hebdomadaire
+    seulement — même raison que _construire_detail_perturbees_sql : la liste
+    dépasserait vite plusieurs centaines de lignes sur un mensuel). Un
+    "passage impacté" = un (trip_id, start_date, gare) dont la DERNIÈRE
+    valeur connue est positive — exactement la même sémantique que "Retard
+    cumulé"/nb_passages_impactes (_retard_max_et_cumule_sql/derniers_par_
+    passage), PAS celle du détail de "Circulations perturbées" juste
+    au-dessus (qui scanne n'importe quel relevé, même rattrapé ensuite).
+    Les deux détails répondent donc à des questions différentes, et leurs
+    totaux respectifs (celui-ci = nb_passages_impactes ; l'autre = 222/91)
+    ne se recoupent pas — normal, pas un bug à réconcilier.
+
+    Regroupement : un même train (même trip_id + start_date, donc bien la
+    même circulation, jamais deux jours différents) avec le même retard sur
+    plusieurs gares CONSÉCUTIVES (positions adjacentes dans l'ordre réel du
+    trajet, variantes/choisir_variante — pas juste "même retard n'importe où
+    sur le trajet") tient sur une seule ligne, gares séparées par " / " et un
+    total "×N" — sinon un train resté X min de retard sur 5 gares de suite
+    produirait 5 lignes quasi identiques. Le total du bouton "Voir le détail"
+    (calculé par l'appelant à partir de la longueur de la liste RETOURNÉE ICI,
+    avant regroupement côté template) reste le vrai nombre de passages, pas
+    le nombre de lignes affichées une fois regroupées — demande explicite de
+    l'utilisateur, 2026-09-10, mockup validé (https://claude.ai/code/artifact/410aaa3b-a770-4138-ac78-e56b6712696b).
+
+    Une gare absente du référentiel résolu (variante introuvable) ne peut
+    jamais être fusionnée avec une autre — bug réel trouvé en audit le
+    2026-09-10 : la toute première version regroupait par simple égalité de
+    retard, sans vérifier l'adjacence réelle sur le trajet, fusionnant à tort
+    deux gares NON consécutives partageant coïncidemment le même retard
+    (ex: 5 min à Bernay, retour à 0 ailleurs, puis de nouveau 5 min à
+    Valognes) en une seule ligne "Bernay / Valognes — 5 min ×2" laissant
+    croire à tort à un ralentissement continu entre les deux."""
+    where, params = _construire_where_sql(
+        "Toutes", "Tous", "Tous", True, debut_iso=debut_iso, fin_iso=fin_iso,
+    )
+    cte = _cte_dernier_par_passage_complet(where)
+    lignes = connexion.execute(
+        cte + "SELECT trip_id, start_date, gare, retard_min FROM derniers "
+        "WHERE (trip_id || '|' || start_date) NOT IN (SELECT cle FROM circulations_annulees) "
+        "AND retard_min > 0",
+        params,
+    ).fetchall()
+
+    par_circulation = {}
+    for trip_id, start_date, gare, retard_min in lignes:
+        par_circulation.setdefault((trip_id, start_date), []).append((gare, retard_min))
+
+    detail = []
+    for (trip_id, start_date), gares_retards in par_circulation.items():
+        variante = choisir_variante(variantes, calendrier, trip_id, start_date)
+        ordre_gares = variante["gares"] if variante else []
+        train = trip_id.split(":", 1)[0]
+        position_gare = {g: i for i, g in enumerate(ordre_gares)}
+        # Trie par position réelle sur le trajet (repli à la fin, ordre SQL
+        # arbitraire préservé entre elles, pour une gare absente du
+        # référentiel résolu) — indispensable pour ne fusionner ensuite que
+        # des gares réellement adjacentes, jamais deux gares à retard
+        # identique mais séparées par d'autres gares entre-temps.
+        gares_retards.sort(key=lambda gr: position_gare.get(gr[0], len(ordre_gares)))
+
+        groupes = []
+        for gare, retard_min in gares_retards:
+            position = position_gare.get(gare)
+            precedent = groupes[-1] if groupes else None
+            peut_fusionner = (
+                precedent is not None
+                and precedent["retard_min"] == retard_min
+                and position is not None
+                and precedent["derniere_position"] is not None
+                and position == precedent["derniere_position"] + 1
+            )
+            if peut_fusionner:
+                precedent["gares"].append(gare)
+                precedent["derniere_position"] = position
+            else:
+                groupes.append({"gares": [gare], "retard_min": retard_min, "derniere_position": position})
+
+        for groupe in groupes:
+            detail.append({
+                "train": format_numero_train(train),
+                "gares": " / ".join(groupe["gares"]),
+                "nb_gares": len(groupe["gares"]),
+                "retard": round(float(groupe["retard_min"]), 1),
+                "statut": "significatif" if groupe["retard_min"] > SEUIL_RETARD_MOYEN else "mineur",
+            })
+
+    detail.sort(key=lambda e: (0 if e["statut"] == "significatif" else 1, -e["retard"]))
+    return len(lignes), detail
 
 
 def _construire_donnees_top5_sql(connexion, variantes, calendrier):
@@ -3373,6 +3511,21 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
             contexte["nb_annulees_sans_releve"] = sum(
                 1 for d in contexte["detail_perturbees"] if d.get("sans_releve")
             )
+            # Détail dépliable de "Retard cumulé" (même restriction quotidien/
+            # hebdomadaire que ci-dessus) — sémantique "dernière valeur
+            # connue par passage", PAS celle de detail_perturbees juste
+            # au-dessus (voir _construire_detail_retard_cumule_sql) : les
+            # deux totaux (stats.nb_passages_impactes ici, 222/91 au-dessus)
+            # ne se recoupent pas, c'est attendu. Le compte (identique à
+            # stats.nb_passages_impactes, déjà whitelisté via "stats") est
+            # ignoré ici : pas besoin d'une deuxième clé pour la même valeur.
+            _, contexte["detail_retard_cumule"] = _construire_detail_retard_cumule_sql(
+                connexion, debut_iso, fin_iso,
+                reference_donnees["variantes"], reference_donnees["calendrier"],
+            )
+            contexte["nb_significatives_retard_cumule"] = sum(
+                1 for d in contexte["detail_retard_cumule"] if d["statut"] == "significatif"
+            )
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
         connexion.execute("DROP TABLE IF EXISTS temp.derniers_complet_periode")
@@ -3461,6 +3614,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
             "tooltip_ratio_retard", "tooltip_cumule", "tooltip_moyen",
             "tooltip_retard_max", "tooltip_pire_gare", "annulations",
             "detail_perturbees", "nb_significatives", "nb_annulees_sans_releve",
+            "detail_retard_cumule", "nb_significatives_retard_cumule",
         )
     }
     resultat["rapport_periode_texte"] = texte_periode_rapport(nom_periode, ctx["debut_local"], ctx["fin_local"])
@@ -3527,7 +3681,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
                     f"train {e['train']} ({e['sens']}) — {_format_start_date(e['start_date'])} — "
                     f"max {round(e['retard_max'])} min"
                     + (
-                        f" ({round(e['retard_max_ligne'])} min sur la ligne)"
+                        f" ({round(e['retard_max_ligne'])} min sur l'axe Paris-Cherbourg)"
                         if e["retard_max_ligne"] is not None
                         and round(e["retard_max_ligne"]) != round(e["retard_max"])
                         else ""

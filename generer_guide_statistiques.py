@@ -228,7 +228,7 @@ GUIDE_PAGES = [
                     "l'arrivée."
                 ),
                 exemple_lignes=[
-                    "Prenons une période avec 200 circulations sur la ligne.",
+                    "Prenons une période avec 200 circulations sur l'axe Paris-Cherbourg.",
                     "40 d'entre elles ont eu du retard à un moment de leur trajet.",
                     "→ Affiché : « 40 circulations perturbées / 200 (20 %) »",
                 ],
@@ -282,8 +282,9 @@ GUIDE_PAGES = [
                 ],
                 utilite=(
                     "comparer deux journées ou deux semaines entre elles sur le volume réel "
-                    "de perturbation, ou chiffrer le temps perdu cumulé sur la ligne (utile "
-                    "pour un dossier ou un argumentaire auprès de la SNCF)."
+                    "de perturbation, ou chiffrer le temps perdu cumulé sur l'axe "
+                    "Paris-Cherbourg (utile pour un dossier ou un argumentaire auprès de la "
+                    "SNCF)."
                 ),
                 pourquoi=(
                     "Cette stat ne garde que le dernier retard connu par gare — si pour ce "
@@ -511,8 +512,8 @@ GUIDE_PAGES = [
                 titre="Météo et Perturbations",
                 definition=(
                     "Moyennes météo (température, pluie, vent) et liste des perturbations\n"
-                    "SNCF en cours sur la ligne pendant la période — sans traitement\n"
-                    "particulier, affichées telles que publiées par les sources."
+                    "SNCF en cours sur l'axe Paris-Cherbourg pendant la période — sans\n"
+                    "traitement particulier, affichées telles que publiées par les sources."
                 ),
                 exemple_lignes=["Rien à calculer ici — ces deux blocs sont les plus simples du rapport."],
                 utilite=(
@@ -529,8 +530,8 @@ GUIDE_PAGES = [
                     "terminus, donc jamais considéré « arrivé »)."
                 ),
                 exemple_lignes=[
-                    "→ Affiché : « Circulations annulées sur la période (sur la ligne) :",
-                    "  2 (852610, 853430). »",
+                    "→ Affiché : « Circulations annulées sur la période (sur l'axe",
+                    "  Paris-Cherbourg) : 2 (852610, 853430). »",
                 ],
                 utilite=(
                     "voir d'un coup d'œil si des trains ont été purement et simplement "

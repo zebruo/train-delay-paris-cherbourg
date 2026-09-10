@@ -1091,7 +1091,7 @@ def generer(nom_periode, maintenant=None):
                     round(ligne["retard_max_ligne"]) if pd.notna(ligne["retard_max_ligne"]) else None
                 )
                 suffixe_ligne = (
-                    f" ({retard_max_ligne_arrondi} min sur la ligne)"
+                    f" ({retard_max_ligne_arrondi} min sur l'axe Paris-Cherbourg)"
                     if retard_max_ligne_arrondi is not None and retard_max_ligne_arrondi != retard_max_arrondi
                     else ""
                 )

@@ -1300,10 +1300,12 @@ contrairement à la 1re version), boutons individuellement arrondis. */
 }
 
 /* Stats propres à l'onglet Graphique (remplacent la ligne de stats
-   générales masquée sur cet onglet, voir #stats dans base.html) — même
-   poids que .stat-valeur, pour rester visuellement cohérent avec elles. */
+   générales masquée sur cet onglet, voir #stats dans base.html) — couleur
+   de texte normale (pas atténuée), pour rester visuellement cohérent avec
+   .stat-valeur (qui n'en définit pas explicitement, donc hérite déjà du
+   même texte normal). */
 .stat-graphique {
-    font-weight: 600;
+    color: var(--texte);
 }
 
 /* Icône ⏱ de la durée théorique (Suivi d'un train) légèrement agrandie par

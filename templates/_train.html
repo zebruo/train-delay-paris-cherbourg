@@ -1,9 +1,6 @@
 {% if not erreur %}
 <div class="zone-train">
     <div class="ligne-periode" id="filtres-train">
-        {% if depart_arrivee %}
-            <p class="info stat-graphique">{{ depart_arrivee | safe }}</p>
-        {% endif %}
         <div class="champ champ-case">
             <input type="hidden" name="filtre_jour_retard" value="false">
             <label>
@@ -15,6 +12,9 @@
                 ({{ options_trajet|length }} trajets{% if not filtre_jour_retard %}, {{ fenetre_jours }} derniers jours{% endif %})
             </label>
         </div>
+        {% if depart_arrivee %}
+            <p class="info stat-graphique">{{ depart_arrivee | safe }}</p>
+        {% endif %}
         <div class="champ">
             <label for="trajet">Trajet</label>
             <select id="trajet" name="trajet"
