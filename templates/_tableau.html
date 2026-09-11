@@ -11,6 +11,18 @@
         <button type="button" class="lien-perturbations" onclick="document.getElementById('onglet-travaux').click()">Voir Perturbations →</button>
     </div>
 {% endif %}
+{% if arrets_supprimes_sans_releve %}
+    <div class="banniere-arrets-supprimes-sans-releve">
+        <span>
+            <span class="icone-avertissement-orange">⚠</span> <strong>{{ arrets_supprimes_sans_releve|length }} circulation{{ "s" if arrets_supprimes_sans_releve|length > 1 else "" }} avec {{ nb_arrets_supprimes_sans_releve }} arrêt{{ "s" if nb_arrets_supprimes_sans_releve > 1 else "" }} supprimé{{ "s" if nb_arrets_supprimes_sans_releve > 1 else "" }} sans relevé</strong>
+            non signalé{{ "s" if nb_arrets_supprimes_sans_releve > 1 else "" }} ci-dessous (supprimé{{ "s" if nb_arrets_supprimes_sans_releve > 1 else "" }} avant tout relevé temps réel) :
+            {% for a in arrets_supprimes_sans_releve %}
+                train {{ a.train }} ({{ a.date }}) — {{ a.gares|join(", ") }}{% if not loop.last %} ; {% endif %}
+            {% endfor %}
+        </span>
+        <button type="button" class="lien-perturbations" onclick="document.getElementById('onglet-travaux').click()">Voir Perturbations →</button>
+    </div>
+{% endif %}
 <div class="zone-scroll">
     <table>
         <thead>

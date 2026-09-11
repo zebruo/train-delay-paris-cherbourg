@@ -1171,6 +1171,30 @@ bannière. */
     color: var(--rouge-texte);
 }
 
+/* Même bandeau que .banniere-annulations-sans-releve (arrêt supprimé sans
+relevé, voir arrets_supprimes_sans_releve_dans_fenetre) — icône orange (même
+teinte que .retard-moyen ailleurs) plutôt que rouge : contrairement à une
+annulation totale, le train a bien circulé et reste visible dans le Tableau
+via ses autres gares, une perturbation moins grave qu'une absence complète. */
+.banniere-arrets-supprimes-sans-releve {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--fond);
+    border: 1px dashed var(--bordure);
+    border-radius: 0.4rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.78rem;
+    color: var(--texte-attenue);
+}
+
+.icone-avertissement-orange {
+    color: #f97316;
+}
+
 .lien-perturbations {
     flex-shrink: 0;
     background: none;

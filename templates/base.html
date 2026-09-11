@@ -370,6 +370,16 @@
         // les deux se basent sur le même test pour rester synchronisés.
         function utiliserCacheOnglet(vue) {
             document.getElementById("zone-contenu").innerHTML = _cacheOnglets[cleCacheOnglet(vue)].html;
+            // #stats est un élément SÉPARÉ de #zone-contenu (swap OOB htmx
+            // indépendant, voir _contenu_reponse.html), masqué par le
+            // serveur pour Graphique/Suivi d'un train/Rapports/Quizz — sans
+            // requête réseau ici, ce swap n'a pas lieu, donc #stats resterait
+            // masqué s'il l'a été par le dernier onglet visité en direct.
+            // Les 3 onglets cachables (ONGLETS_CACHABLES) ne le masquent
+            // jamais : le réafficher est donc toujours correct ici. Bug réel
+            // trouvé par l'utilisateur, 2026-09-11 (barre de stats invisible
+            // par intermittence en revenant sur un onglet mis en cache).
+            document.getElementById("stats").style.display = "";
         }
 
         function activerOnglet(bouton, nom) {

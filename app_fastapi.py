@@ -964,10 +964,21 @@ def construire_contexte(request: Request, gare: str, train: str, sens: str):
         arrets_supprimes = set(
             zip(supprimes["trip_id"], supprimes["start_date"].astype(str), supprimes["gare"])
         )
+        arrets_supprimes_sans_releve = arrets_supprimes_sans_releve_dans_fenetre(df, supprimes)
         contexte.update({
             "entetes": [ENTETES[c] for c in COLONNES],
             "lignes": construire_lignes_tableau(df_filtre, circulations_annulees, arrets_supprimes),
             "annulations_sans_releve": annulations_sans_releve_dans_fenetre(df, annules),
+            "arrets_supprimes_sans_releve": arrets_supprimes_sans_releve,
+            # Distinct de arrets_supprimes_sans_releve|length (nb de
+            # CIRCULATIONS) : une seule circulation peut regrouper plusieurs
+            # gares supprimées (ex: train 852856, 6 gares le même jour) — le
+            # pluriel de "arrêt(s) supprimé(s)" dans le bandeau doit porter
+            # sur ce compte-ci, pas sur le nombre de circulations, sans quoi
+            # "1 circulation avec arrêt supprimé" reste au singulier à tort
+            # quand cette unique circulation a en réalité plusieurs gares
+            # supprimées (bug réel trouvé en testant en direct, 2026-09-11).
+            "nb_arrets_supprimes_sans_releve": sum(len(a["gares"]) for a in arrets_supprimes_sans_releve),
         })
 
     # Frise (#pied-de-page, base.html) : comme le badge d'onglet, présente
@@ -4206,6 +4217,64 @@ def annulations_sans_releve_dans_fenetre(df, annules):
             "train": format_numero_train(ligne["train"]),
             "date": _format_start_date(ligne["start_date"]),
             "trajet": trajet_origine_destination(ligne["trip_id"], reference_donnees["variantes"]),
+        })
+    return resultat
+
+
+def arrets_supprimes_sans_releve_dans_fenetre(df, supprimes):
+    """Arrêts supprimés détectés avant tout relevé temps réel POUR CETTE
+    GARE PRÉCISE (ex: train 852856, 11/09/2026 — 6 gares de la branche
+    Rennes annoncées "arrêt supprimé" par le flux SNCF, alors qu'aucune
+    n'a jamais eu le moindre relevé, le train ayant terminé sa course
+    avant de les atteindre) : construire_lignes_tableau ne peut rien
+    afficher pour elles, faute d'une ligne à laquelle accrocher le badge
+    "ARRÊT SUPPRIMÉ" habituel — contrairement à
+    annulations_sans_releve_dans_fenetre ci-dessus, qui traite l'absence
+    TOTALE de relevé pour toute une circulation : ici, le train reste
+    normalement visible dans le Tableau via ses AUTRES gares (852856 a
+    des relevés à Caen/Bayeux/Lison), seules quelques gares précises
+    manquent — repéré par l'utilisateur, 2026-09-11.
+
+    Même fenêtre glissante (300 dernières lignes de tout le trafic,
+    plancher 24h, voir FENETRE_ANNULATIONS_SANS_RELEVE_MIN) que
+    annulations_sans_releve_dans_fenetre — même raison d'être, voir son
+    docstring.
+
+    Renvoie (train, date, gares) — gares regroupées par circulation (un
+    même train peut avoir plusieurs gares supprimées le même jour, comme
+    852856 et ses 6 gares de la branche Rennes), triées dans l'ordre réel
+    du trajet (comme _construire_detail_retard_cumule_sql) plutôt
+    qu'alphabétiquement, repli sur l'ordre d'apparition si la variante
+    est introuvable."""
+    if supprimes.empty or df.empty:
+        return []
+    releves_par_gare = set(zip(df["trip_id"], df["start_date"].astype(str), df["gare"]))
+    sans_releve = supprimes[
+        ~supprimes.apply(
+            lambda r: (r["trip_id"], str(r["start_date"]), r["gare"]) in releves_par_gare, axis=1,
+        )
+    ]
+    if sans_releve.empty:
+        return []
+    fenetre_min_300_lignes = pd.to_datetime(df.tail(300)["poll_time"], utc=True).min()
+    fenetre_min_plancher = pd.Timestamp.now(tz="UTC") - FENETRE_ANNULATIONS_SANS_RELEVE_MIN
+    fenetre_min = min(fenetre_min_300_lignes, fenetre_min_plancher)
+    sans_releve = sans_releve[sans_releve["poll_time"] >= fenetre_min]
+    if sans_releve.empty:
+        return []
+
+    dernier_poll_par_circulation = sans_releve.groupby(["trip_id", "start_date"])["poll_time"].max()
+    resultat = []
+    for (trip_id, start_date), _dernier_poll in dernier_poll_par_circulation.sort_values(ascending=False).items():
+        groupe = sans_releve[(sans_releve["trip_id"] == trip_id) & (sans_releve["start_date"] == start_date)]
+        gares_touchees = groupe["gare"].unique().tolist()
+        variante = choisir_variante(reference_donnees["variantes"], reference_donnees["calendrier"], trip_id, start_date)
+        ordre_gares = variante["gares"] if variante else []
+        gares_triees = [g for g in ordre_gares if g in gares_touchees] or gares_touchees
+        resultat.append({
+            "train": format_numero_train(groupe["train"].iloc[0]),
+            "date": _format_start_date(start_date),
+            "gares": gares_triees,
         })
     return resultat
 
