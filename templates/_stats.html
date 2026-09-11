@@ -29,7 +29,7 @@
                         <thead>
                             <tr>
                                 <th>Train</th>
-                                <th class="num">Retard max</th>
+                                <th class="num">Retard constaté</th>
                                 <th>Statut ({{ nb_significatives }} significative{{ "s" if nb_significatives > 1 else "" }})</th>
                             </tr>
                         </thead>
@@ -45,9 +45,9 @@
                                             —
                                         {% else %}
                                             {% if d.retard_rattrape is not none and d.retard_rattrape == 0 %}
-                                                Pic à {{ format_min_sans_zero(d.retard_max) }} min, entièrement rattrapé
+                                                Noté à {{ format_min_sans_zero(d.retard_max) }} min, entièrement rattrapé
                                             {% elif d.retard_rattrape is not none %}
-                                                Pic à {{ format_min_sans_zero(d.retard_max) }} min, rattrapé à {{ format_min_sans_zero(d.retard_rattrape) }} min
+                                                Noté à {{ format_min_sans_zero(d.retard_max) }} min, ramenée à {{ format_min_sans_zero(d.retard_rattrape) }} min
                                             {% else %}
                                                 {{ format_min_sans_zero(d.retard_max) }} min
                                             {% endif %}

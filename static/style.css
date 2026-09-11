@@ -1440,7 +1440,7 @@ demande explicite de l'utilisateur, 2026-08-18. */
 }
 
 .resume-travaux {
-    color: #c2410c;
+    color: var(--rouge-texte);
     font-weight: 600;
     margin: 0 0 0.5rem;
     font-size: 0.9rem;
@@ -1491,8 +1491,7 @@ ici, .table-gtfs avait la même règle dupliquée plus bas (audit 2026-08-10). *
 }
 
 tr.gtfs-aggrave {
-    color: #c2410c;
-    font-weight: 600;
+    color: var(--rouge-texte);
 }
 
 .table-gtfs th:nth-child(1), .table-gtfs td:nth-child(1) { width: 14%; }
@@ -1681,7 +1680,7 @@ classes appliquées directement dans templates/_tableau.html. */
 /* Onglet Quizz (voir _quizz.html/quizz.js) — contenu statique, pas de
 mise en page particulière héritée d'un autre onglet à réutiliser. */
 .zone-quizz {
-    max-width: 40rem;
+    max-width: 45rem;
     margin: 0 auto;
 }
 
@@ -1826,6 +1825,7 @@ progression, inchangée par un saut). */
     font-size: 0.8rem;
     font-style: italic;
     margin: 0 0 0.75rem;
+    padding: 0 8px;
 }
 
 #quizz-question-texte {
@@ -1877,8 +1877,13 @@ un choix correct/incorrect est le même genre de signal positif/négatif. */
     color: var(--rouge-texte);
 }
 
+/* margin horizontal (8px) : aligne les bords de ce bloc sur ceux de
+#quizz-question-texte/#quizz-choix juste au-dessus (padding: 0 8px) — sans
+lui, #quizz-feedback s'étendait jusqu'aux bords de .zone-quizz, plus large
+que les boutons de réponse au-dessus (repéré par l'utilisateur, capture
+d'écran, 2026-09-10). */
 #quizz-feedback {
-    margin-top: 1rem;
+    margin: 1rem 8px 0;
     padding: 0.75rem 1rem;
     border: 1px solid var(--bordure);
     border-radius: 0.5rem;

@@ -9,7 +9,7 @@ const QUIZZ_QUESTIONS = [
         question: "Un train est retardé de 10 min entre Caen et Lison, mais rattrape son retard et arrive à l'heure à Cherbourg. Que dit la ponctualité officielle SNCF/ART à son sujet ?",
         choix: [
             "Il est compté comme perturbé, comme dans nos statistiques",
-            "Il est compté comme 100 % ponctuel, puisqu'elle ne mesure que le retard à l'arrivée au terminus",
+            "La ponctualité officielle évalue la performance au terminus donc il est compté comme \"à l'heure\"",
             "Il est exclu des statistiques officielles",
             "Il est compté une fois par gare où il a eu du retard",
         ],
@@ -39,23 +39,21 @@ const QUIZZ_QUESTIONS = [
         explication: "« Retard cumulé » ne garde que le dernier retard connu par gare, pas la totalité des valeurs observées au fil du temps — si le dernier relevé montre 0 min partout, sa contribution au total est 0, même si des retards ont pu être observés plus tôt puis rattrapés. Le train reste inclus dans le calcul, il n'apporte simplement rien au total.",
     },
     {
-        question: "Pourquoi le « Retard moyen / relevé » affiche souvent une valeur minuscule (ex: 0.1 min) alors que le retard max du jour est de 45 min ?",
+        question: "Rapports (quotidien/hebdomadaire) affiche des chiffres d'en-tête comme « 222/1038 circulations perturbées » ou « Retard cumulé : 93 h 27 min » les deux tableaux détaillés dépliables « Voir le détail » apportent quoi de plus ?",
         choix: [
-            "C'est une erreur de calcul à corriger",
-            "Il exclut volontairement les gros retards",
-            "Il est dilué par des milliers de relevés à 0 min, puisqu'il moyenne chaque interrogation du système, pas juste les trains en retard",
-            "Il ne compte que les 10 derniers trains",
+            "Rien de nouveau : ils recalculent juste les mêmes chiffres sous une autre forme",
+            "« Voir le détail » liste train par train la composition des 2 entêtes sans rebasculer sur l'onglet Circulations et chercher soi-même",
+            "Ils permettent de filtrer le rapport par gare ou par train",
+            "Ils remplacent le PDF téléchargeable, qui n'est plus nécessaire",
         ],
-        correct: 2,
-        explication: "« Retard moyen / relevé » est la moyenne de tous les relevés individuels du système (chaque interrogation, gare par gare) — la plupart à 0 min ou vite corrigés, ce qui dilue fortement la moyenne par rapport à un retard max ponctuel.",
+        correct: 1,
+        explication: "Les deux chiffres d'en-tête sont des agrégats globaux. « Voir le détail » apporte plus de précisions : il liste chaque circulation concernée (numéro de train, gare(s) touchée(s), retard, statut significatif/mineur), pour distinguer une vraie perturbation d'un simple ralentissement rattrapé au sein du même total, sans changer d'onglet.",
         explicationHTML:
-            "<p>« Retard moyen / relevé » est la moyenne de tous les relevés individuels du système (chaque interrogation, gare par gare) — la plupart à 0 min ou vite corrigés, ce qui dilue fortement la moyenne par rapport à un retard max ponctuel.</p>" +
-            "<p>Exemple : 450 relevés ce jour-là (plusieurs dizaines de trains, sondés toutes les 5 min à chacune de leurs gares) — un seul incident isolé atteint 45 min, tous les autres relevés sont à 0 min.</p>" +
-            "<pre class=\"quizz-exemple\">449 relevés à 0 min\n" +
-            "1 relevé à 45 min (l'incident, le « retard max » du jour)\n\n" +
-            "Retard moyen / relevé : (449 × 0 + 1 × 45) ÷ 450 ≈ 0,1 min\n" +
-            "Retard max : 45 min</pre>" +
-            "<p>Le retard max capture bien l'incident isolé. Retard moyen / relevé, lui, le noie complètement au milieu des centaines d'autres relevés à l'heure — les deux chiffres sont corrects, ils ne répondent juste pas à la même question.</p>",
+            "<p>Les deux chiffres d'en-tête sont des agrégats globaux. « Voir le détail » apporte plus de précisions.</p>" +
+            "<p>Exemple : le rapport hebdomadaire affiche « Retard cumulé : 93 h 27 min (392 passages impactés) ». </p>" +
+            "<pre class=\"quizz-exemple\">Train 852870 — Bayeux / Caen — 140 min ×2 — Significatif\n" +
+            "Train 852221 — Carentan / Lison / Valognes — 5 min ×3 — Mineur</pre>" +
+            "<p>Sans ce tableau, impossible de distinguer ces deux passages dans le total de 93 h 27 min : le premier (280 min à lui seul, sur seulement 2 gares) correspond à une vraie perturbation, le second (15 min sur 3 gares) reste un simple ralentissement rattrapé. « Voir le détail » liste ainsi chaque circulation concernée pour comparer l'impact réel sans changer d'onglet.</p>",
     },
     {
         question: "Quelle est la vraie différence entre « Retard cumulé » et « Retard moyen / relevé » ?",
