@@ -725,6 +725,27 @@ def _jours_semaine_actifs(service_id, calendrier):
     return jours_actifs, date_min, date_max
 
 
+def _cle_recence_date_max(date_str):
+    """Clé de comparaison (mois, jour) pour une date_max 'JJ/MM' sans année
+    (voir _jours_semaine_actifs) — sert à départager, dans resoudre_trains_
+    pour_gare_heure, deux variantes du même train partageant exactement la
+    même minute de départ (ex: train 3329 au départ de Paris Saint-Lazare
+    20h59, à la fois une variante "large" Ven/Sam/Dim en cours jusqu'au
+    12/12, et une variante isolée à une seule date déjà passée, 20/09) :
+    sans ce départage, seul l'ordre d'itération (arbitraire, dérivé de
+    l'ordre du CSV source) décidait laquelle "gagnait", pouvant afficher un
+    motif de circulation obsolète (une variante expirée) au lieu du motif
+    actuellement en vigueur. Comparaison numérique (mois, jour) plutôt
+    qu'une comparaison de chaîne 'JJ/MM' brute, qui trierait à tort par jour
+    d'abord (ex: "20/09" > "12/12" en comparaison de texte, alors que
+    12/12 est chronologiquement après 20/09). None (aucune date connue)
+    trié en dernier, jamais préféré."""
+    if not date_str:
+        return (-1, -1)
+    jour, mois = date_str.split("/")
+    return (int(mois), int(jour))
+
+
 def construire_index_gare_heure(variantes, calendrier):
     """gare (nom complet, ex: 'Caen', même valeur que stop_name/GARES_LIGNE_
     ORDRE) -> liste de (train, minutes, destination, jours_actifs, date_min,
@@ -902,7 +923,17 @@ def resoudre_trains_pour_gare_heure(
         if delta > tolerance_min:
             continue
         existant = candidats_par_train.get(train)
-        if existant is None or delta < existant["delta_min"]:
+        # À égalité de proximité horaire (delta identique, ex: 2 variantes du
+        # même train à l'exacte même minute), préfère celle dont date_max est
+        # la plus lointaine — la variante toujours/encore en vigueur plutôt
+        # qu'une variante isolée déjà expirée, voir _cle_recence_date_max.
+        # Sans ce départage, c'était l'ordre d'itération (arbitraire) qui
+        # décidait, bug réel trouvé par l'utilisateur sur le train 3329,
+        # 2026-09-21.
+        if existant is None or delta < existant["delta_min"] or (
+            delta == existant["delta_min"]
+            and _cle_recence_date_max(date_max) > _cle_recence_date_max(existant["_date_max"])
+        ):
             candidats_par_train[train] = {
                 "train": train,
                 "train_affiche": format_numero_train(train),
@@ -991,18 +1022,34 @@ def informations_horaire_train(train, gare_depart, heure_hhmm, destination, inde
     moins de 24h (toujours vrai sur cette ligne, aucun train de nuit) — le
     modulo gère juste le cas d'un départ juste avant minuit/arrivée juste
     après, sans avoir besoin d'une date réelle (résolution par jour de la
-    semaine récurrent, pas par date précise, voir _jours_semaine_actifs)."""
+    semaine récurrent, pas par date précise, voir _jours_semaine_actifs).
+
+    Plusieurs variantes du même train peuvent produire une entrée identique
+    ici (même gare de départ, même minute, même destination) — même
+    ambiguïté que resoudre_trains_pour_gare_heure, même départage : parmi
+    les entrées qui correspondent, celle dont date_max est la plus lointaine
+    l'emporte (_cle_recence_date_max), plutôt que la première rencontrée
+    dans l'ordre (arbitraire) d'index_gare_heure. Bug réel trouvé par
+    l'utilisateur sur le train 3329 (Paris Saint-Lazare → Caen, 20h59,
+    2026-09-21) : la carte affichait "Circule : Dim" (une variante isolée à
+    la seule date du 20/09, déjà passée) au lieu de "Ven, Sam, Dim" (la
+    variante en cours jusqu'au 12/12)."""
     if not heure_hhmm:
         return None, None, None
     cible = _minutes_hhmm(heure_hhmm)
-    for t, minutes, dest, jours, _dmin, _dmax, minutes_arrivee in index_gare_heure.get(gare_depart, []):
+    meilleur = None
+    for t, minutes, dest, jours, _dmin, dmax, minutes_arrivee in index_gare_heure.get(gare_depart, []):
         if t != train or minutes != cible or minutes_arrivee is None:
             continue
         if destination and dest != destination:
             continue
-        duree_min = (minutes_arrivee - minutes) % 1440
-        heure_arrivee = f"{minutes_arrivee // 60:02d}:{minutes_arrivee % 60:02d}"
-        duree = f"{duree_min // 60}h{duree_min % 60:02d}"
-        jours_texte = ", ".join(JOURS_ABREGES[j] for j in sorted(jours))
-        return heure_arrivee, duree, jours_texte
-    return None, None, None
+        if meilleur is None or _cle_recence_date_max(dmax) > _cle_recence_date_max(meilleur[1]):
+            meilleur = (minutes_arrivee, dmax, jours)
+    if meilleur is None:
+        return None, None, None
+    minutes_arrivee, _dmax, jours = meilleur
+    duree_min = (minutes_arrivee - cible) % 1440
+    heure_arrivee = f"{minutes_arrivee // 60:02d}:{minutes_arrivee % 60:02d}"
+    duree = f"{duree_min // 60}h{duree_min % 60:02d}"
+    jours_texte = ", ".join(JOURS_ABREGES[j] for j in sorted(jours))
+    return heure_arrivee, duree, jours_texte

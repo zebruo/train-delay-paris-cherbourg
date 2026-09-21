@@ -47,7 +47,7 @@
                                             {% if d.retard_rattrape is not none and d.retard_rattrape == 0 %}
                                                 Noté à {{ format_min_sans_zero(d.retard_max) }} min, entièrement rattrapé
                                             {% elif d.retard_rattrape is not none %}
-                                                Noté à {{ format_min_sans_zero(d.retard_max) }} min, ramenée à {{ format_min_sans_zero(d.retard_rattrape) }} min
+                                                Noté à {{ format_min_sans_zero(d.retard_max) }} min, ramené à {{ format_min_sans_zero(d.retard_rattrape) }} min
                                             {% else %}
                                                 {{ format_min_sans_zero(d.retard_max) }} min
                                             {% endif %}
