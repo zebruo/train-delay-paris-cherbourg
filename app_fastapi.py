@@ -1750,7 +1750,24 @@ def calculer_carte_stats_train_sql(connexion, train, gare="Toutes", jours=90, li
     connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
     try:
         _materialiser_circulations_annulees(connexion)
-        _materialiser_circulations_arrivees_periode(connexion, debut_iso, fin_iso)
+        # _obtenir_circulations_arrivees_globales (cache mémoire, voir son
+        # docstring) plutôt qu'un _materialiser_circulations_arrivees_periode
+        # direct ici : ce dernier scanne TOUTE la ligne sur toute sa fenêtre,
+        # quel que soit le train demandé — coût mesuré jusqu'à 6s pour cette
+        # seule carte (un seul train), pour un travail à 99% inutile (recalculé
+        # à chaque bascule départ/arrivée mobile, retour utilisateur,
+        # 2026-09-22). Correct de réutiliser ici la version "depuis le début
+        # de la collecte" (pas juste les `jours` derniers) : le statut
+        # "arrivée confirmée" d'UNE circulation ne dépend pas de la largeur de
+        # la fenêtre tant qu'elle couvre bien toute sa durée réelle (un
+        # trajet tient en une journée) — seule la borne poll_time de la
+        # requête ci-dessous (debut_iso/fin_iso, inchangée) doit rester
+        # scopée aux `jours` derniers, pas cette appartenance au sous-ensemble
+        # "arrivée confirmée". Contrairement à Rapports (calculer_contexte_
+        # rapport_sql), qui NE PEUT PAS réutiliser ce cache : sa période a une
+        # fin dans le passé, "confirmée arrivée d'ici la fin de CETTE période"
+        # n'est pas la même question que "confirmée arrivée à ce jour".
+        _obtenir_circulations_arrivees_globales(connexion)
         where, params = _construire_where_sql(
             gare, train, "Tous", limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
         )
