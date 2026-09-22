@@ -53,7 +53,10 @@
                 recherché. Un jour absent ne veut pas dire que le train n'a pas
                 circulé, juste qu'il était à l'heure. Un jour isolé (ex: « Mer » alors que le
                 train roule Ven/Sam/Dim) correspond souvent à un jour férié dans l'année,
-                traité par la SNCF comme un dimanche.
+                traité par la SNCF comme un dimanche. Si « Favoris » ou « Mon train » sont
+                ouverts sans repasser par une recherche, l'appli ne connaît plus le jour
+                initialement recherché, la liste « Circule » peut alors changer selon le jour
+                où on la consulte.
             </p>
         </div>
 
@@ -117,10 +120,12 @@
             <p class="mobile-modale-bloc-label">Sources des données</p>
             <p class="mobile-modale-bloc-val">
                 Retards en temps réel : proxy.transport.data.gouv.fr (flux GTFS-RT SNCF, public,
-                sans clé). Météo : api.open-meteo.com. Horaires théoriques :
-                eu.ftp.opendatasoft.com/sncf/plandata (GTFS statique SNCF). Jours fériés :
-                calendrier.api.gouv.fr. Vacances scolaires (zone B) : data.education.gouv.fr.
-                Toutes ces sources sont publiques et gratuites, sans authentification.
+                sans clé). Météo : observations réelles Météo-France (réseau RADOME/ETENDU, clé
+                API personnelle gratuite), repli sur api.open-meteo.com si indisponible. Horaires
+                théoriques : eu.ftp.opendatasoft.com/sncf/plandata (GTFS statique SNCF). Jours
+                fériés : calendrier.api.gouv.fr. Vacances scolaires (zone B) :
+                data.education.gouv.fr. Toutes ces sources sont publiques et gratuites ; seule
+                Météo-France nécessite une clé API personnelle (gratuite).
             </p>
         </div>
     </div>

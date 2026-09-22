@@ -3,7 +3,7 @@
 {% elif candidats|length == 1 %}
     <div id="mobile-carte-train" class="mobile-carte-train-wrapper"
          hx-get="/mobile/carte_train" hx-trigger="load" hx-target="this"
-         hx-vals='{"train": "{{ candidats[0].train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ candidats[0].destination }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ candidats[0].horaire_variable_texte or '' }}"}'>
+         hx-vals='{"train": "{{ candidats[0].train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ candidats[0].destination }}", "mode": "{{ mode }}", "jour": "{{ jour }}", "horaire_variable_texte": "{{ candidats[0].horaire_variable_texte or '' }}"}'>
         <div class="mobile-carte"><p class="mobile-info">Chargement…</p></div>
     </div>
     {% if mode == "accueil" %}
@@ -21,7 +21,7 @@
         {% for c in candidats %}
         <button class="mobile-candidat"
                 hx-get="/mobile/carte_train" hx-target="#mobile-carte-train" hx-swap="innerHTML"
-                hx-vals='{"train": "{{ c.train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ c.destination }}", "mode": "{{ mode }}", "horaire_variable_texte": "{{ c.horaire_variable_texte or '' }}"}'
+                hx-vals='{"train": "{{ c.train }}", "gare": "{{ gare }}", "gare_depart": "{{ gare }}", "heure": "{{ heure }}", "destination": "{{ c.destination }}", "mode": "{{ mode }}", "jour": "{{ jour }}", "horaire_variable_texte": "{{ c.horaire_variable_texte or '' }}"}'
                 onclick="afficherChargementCarte('mobile-carte-train'); {% if mode == 'accueil' %}sauvegarderDernierTrain({train: '{{ c.train }}', train_affiche: '{{ c.train_affiche }}', gare: '{{ gare|replace("'", "\\'") }}', gare_depart: '{{ gare|replace("'", "\\'") }}', heure: '{{ heure }}', destination: '{{ c.destination|replace("'", "\\'") }}'});{% endif %}">
             Train {{ c.train_affiche }} ({{ c.heure_theorique }}) → {{ c.destination }}
         </button>

@@ -179,7 +179,7 @@ const QUIZZ_QUESTIONS = [
         explication: "Les horaires SNCF publiés en ligne ne couvrent jamais que les ~151 prochains jours, une fenêtre qui avance d'un jour chaque jour — un train déjà prévu par la SNCF mais plus loin dans le temps devient visible d'un coup le jour où cette fenêtre l'atteint. D'où la règle : ne pas s'inquiéter d'un chiffre isolé, mais surveiller si « Nouveaux » reste supérieur à zéro plusieurs jours de suite.",
     },
     {
-        question: "Cette fois, la colonne « Nouveaux » reste supérieure à zéro plusieurs jours de suite (pas un chiffre isolé qui retombe) — donc un vrai changement durable, pas un effet de la fenêtre glissante. Qui doit s'en occuper ?",
+        question: "Dans « Vérification GTFS », la colonne « Nouveaux » reste supérieure à zéro plusieurs jours de suite (pas un chiffre isolé qui retombe) — donc un vrai changement durable, pas un effet de la fenêtre glissante. Qui doit s'en occuper ?",
         choix: [
             "Rien à faire, ça finit toujours par se résorber tout seul au bout de 151 jours",
             "N'importe quel utilisateur de cette version web, via un bouton dédié",
@@ -277,7 +277,7 @@ const QUIZZ_QUESTIONS = [
             "5 relevés à 8 min\n\n" +
             "Retard moyen Gare A : (10 × 60 + 5 × 0) ÷ 15 = 40 min\n" +
             "Retard moyen Gare B : (5 × 8) ÷ 5 = 8 min</pre>" +
-            "<p>Il ne distingue pas un vrai problème touchant plusieurs trains d'un seul train très en retard resté longtemps dans le flux. Son utilité est plutôt de pointer vers quelque chose à vérifier, un signal à creuser (aller regarder l'onglet Circulations pour cette gare) plutôt que de trancher tout seul.</p>",
+            "<p>Il ne distingue pas un vrai problème touchant plusieurs trains d'un seul train très en retard resté longtemps dans le flux. Son utilité est plutôt de pointer vers quelque chose à vérifier, un signal à creuser (aller aussi regarder l'onglet « Circulations » pour cette gare).</p>",
     },
 ];
 

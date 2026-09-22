@@ -996,7 +996,33 @@ def _horaire_variable_texte(minutes, date_min, date_max, entrees_train):
 JOURS_ABREGES = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
 
 
-def informations_horaire_train(train, gare_depart, heure_hhmm, destination, index_gare_heure):
+def _cle_selection_variante(date_min, date_max):
+    """Clé de départage entre variantes candidates à égalité de minute dans
+    informations_horaire_train, la plus grande l'emportant. Priorité (1) à
+    la variante dont la date du jour tombe dans sa plage de validité
+    [date_min, date_max] (comparaison mois/jour sans année, comme
+    _cle_recence_date_max — ces plages ne franchissent jamais un 31/12 en
+    pratique sur cette ligne), puis (2) à égalité, à la plus tardive
+    (date_max le plus lointain).
+
+    Le seul critère (2) (utilisé avant ce correctif) suffisait pour le bug
+    du train 3329 (une variante isolée déjà expirée vs une variante encore
+    en vigueur) mais pas pour celui du train 3306 (Valognes 09h07,
+    2026-09-22) : une variante Lun-Ven en cours ET une variante Mer/Sam/Dim
+    démarrant seulement 4 jours plus tard partageaient la même minute
+    exacte, et la 2e l'emportait à tort au seul critère (2), sa date_max
+    étant 1 jour plus tardive (12/12 contre 11/12) — alors qu'elle n'était
+    même pas encore en vigueur ce jour-là. Le critère (1), vérifié en
+    premier, tranche correctement ce cas : seule la variante Lun-Ven est
+    valide aujourd'hui."""
+    if not date_min or not date_max:
+        return (False, (-1, -1))
+    aujourdhui = _cle_recence_date_max(datetime.now(PARIS_TZ).strftime("%d/%m"))
+    active_aujourdhui = _cle_recence_date_max(date_min) <= aujourdhui <= _cle_recence_date_max(date_max)
+    return (active_aujourdhui, _cle_recence_date_max(date_max))
+
+
+def informations_horaire_train(train, gare_depart, heure_hhmm, destination, index_gare_heure, jour_semaine=None):
     """(heure_arrivee 'HH:MM', duree 'HhMM', jours_texte 'Lun, Mar, ...')
     pour la variante de `train` partant de `gare_depart` à `heure_hhmm` —
     recherchée dans index_gare_heure (même donnée que la résolution
@@ -1004,19 +1030,32 @@ def informations_horaire_train(train, gare_depart, heure_hhmm, destination, inde
     depuis la résolution via l'URL (hx-vals) : recalculée à chaque
     affichage de la carte, donc fonctionne aussi bien pour un train tout
     juste résolu que pour un favori enregistré (qui n'a jamais connu que
-    train/gare/heure/destination, voir ajouterFavori mobile.js) — pas
-    besoin de jour_semaine ici, train+gare_depart+heure_hhmm identifie déjà
-    la variante de façon quasi-univoque en pratique. (None, None, None) si
-    aucune correspondance (favori désormais orphelin d'un changement
-    d'horaire GTFS, ou horaire d'arrivée absent du référentiel).
+    train/gare/heure/destination, voir ajouterFavori mobile.js). (None,
+    None, None) si aucune correspondance (favori désormais orphelin d'un
+    changement d'horaire GTFS, ou horaire d'arrivée absent du référentiel).
+
+    jour_semaine (entier 0=lundi..6=dimanche, transporté depuis la
+    résolution via hx-vals quand connu — voir mobile_carte_train,
+    app_fastapi.py) : si fourni, ne garde QUE les variantes qui circulent
+    réellement ce jour-là — filtre exact et prioritaire sur tout le reste.
+    None pour un favori/dernier train (qui n'a jamais connu le jour
+    cherché) : dans ce cas train+gare_depart+heure_hhmm ne suffit PAS
+    toujours à identifier la variante de façon univoque (voir
+    _cle_selection_variante). Bug réel, train 3306 (Valognes → Paris
+    Saint-Lazare, 09h07, 2026-09-22) : sans ce filtre, une recherche pour
+    le samedi se résolvait bien vers train 3306, mais la carte affichait
+    "Circule : Lun, Mar, Mer, Jeu, Ven" (l'AUTRE variante, active ce
+    jour-là selon _cle_selection_variante) au lieu de "Mer, Sam, Dim" (la
+    variante réellement trouvée pour un samedi).
 
     jours_texte : liste des jours de circulation de CETTE variante (pas
-    forcément le seul jour cherché lors de la résolution) — un train résolu
-    un mardi peut très bien circuler aussi les autres jours de la semaine,
-    et "Retards constatés" (qui liste tout l'historique du train, pas
-    seulement les mardis) en montre alors les dates sans lien apparent avec
-    le mardi recherché ; cette ligne explique pourquoi (retour utilisateur,
-    2026-08-28 : "c'est un peu perturbant" de voir des dates d'autres jours).
+    forcément le seul jour cherché lors de la résolution, si jour_semaine
+    est None) — un train résolu un mardi peut très bien circuler aussi les
+    autres jours de la semaine, et "Retards constatés" (qui liste tout
+    l'historique du train, pas seulement les mardis) en montre alors les
+    dates sans lien apparent avec le mardi recherché ; cette ligne explique
+    pourquoi (retour utilisateur, 2026-08-28 : "c'est un peu perturbant" de
+    voir des dates d'autres jours).
 
     Durée = (minutes_arrivee - minutes_depart) % 1440 : suppose un trajet de
     moins de 24h (toujours vrai sur cette ligne, aucun train de nuit) — le
@@ -1024,30 +1063,29 @@ def informations_horaire_train(train, gare_depart, heure_hhmm, destination, inde
     après, sans avoir besoin d'une date réelle (résolution par jour de la
     semaine récurrent, pas par date précise, voir _jours_semaine_actifs).
 
-    Plusieurs variantes du même train peuvent produire une entrée identique
-    ici (même gare de départ, même minute, même destination) — même
-    ambiguïté que resoudre_trains_pour_gare_heure, même départage : parmi
-    les entrées qui correspondent, celle dont date_max est la plus lointaine
-    l'emporte (_cle_recence_date_max), plutôt que la première rencontrée
-    dans l'ordre (arbitraire) d'index_gare_heure. Bug réel trouvé par
-    l'utilisateur sur le train 3329 (Paris Saint-Lazare → Caen, 20h59,
-    2026-09-21) : la carte affichait "Circule : Dim" (une variante isolée à
-    la seule date du 20/09, déjà passée) au lieu de "Ven, Sam, Dim" (la
-    variante en cours jusqu'au 12/12)."""
+    Plusieurs variantes du même train peuvent encore produire une entrée
+    identique après le filtre jour_semaine (même gare de départ, même
+    minute, même destination, même jour actif) — même ambiguïté que
+    resoudre_trains_pour_gare_heure, départagée par _cle_selection_variante
+    (voir son docstring pour les deux bugs réels ayant motivé ses deux
+    critères), plutôt que la première rencontrée dans l'ordre (arbitraire)
+    d'index_gare_heure."""
     if not heure_hhmm:
         return None, None, None
     cible = _minutes_hhmm(heure_hhmm)
     meilleur = None
-    for t, minutes, dest, jours, _dmin, dmax, minutes_arrivee in index_gare_heure.get(gare_depart, []):
+    for t, minutes, dest, jours, dmin, dmax, minutes_arrivee in index_gare_heure.get(gare_depart, []):
         if t != train or minutes != cible or minutes_arrivee is None:
             continue
         if destination and dest != destination:
             continue
-        if meilleur is None or _cle_recence_date_max(dmax) > _cle_recence_date_max(meilleur[1]):
-            meilleur = (minutes_arrivee, dmax, jours)
+        if jour_semaine is not None and jour_semaine not in jours:
+            continue
+        if meilleur is None or _cle_selection_variante(dmin, dmax) > _cle_selection_variante(meilleur[1], meilleur[2]):
+            meilleur = (minutes_arrivee, dmin, dmax, jours)
     if meilleur is None:
         return None, None, None
-    minutes_arrivee, _dmax, jours = meilleur
+    minutes_arrivee, _dmin, _dmax, jours = meilleur
     duree_min = (minutes_arrivee - cible) % 1440
     heure_arrivee = f"{minutes_arrivee // 60:02d}:{minutes_arrivee % 60:02d}"
     duree = f"{duree_min // 60}h{duree_min % 60:02d}"

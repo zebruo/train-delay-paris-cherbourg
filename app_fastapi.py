@@ -4462,7 +4462,7 @@ def mobile_resoudre_train(
 def mobile_carte_train(
     request: Request, train: str, gare: str = "Toutes", heure: str = "",
     destination: str = "", mode: str = "accueil", gare_depart: str = "",
-    horaire_variable_texte: str = "",
+    horaire_variable_texte: str = "", jour: str = "",
 ):
     """Carte stats réutilisée par "Mon train" (après résolution) ET par
     Favoris (Phase 3, un favori stocke déjà train/gare/heure/destination,
@@ -4484,26 +4484,38 @@ def mobile_carte_train(
     au JJ/MM.', voir formatting._horaire_variable_texte) calculée une seule
     fois à la résolution (mobile_resoudre_train) puis simplement transportée
     ici via hx-vals à chaque appel (résolution initiale ET bascule départ/
-    arrivée) — pas recalculée ici, cette route n'a pas accès au jour de la
-    semaine ni à l'index gare_heure complet nécessaires.
+    arrivée) — pas recalculée ici, cette route n'a pas accès à l'index
+    gare_heure complet nécessaire pour la reconstruire.
 
-    heure_arrivee/duree/jours_circulation : à l'inverse, RECALCULÉS ici à
-    chaque appel (voir formatting.informations_horaire_train) plutôt que
-    transportés depuis la résolution — pas besoin de jour_semaine, et ça
-    marche aussi pour un favori (qui ne connaît que train/gare/heure/
-    destination, jamais passé par le résolveur)."""
+    jour : nom du jour cherché ('Mardi', voir JOURS_ORDRE), lui aussi
+    transporté depuis la résolution via hx-vals (résolution initiale ET
+    bascule départ/arrivée) — vide pour un favori/dernier train, qui ne l'a
+    jamais connu. Transmis à informations_horaire_train (jour_semaine) pour
+    départager deux variantes du même train à la même minute mais actives
+    des jours différents : bug réel, train 3306 (Valognes → Paris
+    Saint-Lazare, 09h07) — sans ce filtre, une recherche pour le samedi se
+    résolvait bien vers train 3306 mais affichait "Circule : Lun, Mar, Mer,
+    Jeu, Ven" (l'autre variante) au lieu de "Mer, Sam, Dim".
+
+    heure_arrivee/duree/jours_circulation : RECALCULÉS ici à chaque appel
+    (voir formatting.informations_horaire_train) plutôt que transportés
+    depuis la résolution — marche aussi pour un favori (qui ne connaît que
+    train/gare/heure/destination, jamais passé par le résolveur, jour_semaine
+    reste alors None)."""
     connexion = sqlite3.connect(OBSERVATIONS_DB)
     try:
         contexte = calculer_carte_stats_train_sql(connexion, train, gare)
     finally:
         connexion.close()
     gare_depart_effective = gare_depart or gare
+    jour_semaine = JOURS_ORDRE.index(jour) if jour else None
     heure_arrivee, duree, jours_circulation = informations_horaire_train(
         train, gare_depart_effective, heure, destination, reference_donnees["index_gare_heure"],
+        jour_semaine=jour_semaine,
     )
     contexte.update({
         "train": train, "train_affiche": format_numero_train(train), "gare": gare,
-        "heure": heure, "destination": destination, "mode": mode,
+        "heure": heure, "destination": destination, "mode": mode, "jour": jour,
         "gare_depart": gare_depart_effective, "horaire_variable_texte": horaire_variable_texte,
         "heure_arrivee": heure_arrivee, "duree": duree, "jours_circulation": jours_circulation,
     })
