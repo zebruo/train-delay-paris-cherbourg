@@ -25,6 +25,9 @@
         <div>
             <div class="mobile-ligne-titre">Train {{ an.train }}</div>
             <div class="mobile-ligne-detail">{{ an.trajet or "Trajet inconnu" }} — {{ an.date }}</div>
+            {% if an.cause %}
+            <div class="mobile-ligne-detail">{{ an.cause }}</div>
+            {% endif %}
         </div>
         <span class="mobile-etat-rouge">Annulé</span>
     </div>

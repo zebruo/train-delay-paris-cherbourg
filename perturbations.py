@@ -19,13 +19,16 @@ import pandas as pd
 from google.transit import gtfs_realtime_pb2
 
 from formatting import sans_date_trip_id
+from navitia import recuperer_cause_annulation
 
 CANCELED = gtfs_realtime_pb2.TripDescriptor.CANCELED
 SKIPPED = gtfs_realtime_pb2.TripUpdate.StopTimeUpdate.SKIPPED
 
 LOCAL_ALERTES = "alertes.csv"
 PERTURBATIONS_FILE = "perturbations_detectees.csv"
-PERTURBATIONS_FIELDNAMES = ["poll_time", "type", "trip_id", "start_date", "train", "gare"]
+# "cause" : uniquement pour les trajet_annule (voir enregistrer_evenements),
+# toujours "" pour arret_supprime (rempli par le restval de DictWriter).
+PERTURBATIONS_FIELDNAMES = ["poll_time", "type", "trip_id", "start_date", "train", "gare", "cause"]
 
 
 def charger_alertes(fichier=LOCAL_ALERTES):
@@ -109,6 +112,14 @@ def enregistrer_evenements(evenements, fichier=PERTURBATIONS_FILE):
     if not nouveaux:
         return 0
 
+    # Un seul appel Navitia par annulation réellement nouvelle (nouveaux
+    # vient d'être dédoublonné ci-dessus) — jamais à chaque sondage (5 min)
+    # d'une même annulation encore visible dans le flux (voir navitia.py :
+    # quota développeur limité, et la cause ne change pas une fois publiée).
+    for e in nouveaux:
+        if e["type"] == "trajet_annule":
+            e["cause"] = recuperer_cause_annulation(e["train"], e["start_date"])
+
     fichier_existe = os.path.isfile(fichier)
     with open(fichier, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=PERTURBATIONS_FIELDNAMES)
@@ -126,4 +137,10 @@ def charger_evenements(fichier=PERTURBATIONS_FILE):
     except (FileNotFoundError, pd.errors.ParserError, pd.errors.EmptyDataError, UnicodeDecodeError):
         evenements = pd.DataFrame(columns=PERTURBATIONS_FIELDNAMES)
     evenements["poll_time"] = pd.to_datetime(evenements["poll_time"], utc=True, errors="coerce")
+    # "cause" ajoutée après coup (voir migration nécessaire avant déploiement,
+    # mémoire du projet) : absente d'un fichier pas encore migré, et une
+    # cellule CSV vide devient NaN sous pandas (truthy-ambigu) plutôt que "".
+    if "cause" not in evenements.columns:
+        evenements["cause"] = ""
+    evenements["cause"] = evenements["cause"].fillna("")
     return evenements

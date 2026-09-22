@@ -25,3 +25,12 @@ FREE_MOBILE_PASS = ""
 # "API Key", durée longue conseillée, ex. 315360000 = 10 ans, le token ne
 # se régénère pas tout seul).
 METEOFRANCE_API_KEY = ""
+
+# Optionnel — utilisé par navitia.recuperer_cause_annulation pour récupérer
+# la cause publiée par la SNCF d'un trajet annulé (écran "Perturbations"
+# mobile, "Annulations récentes") — repli silencieux (aucune cause affichée)
+# si absent. API SNCF (Navitia) : compte développeur gratuit sur
+# https://numerique.sncf.com/startup/api/ (150 000 requêtes/mois, 5 000/jour
+# — largement suffisant, les annulations restent rares), token à générer
+# depuis le portail.
+SNCF_API_TOKEN = ""

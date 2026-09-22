@@ -807,7 +807,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     df, df_avant_retard, df_filtre, alertes_df, alertes_actif) — les trois
     df valent None en cas d'erreur de chargement (voir contexte["erreur"]),
     alertes_df/alertes_actif restent valides même dans ce cas (source
-    indépendante d'observations.csv — voir Perturbations, qui n'a pas
+    indépendante d'observations.db — voir Perturbations, qui n'a pas
     besoin des quatre premiers)."""
     limiter_ligne = lire_checkbox(request, "limiter_ligne", True)
     # False par défaut (décoché) — cochée, cette case donne une vue plus
@@ -831,9 +831,9 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     }
 
     # Badge d'onglet (#onglets, base.html) : calculé avant le chargement
-    # d'observations.csv ci-dessous, sur CHAQUE requête (peu importe la vue
+    # d'observations.db ci-dessous, sur CHAQUE requête (peu importe la vue
     # active, la barre d'onglets fait partie de l'en-tête partagé) — reste
-    # correct même si observations.csv est cassé.
+    # correct même si observations.db est cassé.
     alertes_df = charger_alertes(LOCAL_ALERTES)
     alertes_actif, libelle_travaux = calculer_alertes_actives(alertes_df)
     contexte["libelle_travaux"] = libelle_travaux
@@ -2719,6 +2719,7 @@ def _construire_lignes_annulations_mobile(evenements_df, maintenant, jours=7):
             "train": format_numero_train(ligne["train"]),
             "trajet": trajet_origine_destination(ligne["trip_id"], reference_donnees["variantes"]),
             "date": _format_start_date(ligne["start_date"]),
+            "cause": ligne["cause"],
         })
     return lignes
 
