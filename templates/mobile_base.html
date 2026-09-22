@@ -69,7 +69,7 @@
                 hx-vals='{"ecran": "alertes"}' onclick="activerOngletMobile(this, 'alertes')">Perturbations</button>
         <button class="mobile-onglet {% if ecran == 'favoris' %}actif{% endif %}"
                 hx-get="/mobile/contenu" hx-target="#mobile-contenu"
-                hx-vals='{"ecran": "favoris"}' onclick="activerOngletMobile(this, 'favoris')">Favoris</button>
+                hx-vals='{"ecran": "favoris"}' onclick="activerOngletMobile(this, 'favoris')">Favoris <span id="compteur-favoris"></span></button>
     </nav>
 
     {% include "_mobile_aide.html" %}

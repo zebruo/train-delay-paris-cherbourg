@@ -79,6 +79,7 @@ function ajouterFavori(favori) {
     if (!sauvegarderFavoris(liste)) return;
     afficherToastMobile("Trajet ajouté aux favoris.");
     rafraichirFavoris();
+    mettreAJourCompteurFavoris();
 }
 
 function supprimerFavori(indice) {
@@ -86,6 +87,23 @@ function supprimerFavori(indice) {
     liste.splice(indice, 1);
     sauvegarderFavoris(liste);
     rafraichirFavoris();
+    mettreAJourCompteurFavoris();
+}
+
+// Nombre de favoris à côté du libellé de l'onglet (#compteur-favoris,
+// mobile_base.html) — appelée directement dans ajouterFavori/supprimerFavori
+// plutôt que depuis rafraichirFavoris, qui sort tôt (`if (!conteneur)
+// return;`) quand l'onglet Favoris n'est pas affiché, ce qui masquerait le
+// compteur du nav alors qu'on ajoute justement souvent un favori depuis
+// l'écran "Mon train". Appelée aussi une fois au chargement (voir bas de
+// fichier) — mobile.js est chargé dans <head> (avant le <nav>, contrairement
+// à recherche-livre-isbn où le script est en fin de <body>), donc ce premier
+// appel doit attendre DOMContentLoaded pour trouver #compteur-favoris.
+function mettreAJourCompteurFavoris() {
+    const compteur = document.getElementById("compteur-favoris");
+    if (!compteur) return;
+    const nombre = chargerFavoris().length;
+    compteur.textContent = nombre ? `(${nombre})` : "";
 }
 
 function rafraichirFavoris() {
@@ -252,3 +270,9 @@ function afficherAideMobile() {
 function masquerAideMobile() {
     document.getElementById("mobile-aide").style.display = "none";
 }
+
+// mobile.js est chargé en <head> (avant le <nav> du bas de page) : le nav
+// n'existe pas encore tant que le HTML du <body> n'a pas fini de se
+// construire, donc ce premier calcul du compteur de favoris doit attendre
+// DOMContentLoaded plutôt qu'un simple appel direct ici.
+document.addEventListener("DOMContentLoaded", mettreAJourCompteurFavoris);
