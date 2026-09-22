@@ -16,7 +16,7 @@ plus bas), parce qu'il est sur le même réseau local que le NAS,
 contrairement à la VPS (serveur public).
 
 - **VPS** — collecte en continu et héberge l'appli web en production. Cron :
-  - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, enrichit chaque relevé avec la météo réelle de la gare (Météo-France, réseau RADOME/ETENDU — repli automatique sur Open-Meteo en cas d'échec/absence de clé) et écrit dans `observations.db` (SQLite, écritures atomiques, colonnes typées).
+  - `collect_realtime.py` (toutes les 5 min) : interroge le flux GTFS-RT SNCF, enrichit chaque relevé avec la météo réelle de la gare (Météo-France, réseau RADOME/ETENDU — repli automatique sur Open-Meteo en cas d'échec/absence de clé) et écrit dans `observations.db` (SQLite, écritures atomiques, colonnes typées). Détecte aussi les annulations/arrêts supprimés (`perturbations.py`, écrit `perturbations_detectees.csv`) — pour chaque annulation réellement nouvelle, récupère sa cause via l'API SNCF (Navitia, `navitia.py`, voir `SNCF_API_TOKEN` plus bas).
   - `collect_alertes.py` (toutes les heures) : perturbations/travaux signalés, écrit `alertes.csv`.
   - `verifier_gtfs.py` (03:15) : compare le référentiel local aux horaires théoriques publiés par la SNCF, détecte quand `reference_paris_cherbourg.csv` devient obsolète.
   - `rafraichir_caches_historique.py` (toutes les ~15 min) : précalcule le résultat des onglets Graphique ("tout l'historique") et Par jour/heure pour la combinaison de filtres par défaut (la plus consultée), dans une table dédiée d'`observations.db` — évite de rescanner toute la base à chaque requête.
@@ -106,7 +106,11 @@ l'Espace Abonné Free -> Notifications par SMS), et pour celle de
 VPS, pour la météo réelle par station (sans elle, `collect_realtime.py`
 utilise directement Open-Meteo) : clé gratuite sur
 portail-api.meteofrance.fr, souscrire à l'API "Données d'observation" puis
-générer un token de type "API Key".
+générer un token de type "API Key". `SNCF_API_TOKEN` dans `config.py` est
+optionnel — uniquement sur la VPS, pour récupérer la cause SNCF (API
+Navitia) d'un trajet annulé, affichée dans "Perturbations" (mobile) ; sans
+lui, les annulations restent affichées mais sans cause. Compte développeur
+gratuit sur numerique.sncf.com/startup/api (150 000 requêtes/mois).
 
 ### Référentiel initial
 
