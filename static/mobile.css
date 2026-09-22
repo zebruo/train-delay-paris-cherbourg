@@ -767,3 +767,52 @@ celles, plus petites, prévues pour un usage en ligne dans une liste. */
     font-size: 10.5px;
     color: var(--texte-attenue);
 }
+
+/* Spinner pendant le changement de gare affichée sur la carte "Mon train"
+   (boutons ↗/↘) — plusieurs secondes de latence réelle côté serveur
+   (retour utilisateur, 2026-09-22 : "aucun toast ne s'affiche"). Élément
+   dédié (hx-indicator="next .mobile-spinner-gare" sur chaque bouton,
+   _mobile_carte_stats.html) plutôt que de cibler .mobile-carte-train-wrapper
+   directement : ce wrapper porte AUSSI le chargement initial de la carte
+   (hx-trigger="load", qui affiche déjà "Chargement…") — htmx lui ajoute sa
+   propre classe .htmx-request par défaut dans ce cas aussi, et cibler le
+   wrapper aurait fait apparaître ce spinner en double par-dessus
+   "Chargement…" (repéré par l'utilisateur après le 1er essai). Cet élément
+   séparé ne réagit qu'aux 2 boutons qui le désignent explicitement.
+   Positionné au centre de la carte (position: relative sur le wrapper,
+   voir plus bas) plutôt qu'en ligne à côté des boutons — repositionné à la
+   demande de l'utilisateur, qui préférait le rendu centré du 1er essai. */
+.mobile-carte-train-wrapper {
+    position: relative;
+}
+/* Assombrit le contenu (pas le spinner lui-même, positionné en dehors de
+   .mobile-carte) pendant la bascule — :has() plutôt que cibler le wrapper
+   entier en .htmx-request, pour la même raison que le spinner lui-même
+   (éviter de réagir aussi au chargement initial de la carte). */
+.mobile-carte-train-wrapper:has(.mobile-spinner-gare.htmx-request) .mobile-carte {
+    opacity: 0.7;
+}
+.mobile-spinner-gare {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 28px;
+    height: 28px;
+    margin: -14px 0 0 -14px;
+    border: 3px solid var(--accent);
+    border-top-color: transparent;
+    border-radius: 50%;
+    opacity: 0;
+    animation: mobile-rotation-spinner 1.4s linear infinite;
+}
+.mobile-spinner-gare.htmx-request {
+    opacity: 1;
+}
+@keyframes mobile-rotation-spinner {
+    to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .mobile-spinner-gare {
+        animation: none;
+    }
+}

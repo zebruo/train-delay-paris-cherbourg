@@ -28,6 +28,7 @@
     <div class="mobile-selecteur-gare">
         <button class="{{ 'actif' if gare == gare_depart else '' }}"
                 hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
+                hx-indicator="next .mobile-spinner-gare"
                 hx-vals='{"train": "{{ train }}", "gare": "{{ gare_depart|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "jour": "{{ jour }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
             {{ gare_depart }}
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -38,6 +39,7 @@
         </button>
         <button class="{{ 'actif' if gare == destination else '' }}"
                 hx-get="/mobile/carte_train" hx-target="closest .mobile-carte-train-wrapper" hx-swap="innerHTML"
+                hx-indicator="next .mobile-spinner-gare"
                 hx-vals='{"train": "{{ train }}", "gare": "{{ destination|replace("'", "\\'") }}", "gare_depart": "{{ gare_depart|replace("'", "\\'") }}", "heure": "{{ heure }}", "destination": "{{ destination|replace("'", "\\'") }}", "mode": "{{ mode }}", "jour": "{{ jour }}", "horaire_variable_texte": "{{ horaire_variable_texte or '' }}"}'>
             {{ destination }}
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -46,6 +48,7 @@
                 <path d="m13.95 6.75 v5 h-5" />
             </svg>
         </button>
+        <span class="mobile-spinner-gare"></span>
     </div>
     {% endif %}
 
