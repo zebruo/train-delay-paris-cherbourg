@@ -20,7 +20,7 @@
         <div class="zone-scroll">
             <table class="table-evenements">
                 <thead>
-                    <tr><th>Train</th><th>Date</th><th>Événement</th><th>Détecté le</th></tr>
+                    <tr><th>Train</th><th>Date</th><th>Événement</th><th>Cause</th><th>Détecté le</th></tr>
                 </thead>
                 <tbody>
                     {% for evt in lignes_evenements %}
@@ -28,6 +28,7 @@
                             <td>{{ evt.train }}</td>
                             <td>{{ evt.date }}</td>
                             <td>{{ evt.evenement }}</td>
+                            <td>{{ evt.cause or "—" }}</td>
                             <td>{{ evt.detecte }}</td>
                         </tr>
                     {% endfor %}

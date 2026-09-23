@@ -3765,6 +3765,10 @@ def calculer_contexte_travaux(alertes_df, alertes_actif):
         lignes_evenements.append({
             "train": format_numero_train(ligne["train"]), "date": date_str, "evenement": evenement,
             "detecte": format_poll_time(ligne["poll_time"].isoformat()),
+            # Uniquement pour trajet_annule (voir navitia.recuperer_cause_annulation) —
+            # toujours vide pour arret_supprime, et pour les annulations détectées
+            # avant le correctif du bug format_numero_train, 2026-09-23.
+            "cause": ligne["cause"] if ligne["type"] == "trajet_annule" else "",
         })
 
     return {"resume_travaux": resume_travaux, "lignes_alertes": lignes_alertes, "lignes_evenements": lignes_evenements}
