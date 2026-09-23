@@ -311,7 +311,21 @@ def main():
     variantes = build_trip_data(load_reference())
     station_coords = load_station_coords()
     calendrier = Calendrier()
-    feed = fetch_feed()
+    try:
+        feed = fetch_feed()
+    except Exception as erreur:
+        # Sans ce garde-fou, une panne transitoire du flux national (HTTP
+        # 502, timeout...) fait planter tout le cycle de 5 min avec une trace
+        # Python brute dans collect.log — repéré en balayant le log,
+        # 2026-09-23 : 6 plantages sur 6 semaines. Impact réel négligeable
+        # (cron relance de zéro au cycle suivant, un seul relevé manquant sur
+        # des milliers), mais log plus propre et sortie explicite plutôt
+        # qu'un crash silencieux côté cron.
+        print(
+            f"{datetime.now(timezone.utc).isoformat()} : échec fetch_feed "
+            f"({type(erreur).__name__}: {erreur}), cycle ignoré."
+        )
+        return
     maintenant = datetime.now(timezone.utc)
     poll_time = maintenant.isoformat()
     heure_locale = maintenant.astimezone(PARIS_TZ).hour

@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 import pandas as pd
 from google.transit import gtfs_realtime_pb2
 
-from formatting import sans_date_trip_id
+from formatting import format_numero_train, sans_date_trip_id
 from navitia import recuperer_cause_annulation
 
 CANCELED = gtfs_realtime_pb2.TripDescriptor.CANCELED
@@ -116,9 +116,16 @@ def enregistrer_evenements(evenements, fichier=PERTURBATIONS_FILE):
     # vient d'être dédoublonné ci-dessus) — jamais à chaque sondage (5 min)
     # d'une même annulation encore visible dans le flux (voir navitia.py :
     # quota développeur limité, et la cause ne change pas une fois publiée).
+    # format_numero_train indispensable : e["train"] vaut le préfixe brut du
+    # trip_id (ex: "OCESN852332F1187_F", voir detecter_evenements ci-dessus),
+    # jamais le numéro nu ("852332") qu'attend le paramètre headsign de
+    # Navitia — sans cette conversion, chaque appel échoue en 404 (bug réel,
+    # 2026-09-23 : les 55 annulations d'un mouvement social national sont
+    # toutes restées sans cause à cause de cet oubli, jamais détecté avant
+    # faute d'un vrai train annulé pour tester en conditions réelles).
     for e in nouveaux:
         if e["type"] == "trajet_annule":
-            e["cause"] = recuperer_cause_annulation(e["train"], e["start_date"])
+            e["cause"] = recuperer_cause_annulation(format_numero_train(e["train"]), e["start_date"])
 
     fichier_existe = os.path.isfile(fichier)
     with open(fichier, "a", newline="", encoding="utf-8") as f:
