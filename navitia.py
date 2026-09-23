@@ -9,9 +9,11 @@ fonctionne de façon fiable.
 """
 import base64
 import json
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 NAVITIA_URL = "https://api.sncf.com/v1/coverage/sncf/vehicle_journeys"
 
@@ -43,7 +45,18 @@ def recuperer_cause_annulation(numero_train, start_date):
     try:
         with urllib.request.urlopen(req, timeout=15) as response:
             data = json.loads(response.read())
-    except Exception:
+    except Exception as erreur:
+        # Journalisé (collect.log, via le cron de collect_realtime.py) plutôt
+        # qu'avalé sans trace : jusqu'ici aucun moyen de savoir SI/POURQUOI un
+        # appel échouait (timeout, erreur HTTP, panne réseau...). Repéré le
+        # 2026-09-23 : les 55 annulations d'un mouvement social national sont
+        # toutes restées sans cause malgré l'appel automatique — impossible de
+        # confirmer la cause exacte de cet échec sans cette trace, la 1re fois.
+        print(
+            f"{datetime.now(timezone.utc).isoformat()} : échec recuperer_cause_annulation"
+            f"({numero_train}, {start_date}) : {type(erreur).__name__}: {erreur}",
+            file=sys.stderr,
+        )
         return ""
 
     # severity.effect = "NO_SERVICE" pour une annulation complète, confirmé
