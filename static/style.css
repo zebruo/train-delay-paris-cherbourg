@@ -878,6 +878,25 @@ entièrement, quel que soit l'ancêtre qui défile. */
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
+/* Sans largeur explicite, .zone-detail se dimensionne sur son contenu
+   (shrink-to-fit, position: fixed) — suffisant pour Train/Retard/Statut
+   (3 colonnes), mais le tableau "Circulations annulées" (Train/Trajet/
+   Date/Cause, 4 colonnes, "Mouvement social du personnel" en pleine
+   largeur de cellule) se resserrait au point de forcer un retour à la
+   ligne sur presque chaque cellule ("se tasse", repéré par l'utilisateur,
+   2026-09-24) — classe dédiée plutôt qu'une largeur minimale sur
+   .zone-detail en général, pour ne pas élargir inutilement les 2 popovers
+   existants (3 colonnes, déjà bien dimensionnés).
+   width (pas min-width) : en shrink-to-fit, la largeur d'un élément
+   position:fixed dépend de sa propre position (left) — largeur "auto"
+   recalculée plus grande une fois `left` fixé par positionnerDetailPerturbees
+   (static/rapports.js), ce qui repoussait le bord droit du popover jusqu'au
+   bord de l'écran malgré la marge prévue dans le JS. Largeur figée : plus
+   de dépendance circulaire, la marge du JS est enfin respectée. */
+.zone-detail-large {
+    width: min(760px, 92vw);
+}
+
 table.detail-perturbees {
     width: 100%;
     border-collapse: collapse;

@@ -236,7 +236,7 @@ let _zoneDetailPerturbeesOuverte = null;
 
 function positionnerDetailPerturbees(bouton, zone) {
     const rect = bouton.getBoundingClientRect();
-    const marge = 8;
+    const marge = 24;
     zone.style.top = `${rect.bottom + 4}px`;
     // max-width (style.css) déjà connu avant mesure : on ne peut lire
     // zone.offsetWidth qu'une fois affichée (hidden retiré) — fait juste

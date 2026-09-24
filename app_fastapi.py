@@ -590,7 +590,24 @@ def annulations_periode(evenements_df, debut_local, fin_local, variantes, calend
 
     Renvoie la liste des numéros de train formatés (format_numero_train),
     triés — pas juste un compte : demande explicite de l'utilisateur,
-    2026-08-20, pour voir directement QUELS trains plutôt qu'un chiffre nu."""
+    2026-08-20, pour voir directement QUELS trains plutôt qu'un chiffre nu.
+    Dédoublonnée par train (un même train annulé 2 jours différents dans la
+    semaine n'y apparaît qu'une fois) — voir _construire_detail_annulations
+    pour le détail par occurrence, non dédoublonné, utilisé par le tableau
+    dépliable "Voir le détail"."""
+    annules = _evenements_annules_filtres_ligne(evenements_df, debut_local, fin_local, variantes, calendrier)
+    if annules.empty:
+        return []
+    return sorted({format_numero_train(t) for t in annules["train"]})
+
+
+def _evenements_annules_filtres_ligne(evenements_df, debut_local, fin_local, variantes, calendrier):
+    """Événements "trajet_annule" dans [debut_local, fin_local) dont le
+    trajet théorique touche au moins une des 11 gares de la ligne — factorisé
+    entre annulations_periode (compte dédoublonné par train, pour la stat
+    d'en-tête) et _construire_detail_annulations (une ligne par occurrence,
+    pour le tableau dépliable), qui appliquaient ce même filtre en double
+    avant cette factorisation, 2026-09-24."""
     debut_utc = debut_local.tz_convert("UTC")
     fin_utc = fin_local.tz_convert("UTC")
     annules = evenements_df[
@@ -610,9 +627,31 @@ def annulations_periode(evenements_df, debut_local, fin_local, variantes, calend
     # generer_rapport.py (pandas 3.0.5 sur le Pi, pas 3.0.3 en local),
     # 2026-08-20.
     if annules.empty:
+        return annules
+    return annules[annules.apply(touche_la_ligne, axis=1)]
+
+
+def _construire_detail_annulations(evenements_df, debut_local, fin_local, variantes, calendrier):
+    """Détail dépliable de "Circulations annulées" (quotidien/hebdomadaire
+    seulement, jamais mensuel — même restriction que detail_perturbees/
+    detail_retard_cumule, voir calculer_contexte_rapport_sql : la liste
+    dépasserait vite plusieurs centaines de lignes sur un mois, perdant tout
+    intérêt de vue d'ensemble). Une ligne par ANNULATION DISTINCTE
+    (train+date), pas dédoublonnée par train contrairement à
+    annulations_periode : un même train annulé 2 jours différents dans la
+    semaine y apparaît 2 fois, chacune avec sa propre date/cause."""
+    annules = _evenements_annules_filtres_ligne(evenements_df, debut_local, fin_local, variantes, calendrier)
+    if annules.empty:
         return []
-    annules = annules[annules.apply(touche_la_ligne, axis=1)]
-    return sorted({format_numero_train(t) for t in annules["train"]})
+    return [
+        {
+            "train": format_numero_train(ligne["train"]),
+            "date": _format_start_date(ligne["start_date"]),
+            "trajet": trajet_origine_destination(ligne["trip_id"], variantes),
+            "cause": ligne["cause"],
+        }
+        for _, ligne in annules.sort_values("poll_time", ascending=False).iterrows()
+    ]
 
 
 # Système de coordonnées fixe pour la frise (#pied-de-page) : contrairement
@@ -3567,6 +3606,14 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
             contexte["nb_significatives_retard_cumule"] = sum(
                 1 for d in contexte["detail_retard_cumule"] if d["statut"] == "significatif"
             )
+            # Détail dépliable de "Circulations annulées" (même restriction
+            # quotidien/hebdomadaire que ci-dessus) — contexte["annulations"]
+            # (compte dédoublonné par train, calculé plus haut pour toutes
+            # les périodes y compris mensuel) reste inchangé.
+            contexte["detail_annulations"] = _construire_detail_annulations(
+                evenements_df, debut_local, fin_local,
+                reference_donnees["variantes"], reference_donnees["calendrier"],
+            )
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
         connexion.execute("DROP TABLE IF EXISTS temp.derniers_complet_periode")
@@ -3655,7 +3702,7 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
             "tooltip_ratio_retard", "tooltip_cumule", "tooltip_moyen",
             "tooltip_retard_max", "tooltip_pire_gare", "annulations",
             "detail_perturbees", "nb_significatives", "nb_annulees_sans_releve",
-            "detail_retard_cumule", "nb_significatives_retard_cumule",
+            "detail_retard_cumule", "nb_significatives_retard_cumule", "detail_annulations",
         )
     }
     resultat["rapport_periode_texte"] = texte_periode_rapport(nom_periode, ctx["debut_local"], ctx["fin_local"])

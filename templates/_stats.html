@@ -151,9 +151,42 @@
         <div class="stat">
             <div class="stat-label">Circulations annulées <span class="icone-info" title="Nombre de circulations annulées sur cette période (voir aussi onglet Perturbations), touchant au moins une des 11 gares de la ligne — un trajet annulé n'atteignant jamais son terminus dans les données (donc jamais considéré comme « arrivé »).">ℹ</span></div>
             <div class="stat-valeur">
-                {{ annulations|length }}
-                {% if annulations %}<span class="pastille pastille-rouge">{{ annulations|join(", ") }}</span>{% endif %}
+                {% if annulations|length > 0 %}
+                    <span class="pastille pastille-rouge">{{ annulations|length }}</span>
+                {% else %}
+                    {{ annulations|length }}
+                {% endif %}
             </div>
+            {% if detail_annulations is defined %}
+                <button type="button" class="bouton-detail" onclick="basculerDetailPerturbees(this)">
+                    <span class="fleche">▶</span> Voir le détail
+                    ({{ detail_annulations|length }} annulation{{ "s" if detail_annulations|length > 1 else "" }})
+                </button>
+                <div class="zone-detail zone-detail-large" hidden>
+                    <table class="detail-perturbees">
+                        <thead>
+                            <tr>
+                                <th>Train</th>
+                                <th>Trajet</th>
+                                <th>Date</th>
+                                <th>Cause</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in detail_annulations %}
+                                <tr>
+                                    <td>{{ d.train }}</td>
+                                    <td>{{ d.trajet or "—" }}</td>
+                                    <td>{{ d.date }}</td>
+                                    <td>{{ d.cause or "—" }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% elif annulations %}
+                <span class="pastille pastille-rouge">{{ annulations|join(", ") }}</span>
+            {% endif %}
         </div>
     {% endif %}
 {% endif %}
