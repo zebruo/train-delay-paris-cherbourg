@@ -25,7 +25,7 @@ import urllib.request
 from google.transit import gtfs_realtime_pb2
 
 from calendar_data import Calendrier
-from formatting import PARIS_TZ, build_trip_data, load_reference, sans_date_trip_id, trajet_sens
+from formatting import PARIS_TZ, build_stop_names, build_trip_data, load_reference, sans_date_trip_id, trajet_sens
 from perturbations import CANCELED, SKIPPED, detecter_evenements, enregistrer_evenements
 
 FEED_URL = "https://proxy.transport.data.gouv.fr/resource/sncf-gtfs-rt-trip-updates"
@@ -109,27 +109,40 @@ def connecter_db():
 
 def load_reference_data():
     """Un seul passage sur reference_paris_cherbourg.csv pour extraire tout ce
-    dont le collecteur a besoin : les trip_id connus, le nom de chaque gare, et
-    la position de chaque arrêt dans son trajet (+ la position du terminus).
+    dont le collecteur a besoin : les trip_id connus, et la position de
+    chaque arrêt dans son trajet (+ la position du terminus).
 
     Indexé par sans_date_trip_id(trip_id), pas le trip_id brut du
     référentiel : un même train réel republie un trip_id quasi identique
     d'un jour à l'autre, sauf son dernier segment (la date) — sans ignorer
     ce suffixe, ~27 % des trains pertinents restaient invisibles un jour
     donné (voir formatting.sans_date_trip_id et mémoire du projet,
-    2026-07-31)."""
+    2026-07-31).
+
+    stop_names vient de formatting.build_stop_names (référentiel + complément
+    gtfs/stops.txt), PAS d'un dict construit ici depuis les seules lignes de
+    reference_paris_cherbourg.csv comme avant — celui-ci n'a jamais que des
+    stop_id StopPoint (les arrêts théoriques), jamais de StopArea. Bug réel
+    trouvé le 2026-09-24 : le flux temps réel rapporte parfois un arrêt via
+    son StopArea plutôt que son StopPoint habituel (~0,2 % des relevés,
+    mémoire du projet, 2026-07-23) — avec l'ancien stop_names, incomplet, ces
+    relevés étaient enregistrés avec le code brut ("StopArea:OCE87444299")
+    au lieu du nom résolu ("Bernay") dans la colonne `gare`, invisibles
+    ensuite pour toute stat SQL "par gare" (Rapports, stats globales) qui
+    fait confiance à cette colonne déjà écrite — alors que les vues 100%
+    pandas (Tableau, generer_rapport.py) recalculaient déjà le nom à la
+    demande via build_stop_names et ne voyaient donc jamais le problème."""
     trip_ids = set()
-    stop_names = {}
     sequences = {}
     terminus = {}
     with open("reference_paris_cherbourg.csv", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             trip_id, stop_id = sans_date_trip_id(row["trip_id"]), row["stop_id"]
             trip_ids.add(trip_id)
-            stop_names[stop_id] = row["stop_name"]
             seq = int(row["stop_sequence"])
             sequences[(trip_id, stop_id)] = seq
             terminus[trip_id] = max(terminus.get(trip_id, 0), seq)
+    stop_names = build_stop_names(load_reference())
     return trip_ids, stop_names, sequences, terminus
 
 
