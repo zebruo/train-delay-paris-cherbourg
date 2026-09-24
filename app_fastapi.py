@@ -1217,6 +1217,18 @@ def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train
     # ici après avoir repéré un écart de méthode en comparant les chiffres
     # desktop/mobile pour un même train (2026-08-24).
     if not plot_df.empty:
+        # _materialiser_circulations_annulees indispensable ici : contrat de
+        # _cles_circulations_arrivees_globales -> _materialiser_circulations_
+        # arrivees_periode ("l'appelant DOIT avoir déjà matérialisée
+        # circulations_annulees"), respecté par les 3 autres appelants
+        # (Rapports, stats globales, carte mobile) mais oublié ici depuis
+        # l'ajout de ce bloc le 2026-08-24 — bug réel trouvé en balayant le
+        # journal systemd, 2026-09-24 : 13 occurrences d'un
+        # "sqlite3.OperationalError: no such table: circulations_annulees"
+        # (erreur 500 sur le Graphique "tout l'historique") depuis cette
+        # date, chaque fois que le cache de _cles_circulations_arrivees_
+        # globales était froid pour cette requête.
+        _materialiser_circulations_annulees(connexion)
         cles_arrivees = _cles_circulations_arrivees_globales(connexion)
         cles = plot_df["trip_id"].astype(str) + "|" + plot_df["start_date"].astype(str)
         plot_df = plot_df[cles.isin(cles_arrivees)]
