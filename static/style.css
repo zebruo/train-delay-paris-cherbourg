@@ -1667,7 +1667,13 @@ th:nth-child(13), td:nth-child(13) { width: 6%; }
 
 tr.separateur td {
     padding: 0;
-    height: 0.2rem;
+    /* px fixe, pas rem : 0.1rem (1.6px) tombe pile entre 1 et 2 px écran, et
+    la position verticale cumulée du tableau atterrit sur une fraction de
+    pixel différente à chaque ligne — le navigateur arrondissait tantôt à 1,
+    tantôt à 2px selon la ligne, hauteur visuellement incohérente d'un
+    séparateur à l'autre (repéré par l'utilisateur, 2026-09-24). 2px entier
+    s'arrondit de façon fiable, quelle que soit la position. */
+    height: 2px;
     background: var(--fond-secondaire);
 }
 
