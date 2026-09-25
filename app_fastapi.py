@@ -2672,17 +2672,20 @@ def calculer_contexte_jour_heure_sql_avec_cache(connexion, gare, train, sens, li
 
 
 def _meilleur_et_pire_creneau(stats, labels, granularite):
-    """Calcule les puces 'Meilleur créneau'/'À éviter' de l'écran Tendances
-    mobile, à partir des mêmes stats déjà utilisées pour les barres desktop
-    (_stats_par_categorie_sql) — ignore les catégories peu fiables
-    (n_circulations < SEUIL_FIABLE, même règle que titre_dynamique_jour_
-    heure) pour ne jamais mettre en avant une catégorie non représentative.
-    Renvoie (meilleur, pire), chacun soit None (aucune catégorie fiable)
-    soit {"label": ..., "pct": ...}.
+    """Calcule les puces 'Meilleur créneau'/'Créneau le plus perturbé' de
+    l'écran Tendances mobile, à partir des mêmes stats déjà utilisées pour
+    les barres desktop (_stats_par_categorie_sql) — ignore les catégories
+    peu fiables (n_circulations < SEUIL_FIABLE, même règle que
+    titre_dynamique_jour_heure) pour ne jamais mettre en avant une
+    catégorie non représentative. Renvoie (meilleur, pire), chacun soit
+    None (aucune catégorie fiable) soit {"label": ..., "pct": ...}.
+    "Créneau le plus perturbé" (pas "À éviter"/"Pire créneau", jugés trop
+    prescriptif/connoté par l'utilisateur, 2026-09-25) : vocabulaire
+    factuel repris de "Circulations perturbées" ailleurs dans l'appli.
 
     granularite == "jour" : un seul jour (pas de plage) pour chaque puce.
-    granularite == "heure" : 'à éviter' reste une heure unique, mais
-    'meilleur créneau' est une fenêtre de 3h glissante (les 3 heures
+    granularite == "heure" : le créneau le plus perturbé reste une heure
+    unique, mais 'meilleur créneau' est une fenêtre de 3h glissante (les 3 heures
     consécutives les plus fiables) — reproduit l'asymétrie du mockup
     ('6h-9h' / '23h'), un choix de présentation, pas une nouvelle règle
     statistique. Fenêtres non circulaires (jamais 22h-23h-0h) : la nuit n'a
