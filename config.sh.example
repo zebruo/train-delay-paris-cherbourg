@@ -1,6 +1,7 @@
 # Modèle de config.sh : copier ce fichier en config.sh puis renseigner tes
 # propres valeurs (non versionné, voir .gitignore).
 NAS_HOST="utilisateur@ip_du_nas"
+NAS_PORT="22"
 SSH_KEY_NAS="$HOME/.ssh/id_ed25519_nas"
 VPS_HOST="utilisateur@ip_de_la_vps"
 SSH_KEY_VPS="$HOME/.ssh/id_ed25519_vps"

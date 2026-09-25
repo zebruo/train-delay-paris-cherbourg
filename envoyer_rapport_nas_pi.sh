@@ -22,7 +22,9 @@ CHEMIN_LOCAL="$1"
 # organisation aux deux endroits plutôt qu'un dossier plat.
 SOUS_DOSSIER=$(basename "$(dirname "$(realpath "$CHEMIN_LOCAL")")")
 
-SSH_OPTS="-i $SSH_KEY -o BatchMode=yes"
+SSH_OPTS="-i $SSH_KEY -p $NAS_PORT -o BatchMode=yes"
 ssh $SSH_OPTS "$NAS_HOST" "mkdir -p '$NAS_DIR/$SOUS_DOSSIER'"
-rsync -az -e "ssh $SSH_OPTS" "$CHEMIN_LOCAL" "$NAS_HOST:$NAS_DIR/$SOUS_DOSSIER/"
+# --rsync-path : voir le commentaire équivalent dans
+# sauvegarder_observations_nas.sh (port SSH du NAS non-standard, 2026-09-25).
+rsync -az --rsync-path=/usr/bin/rsync -e "ssh $SSH_OPTS" "$CHEMIN_LOCAL" "$NAS_HOST:$NAS_DIR/$SOUS_DOSSIER/"
 echo "Envoyé vers le NAS : $CHEMIN_LOCAL"

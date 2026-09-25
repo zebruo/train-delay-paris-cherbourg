@@ -12,14 +12,22 @@ source config.sh
 NAS_DIR="/volume1/Documents/backups train-delay/observations_db"
 RETENTION_FICHIERS=3
 SSH_OPTS_VPS="-i $SSH_KEY_VPS -o BatchMode=yes"
-SSH_OPTS_NAS="-i $SSH_KEY_NAS -o BatchMode=yes"
+SSH_OPTS_NAS="-i $SSH_KEY_NAS -p $NAS_PORT -o BatchMode=yes"
 
 FICHIER_TMP="observations_backup_tmp.db"
 rsync -az -e "ssh $SSH_OPTS_VPS" "$VPS_HOST:train-delay-paris-cherbourg/observations.db" "$FICHIER_TMP"
 
 DATE=$(date +%Y%m%d)
 ssh $SSH_OPTS_NAS "$NAS_HOST" "mkdir -p '$NAS_DIR'"
-rsync -az -e "ssh $SSH_OPTS_NAS" "$FICHIER_TMP" "$NAS_HOST:$NAS_DIR/observations_$DATE.db"
+# --rsync-path=/usr/bin/rsync : sans ça, "Permission denied" côté rsync
+# (mais SSH lui-même s'authentifie très bien) une fois le port SSH du NAS
+# changé de 22 vers un port dédié (36527) — rsync est setuid root sur ce
+# NAS (Synology), et sa résolution automatique du binaire distant semble
+# dépendre du port de connexion pour cette élévation ; forcer le chemin
+# explicite contourne le problème. Repéré et corrigé le 2026-09-25, en
+# migrant le port SSH par mesure de sécurité (recommandation Synology
+# Security Advisor).
+rsync -az --rsync-path=/usr/bin/rsync -e "ssh $SSH_OPTS_NAS" "$FICHIER_TMP" "$NAS_HOST:$NAS_DIR/observations_$DATE.db"
 rm -f "$FICHIER_TMP"
 
 # Purge : ne garde que les RETENTION_FICHIERS sauvegardes les plus
