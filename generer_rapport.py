@@ -46,7 +46,7 @@ from matplotlib.ticker import AutoMinorLocator
 from matplotlib.transforms import blended_transform_factory
 
 from formatting import (
-    PARIS_TZ, build_stop_names, build_trip_data, calculer_periode, calculer_retard_min,
+    LABEL_RETARD_MOYEN_ELEVE, PARIS_TZ, build_stop_names, build_trip_data, calculer_periode, calculer_retard_min,
     choisir_variante, cle_circulation, derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel,
     format_gare, format_heure_avec_arret, format_min_sans_zero, format_numero_train,
     load_calendrier, load_reference, texte_categorie_maximale, texte_periode_rapport,
@@ -442,7 +442,7 @@ def generer(nom_periode, maintenant=None):
     # nomme la MESURE ("Retard moyen le + élevé"), pas la gare — même
     # principe que "Retard max"/"Retard cumulé" à côté. "Gare la + touchée"
     # jugé trop connoté par l'utilisateur, 2026-09-27.
-    label_pire_gare = "Retard moyen le + élevé"
+    label_pire_gare = LABEL_RETARD_MOYEN_ELEVE
 
     # Retard max AFFICHÉ (titre + échelle Y, plus bas) calculé sur
     # df_periode_complet (trajet complet, toutes gares) : sinon un pic de

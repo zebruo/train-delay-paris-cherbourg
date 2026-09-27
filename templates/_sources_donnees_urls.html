@@ -1,0 +1,16 @@
+{# URLs/domaines des sources de données + phrase de clôture, seule partie
+   réellement identique entre l'aide desktop (_dialogue_aide.html, une
+   phrase par source) et l'aide mobile (_mobile_aide.html, un seul
+   paragraphe condensé) — le reste du texte diffère volontairement en
+   verbosité entre les deux, pas factorisé pour ne pas forcer une
+   formulation unique sur un des deux styles. Factorisé ici (audit de
+   nettoyage, 2026-09-28) pour éviter que les deux versions divergent sur
+   ces URLs sans que ce soit voulu (déjà repéré comme un risque par un
+   commentaire dans _mobile_aide.html). #}
+{% set url_retards = "proxy.transport.data.gouv.fr" %}
+{% set url_meteo = "api.open-meteo.com" %}
+{% set url_horaires = "eu.ftp.opendatasoft.com/sncf/plandata" %}
+{% set url_feries = "calendrier.api.gouv.fr" %}
+{% set url_vacances = "data.education.gouv.fr" %}
+{% set url_cause_annulation = "api.sncf.com" %}
+{% set phrase_cloture_sources = "Toutes ces sources sont publiques et gratuites ; Météo-France et l'API SNCF nécessitent chacune une clé API personnelle (gratuite)." %}

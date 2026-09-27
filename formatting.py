@@ -374,6 +374,16 @@ def format_min_sans_zero(valeur):
     return f"{arrondi:.0f}" if arrondi == int(arrondi) else f"{arrondi:.1f}"
 
 
+# Libellé de la stat "gare avec le retard moyen le plus élevé" — un seul
+# point de vérité plutôt que recopié à la main dans app_fastapi.py et
+# generer_rapport.py (audit de nettoyage, 2026-09-28 : la formule de fusion
+# arrivée/départ avait eu le même problème avant _EXPR_RETARD_S/
+# calculer_retard_min, pas de raison de refaire cette dérive avec ce
+# libellé fraîchement renommé, "Gare la + touchée" jugé trop connoté par
+# l'utilisateur, 2026-09-27).
+LABEL_RETARD_MOYEN_ELEVE = "Retard moyen le + élevé"
+
+
 def texte_categorie_maximale(serie, mot_singulier, mot_pluriel, formater_nom, formater_valeur):
     """Motif partagé par "Retard moyen le + élevé" et "Retard max"
     (calculer_stats_bloc ci-dessous) : parmi une Series pandas indexée par
@@ -441,7 +451,7 @@ def calculer_stats_bloc(df):
     # nomme la MESURE ("Retard moyen le + élevé"), pas la gare — même
     # principe que "Retard max"/"Retard cumulé" à côté. "Gare la + touchée"
     # jugé trop connoté par l'utilisateur, 2026-09-27.
-    label_pire_gare = "Retard moyen le + élevé"
+    label_pire_gare = LABEL_RETARD_MOYEN_ELEVE
 
     # Basé sur la dernière valeur connue par passage (derniers ci-dessus),
     # pas le maximum brut sur tous les relevés : sinon une prédiction

@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from formatting import (
+    LABEL_RETARD_MOYEN_ELEVE,
     PARIS_TZ,
     build_stop_names,
     build_trip_data,
@@ -2151,7 +2152,7 @@ def _pire_gare_et_moyenne_sql(
     # même principe que "Retard max"/"Retard cumulé" à côté. "Gare la +
     # touchée" jugé trop connoté par l'utilisateur, 2026-09-27 (suggère un
     # problème alors que l'écart entre gares est souvent minime).
-    label_pire_gare = "Retard moyen le + élevé"
+    label_pire_gare = LABEL_RETARD_MOYEN_ELEVE
     return moyenne, nb_releves, pire_gare_texte, label_pire_gare
 
 
@@ -2358,8 +2359,8 @@ def calculer_stats_globales_sql(
     factorisé dans sa propre fonction ci-dessus, testée/validée
     séparément avant assemblage. Si limiter_retard : matérialise
     `circulations_retard` UNE fois ici (voir _construire_where_sql/
-    _materialiser_circulations_retard) — Retard max/cumulé, Gare la +
-    touchée et Retard moyen la référencent tous les 3 au lieu de
+    _materialiser_circulations_retard) — Retard max/cumulé, Retard moyen
+    le + élevé et Retard moyen la référencent tous les 3 au lieu de
     recalculer chacun leur propre sous-requête.
 
     depuis_debut_collecte (par défaut False) : True uniquement pour l'appel
