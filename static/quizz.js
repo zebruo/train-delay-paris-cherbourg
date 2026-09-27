@@ -124,15 +124,15 @@ const QUIZZ_QUESTIONS = [
         explication: "Le doré existe pour un cas précis qui resterait sinon invisible : un train arrivé pile à l'heure n'a aucune couleur d'alerte si on ne regarde que le retard à l'arrivée, alors qu'il peut être en train d'accumuler un vrai retard de départ, pas encore visible ailleurs.",
     },
     {
-        question: "Le chiffre de la colonne « Dép. » devient doré uniquement quand le retard au départ d'une gare atteint 5 min (y compris à la toute première gare du trajet). Cette couleur peut aussi bien signaler un incident tout frais qu'un aléa connu depuis le début du trajet. L'application fait-elle la différence automatiquement entre ces deux cas ?",
+        question: "Le chiffre de la colonne « Dép. » devient doré uniquement quand le retard au départ d'une gare atteint 5 min (y compris à la toute première gare du trajet). Cette couleur peut aussi bien signaler un incident tout frais qu'un aléa connu depuis le début du trajet. « Suivi d'un train » permet-il de faire la différence entre ces deux cas ?",
         choix: [
-            "Oui, une icône distingue les deux cas",
-            "Non — et il n'existe actuellement aucun moyen de le vérifier dans l'application, pas même via « Suivi d'un train »",
-            "Oui, mais seulement dans les rapports PDF",
-            "Non, ce cas n'est jamais affiché en doré",
+            "Oui, avec les deux vues (Escalier et Détail des relevés)",
+            "Oui, mais seulement avec « Détail des relevés » — l'Escalier ne montre que la dernière valeur connue par gare, jamais son évolution dans le temps",
+            "Non, aucune des deux vues ne le permet",
+            "Oui, mais seulement avec l'Escalier",
         ],
         correct: 1,
-        explication: "« Suivi d'un train » ne peut pas aider ici : ses deux vues (Escalier et Détail des relevés) tracent le retard à l'arrivée dès qu'il est connu et ignorent alors le retard au départ. Qu'il s'agisse d'un incident tout frais ou d'un aléa récurrent, ce retard au départ n'est visible que dans la colonne « Dép. » du Tableau.",
+        explication: "L'Escalier ne trace qu'un seul point par gare (la dernière valeur connue), donc il ne montre jamais QUAND ce retard est apparu. « Détail des relevés », lui, garde un point par relevé retenu : en comparant les relevés successifs pour une même gare, on peut voir le retard apparaître d'un coup (ex: 0 min puis soudain 20 min) — un signal utile pour repérer un incident frais plutôt qu'un aléa connu depuis le départ, même si l'appli ne fait jamais cette distinction automatiquement à votre place.",
     },
     {
         question: "Un train Rennes → Caen ne va jamais jusqu'à Paris ni Cherbourg. Apparaît-il dans les statistiques de la ligne Paris ↔ Cherbourg ?",
