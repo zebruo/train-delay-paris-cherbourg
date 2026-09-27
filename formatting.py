@@ -375,42 +375,41 @@ def format_min_sans_zero(valeur):
 
 
 def texte_categorie_maximale(serie, mot_singulier, mot_pluriel, formater_nom, formater_valeur):
-    """Motif partagé par "Gare la + touchée" et "Retard max" (calculer_stats_
-    bloc ci-dessous) : parmi une Series pandas indexée par nom de catégorie,
-    le(s) nom(s) au maximum. N'utilise PAS idxmax() : il ne renverrait que la
-    première catégorie dans l'ordre alphabétique en cas d'égalité — arbitraire
-    du point de vue de l'utilisateur, et les égalités sont courantes ici
-    (retards fréquemment des valeurs rondes) — donc toutes les catégories à
-    égalité sont listées (plafond à 3, "+N autres" au-delà, même convention
-    que les exemples de verifier_gtfs.py — demande explicite de
-    l'utilisateur, 2026-08-15). mot_singulier/mot_pluriel vides ("") pour
-    omettre le préfixe (Gare la + touchée n'a pas de mot avant les noms de
-    gare, contrairement à "train"/"trains"). Renvoie (texte, pluriel) — ce
-    2e booléen (≥ 2 catégories à égalité) sert à accorder un label externe
-    au pluriel ("Gare la + touchée" → "Gare les + touchées", demande de
-    l'utilisateur 2026-08-16) quand le mot lui-même vit dans le label plutôt
-    que dans le texte produit ici (mot_singulier/mot_pluriel vides).
-    Réutilisée telle quelle par app_fastapi.py pour ses résultats SQL
-    (converti en Series via pd.Series(dict(lignes)) — une copie locale sur
-    tuples existait avant d'être fusionnée ici, audit de nettoyage,
-    2026-08-19)."""
+    """Motif partagé par "Retard moyen le + élevé" et "Retard max"
+    (calculer_stats_bloc ci-dessous) : parmi une Series pandas indexée par
+    nom de catégorie, le(s) nom(s) au maximum. N'utilise PAS idxmax() : il
+    ne renverrait que la première catégorie dans l'ordre alphabétique en
+    cas d'égalité — arbitraire du point de vue de l'utilisateur, et les
+    égalités sont courantes ici (retards fréquemment des valeurs rondes) —
+    donc toutes les catégories à égalité sont listées (plafond à 3, "+N
+    autres" au-delà, même convention que les exemples de verifier_gtfs.py —
+    demande explicite de l'utilisateur, 2026-08-15). mot_singulier/
+    mot_pluriel vides ("") pour omettre le préfixe (pas de mot avant les
+    noms de gare, contrairement à "train"/"trains"). Réutilisée telle
+    quelle par app_fastapi.py pour ses résultats SQL (converti en Series
+    via pd.Series(dict(lignes)) — une copie locale sur tuples existait
+    avant d'être fusionnée ici, audit de nettoyage, 2026-08-19).
+    Renvoyait aussi un booléen "pluriel" (≥ 2 catégories à égalité), retiré
+    le 2026-09-27 : ne servait qu'à accorder le label externe "Gare la/les
+    + touchée(s)", renommé en un libellé invariant ("Retard moyen le +
+    élevé", jugé trop connoté sinon) — plus aucun appelant n'en avait
+    besoin."""
     if serie.empty or serie.max() <= 0:
-        return "aucun retard significatif", False
+        return "aucun retard significatif"
     valeur_max = serie.max()
     a_egalite = serie[serie == valeur_max].index.tolist()
     noms = [formater_nom(n) for n in a_egalite[:3]]
     suffixe = f" (+{len(a_egalite) - 3} autres)" if len(a_egalite) > 3 else ""
-    pluriel = len(a_egalite) > 1
-    mot = mot_pluriel if pluriel else mot_singulier
+    mot = mot_pluriel if len(a_egalite) > 1 else mot_singulier
     debut = f"{mot} {', '.join(noms)}{suffixe}" if mot else f"{', '.join(noms)}{suffixe}"
-    return f"{debut} → {formater_valeur(valeur_max)}", pluriel
+    return f"{debut} → {formater_valeur(valeur_max)}"
 
 
 def calculer_stats_bloc(df):
     """Calcule le bloc de statistiques partagé entre la barre du haut de
     viewer.py (_render_stats) et sa ligne de stats par période de l'onglet
     Graphique (_render_chart) : ratio de circulations perturbées, retard
-    cumulé, gare la + touchée et retard max par train — mêmes formules dans
+    cumulé, retard moyen le + élevé et retard max par train — mêmes formules dans
     les deux cas, seul le DataFrame passé en argument change (historique
     filtré complet, ou la période choisie seulement). Factorisé ici (pas
     seulement dans viewer.py) car app_streamlit.py en a besoin aussi, sans
@@ -435,10 +434,14 @@ def calculer_stats_bloc(df):
     # mais reste possible (peu de relevés sur une gare, ou gares au
     # comportement identique).
     moyennes_par_gare = df.groupby("gare")["retard_min"].mean()
-    pire_gare_texte, pire_gare_pluriel = texte_categorie_maximale(
+    pire_gare_texte = texte_categorie_maximale(
         moyennes_par_gare, "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
     )
-    label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
+    # Libellé invariant (pas de forme plurielle, contrairement à avant) :
+    # nomme la MESURE ("Retard moyen le + élevé"), pas la gare — même
+    # principe que "Retard max"/"Retard cumulé" à côté. "Gare la + touchée"
+    # jugé trop connoté par l'utilisateur, 2026-09-27.
+    label_pire_gare = "Retard moyen le + élevé"
 
     # Basé sur la dernière valeur connue par passage (derniers ci-dessus),
     # pas le maximum brut sur tous les relevés : sinon une prédiction
@@ -461,10 +464,8 @@ def calculer_stats_bloc(df):
     train_par_passage = derniers.index.get_level_values("trip_id").astype(str).str.split(":").str[0]
     maximums_par_train = derniers.groupby(train_par_passage).max()
     # "train"/"trains" (pluriel éventuel) vit déjà dans le texte lui-même
-    # (mot_singulier/mot_pluriel non vides ci-dessus) — pas besoin du 2e
-    # élément du tuple ici, contrairement à Gare la + touchée un peu plus
-    # haut (voir label_pire_gare).
-    retard_max_texte, _ = texte_categorie_maximale(
+    # (mot_singulier/mot_pluriel non vides ci-dessous).
+    retard_max_texte = texte_categorie_maximale(
         maximums_par_train, "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
     )
 

@@ -362,13 +362,13 @@ GUIDE_PAGES = [
                 ),
             ),
             dict(
-                titre="Gare la + touchée",
+                titre="Retard moyen le + élevé",
                 definition=(
                     "La gare avec le retard moyen le plus élevé, tous relevés\n"
                     "confondus (y compris ceux à 0 min)."
                 ),
                 exemple_lignes=[
-                    "→ Affiché : « Gare la + touchée : Bayeux → moy 3.6 min »",
+                    "→ Affiché : « Retard moyen le + élevé : Bayeux → moy 3.6 min »",
                     "En moyenne sur tous les relevés de la période, Bayeux",
                     "affiche 3.6 min de retard — la valeur la plus haute des 11 gares",
                     "de la ligne.",

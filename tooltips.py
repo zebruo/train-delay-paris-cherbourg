@@ -9,7 +9,7 @@ import tkinter as tk
 def _positionner_bulle(fenetre, x, y, recalculer=True):
     """Pose la bulle à (x, y), en la ramenant vers la gauche si besoin pour
     qu'elle ne déborde pas de l'écran à droite — sans ça, une bulle proche du
-    bord droit (ex: le stat "Gare la + touchée", le plus à droite de la barre
+    bord droit (ex: le stat "Retard moyen le + élevé", le plus à droite de la barre
     du haut) peut partir hors champ.
     recalculer=False : saute le update_idletasks() (coûteux) et réutilise la
     largeur déjà connue de la fenêtre — sûr uniquement si son texte n'a pas

@@ -307,7 +307,7 @@ def charger_donnees(borne_debut_utc, fin_utc):
     """Même construction que viewer.App.load_local_data(), réduite à ce dont
     le rapport a besoin (pas d'heure théorique). Contrairement à avant,
     retourne le df complet, *non* filtré aux 11 gares de la ligne : les
-    stats globales (retard moyen, gare la + touchée...) restent calculées
+    stats globales (retard moyen, retard moyen le + élevé par gare...) restent calculées
     sur ce périmètre restreint dans generer(), mais les mini-graphiques
     "retard gare par gare" ont besoin du trajet réel complet d'une
     circulation, jonctions hors ligne comprises (ex: Coutances, Granville,
@@ -396,7 +396,7 @@ def generer(nom_periode, maintenant=None):
     # "retard gare par gare" du top 5 en ont besoin (une fois une circulation
     # sélectionnée, son trajet réel doit s'afficher en entier, jonctions hors
     # ligne comprises). df_periode : restreint aux 11 gares de la ligne,
-    # utilisé pour les stats globales (retard moyen, gare la + touchée,
+    # utilisé pour les stats globales (retard moyen, retard moyen le + élevé par gare,
     # sélection du top 5...) — même périmètre par défaut que l'appli
     # (limiter_ligne_var coché).
     df_periode_complet, df_periode = filtrer_periode_arrivees(df, evenements, variantes, calendrier, debut_utc, fin_utc)
@@ -424,7 +424,7 @@ def generer(nom_periode, maintenant=None):
     # bug déjà rencontré et corrigé ailleurs, 2026-08-14).
     train_par_passage = derniers.index.get_level_values("trip_id").astype(str).str.split(":").str[0]
     maximums_par_train = derniers.groupby(train_par_passage).max()
-    retard_max_texte, _ = texte_categorie_maximale(
+    retard_max_texte = texte_categorie_maximale(
         maximums_par_train, "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
     )
     moyennes_par_gare = df_periode.groupby("gare")["retard_min"].mean()
@@ -435,10 +435,14 @@ def generer(nom_periode, maintenant=None):
     # Inclut désormais la valeur moyenne ("→ moy X min"), pas seulement le(s)
     # nom(s) de gare comme avant (demande explicite de l'utilisateur,
     # 2026-08-18 — annule le choix du 2026-07-30 de l'omettre)."""
-    pire_gare, pire_gare_pluriel = texte_categorie_maximale(
+    pire_gare = texte_categorie_maximale(
         moyennes_par_gare, "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
     )
-    label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
+    # Libellé invariant (pas de forme plurielle, contrairement à avant) :
+    # nomme la MESURE ("Retard moyen le + élevé"), pas la gare — même
+    # principe que "Retard max"/"Retard cumulé" à côté. "Gare la + touchée"
+    # jugé trop connoté par l'utilisateur, 2026-09-27.
+    label_pire_gare = "Retard moyen le + élevé"
 
     # Retard max AFFICHÉ (titre + échelle Y, plus bas) calculé sur
     # df_periode_complet (trajet complet, toutes gares) : sinon un pic de
@@ -714,7 +718,7 @@ def generer(nom_periode, maintenant=None):
     # fois les deux pourcentages (recalibré compris) ajoutés à cette
     # dernière, le texte combiné dépassait la largeur imprimable et se
     # faisait tronquer net (repéré en testant, 2026-09-04) — même leçon déjà
-    # apprise pour "Gare la + touchée" ci-dessous.
+    # apprise pour "Retard moyen le + élevé" ci-dessous.
     if total:
         fraction = f"{en_retard}/{total}"
         # "circulations perturbées" — même libellé que viewer.py (pas "trains
@@ -795,7 +799,7 @@ def generer(nom_periode, maintenant=None):
     # des glyphes présents sur CETTE ligne (accents, hampes montantes...) —
     # un même pas fixe en fraction d'axe donnait donc un espacement
     # visuellement irrégulier d'une ligne à l'autre (jusqu'à ~5pt de
-    # recouvrement mesuré entre "Gare la + touchée" et "Météo"), pas
+    # recouvrement mesuré entre "Retard moyen le + élevé" et "Météo"), pas
     # seulement entre la 1re ligne et les suivantes comme supposé au
     # premier correctif — repéré par l'utilisateur sur quotidien et
     # hebdomadaire (pas mensuel, par coïncidence de contenu ce jour-là, pas
@@ -882,7 +886,7 @@ def generer(nom_periode, maintenant=None):
 
             # Deux nouveaux graphiques (à la place du top 5, retiré du
             # mensuel — voir plus haut) : une vue géographique (quelle gare
-            # concentre le retard sur le mois, prolonge "Gare la + touchée"
+            # concentre le retard sur le mois, prolonge "Retard moyen le + élevé"
             # qui ne donne qu'un seul chiffre) et une vue par jour de
             # semaine (motif plus lisible sur un mois entier que sur une
             # seule semaine) — demande explicite de l'utilisateur, 2026-08-03.

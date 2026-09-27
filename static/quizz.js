@@ -257,7 +257,7 @@ const QUIZZ_QUESTIONS = [
         explication: "La frise reste toujours restreinte à une fenêtre fixe de 7 jours et aux 11 gares de la ligne, et ignore volontairement « Limiter aux trains avec retard » (qui gonflerait artificiellement la moyenne affichée gare par gare, en excluant les trains ponctuels) — alors que le « Retard moyen par relevé » de la barre du haut suit tous les filtres actifs (Gare/Train/Sens/Limiter aux trains avec retard) sur toute la période choisie. Deux indicateurs qui se ressemblent mais ne répondent pas à la même question.",
     },
     {
-        question: "« Gare la + touchée » désigne la gare avec le retard moyen par relevé le plus élevé. Un seul train très en retard, resté dans le flux temps réel plusieurs dizaines de minutes (donc sondé à répétition), peut-il à lui seul faire basculer ce classement ?",
+        question: "« Retard moyen le + élevé » désigne la gare avec le retard moyen par relevé le plus élevé. Un seul train très en retard, resté dans le flux temps réel plusieurs dizaines de minutes (donc sondé à répétition), peut-il à lui seul faire basculer ce classement ?",
         choix: [
             "Non, chaque train ne compte qu'une seule fois dans cette moyenne",
             "Oui — et rien dans ce chiffre ne permet de savoir si une gare l'emporte à cause d'un vrai gros problème ou simplement parce qu'un train y est resté sondé plus longtemps",
@@ -265,9 +265,9 @@ const QUIZZ_QUESTIONS = [
             "Oui, mais uniquement si ce train dessert au moins 3 gares différentes",
         ],
         correct: 1,
-        explication: "« Gare la + touchée » moyenne à plat tous les relevés individuels, donc un seul train très en retard, sondé à répétition, peut suffire à faire basculer ce classement.",
+        explication: "« Retard moyen le + élevé » moyenne à plat tous les relevés individuels, donc un seul train très en retard, sondé à répétition, peut suffire à faire basculer ce classement.",
         explicationHTML:
-            "<p>« Gare la + touchée » moyenne à plat tous les relevés individuels, donc un seul train très en retard, sondé à répétition, peut suffire à faire basculer ce classement.</p>" +
+            "<p>« Retard moyen le + élevé » moyenne à plat tous les relevés individuels, donc un seul train très en retard, sondé à répétition, peut suffire à faire basculer ce classement.</p>" +
             "<p>Exemple : Gare A n'a qu'un seul train perturbé ce jour-là, mais très en retard et resté longtemps dans le flux ; Gare B a 5 trains différents, chacun un peu en retard.</p>" +
             "<pre class=\"quizz-exemple\">Gare A — 1 train à 60 min, resté 45 min dans le flux (10 relevés) :\n" +
             "10 relevés à 60 min\n" +
