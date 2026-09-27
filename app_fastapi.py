@@ -1521,7 +1521,7 @@ def _materialiser_circulations_retard(
         f"""
         CREATE TEMP TABLE circulations_retard AS
         SELECT DISTINCT trip_id || '|' || start_date AS cle FROM observations
-        WHERE {where} AND COALESCE(arrival_delay_s, departure_delay_s) > 0
+        WHERE {where} AND {_EXPR_RETARD_S} > 0
         """,
         params,
     )
@@ -1541,7 +1541,7 @@ def _materialiser_jour_heure(connexion, gare, train, sens, limiter_ligne):
     _retard_max_et_cumule_sql/_pire_gare_et_moyenne_sql pour la barre de
     stats du haut). Appelant responsable du DROP TABLE ensuite."""
     where, params = _construire_where_sql(gare, train, sens, limiter_ligne)
-    expr_retard = "ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1)"
+    expr_retard = f"ROUND({_EXPR_RETARD_S} / 60.0, 1)"
     connexion.execute(
         f"""
         CREATE TEMP TABLE jour_heure_filtre AS
@@ -1625,7 +1625,7 @@ def _cte_dernier_par_passage_complet(where):
     return f"""
         WITH filtre AS (
             SELECT trip_id, start_date, gare, poll_time,
-                   ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min
+                   ROUND({_EXPR_RETARD_S} / 60.0, 1) AS retard_min
             FROM observations WHERE {where}
         ),
         avec_rang AS (
@@ -2148,7 +2148,7 @@ def _serie_temporelle_graphique_sql(connexion, gare, train, sens, limiter_ligne,
         connexion.execute(
             "CREATE TEMP TABLE graphique_releves_filtres AS "
             "SELECT poll_time, trip_id || '|' || start_date AS circulation, "
-            "ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min "
+            f"ROUND({_EXPR_RETARD_S} / 60.0, 1) AS retard_min "
             f"FROM observations WHERE {where}",
             params,
         )
@@ -2261,7 +2261,7 @@ def _circulations_et_trains_stats_sql(
     where, params = _construire_where_sql(
         gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso,
     )
-    expr_retard = "COALESCE(arrival_delay_s, departure_delay_s)"
+    expr_retard = _EXPR_RETARD_S
     expr_sans_date = (
         "CASE WHEN trip_id GLOB '*:[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' "
         "THEN SUBSTR(trip_id, 1, LENGTH(trip_id) - 9) ELSE trip_id END"
@@ -2302,7 +2302,7 @@ def _pct_perturbees_severes_sql(connexion, gare, train, sens, limiter_ligne, deb
     retard). Suppose circulations_annulees déjà matérialisée (voir
     _materialiser_circulations_annulees)."""
     where, params = _construire_where_sql(gare, train, sens, limiter_ligne, debut_iso=debut_iso, fin_iso=fin_iso)
-    expr_retard = "COALESCE(arrival_delay_s, departure_delay_s)"
+    expr_retard = _EXPR_RETARD_S
     expr_annulee = "(trip_id || '|' || start_date) IN (SELECT cle FROM circulations_annulees)"
     total, severe = connexion.execute(
         f"""
@@ -2884,7 +2884,7 @@ def _materialiser_rapport_filtre(connexion, debut_iso, fin_iso):
         f"""
         CREATE TEMP TABLE rapport_filtre AS
         SELECT rowid AS ligne_id, poll_time, gare, trip_id, start_date,
-               ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min,
+               ROUND({_EXPR_RETARD_S} / 60.0, 1) AS retard_min,
                temperature_c, precipitation_mm, wind_speed_kmh,
                {_EXPR_JOUR_SEMAINE} AS jour_semaine, heure_locale
         FROM observations WHERE {where}
@@ -3133,7 +3133,7 @@ def _construire_detail_perturbees_sql(
     where_toutes, params_toutes = _construire_where_sql(
         "Toutes", "Tous", "Tous", False, debut_iso=debut_iso, fin_iso=fin_iso,
     )
-    expr_retard = "COALESCE(arrival_delay_s, departure_delay_s)"
+    expr_retard = _EXPR_RETARD_S
     expr_annulee = "(trip_id || '|' || start_date) IN (SELECT cle FROM circulations_annulees)"
     lignes = connexion.execute(
         f"""
@@ -3429,7 +3429,7 @@ def _construire_donnees_top5_sql(connexion, variantes, calendrier):
             horaires_par_gare = dict(zip(ordre_gares, variante["horaires"]))
             trajet = pd.read_sql_query(
                 "SELECT poll_time, gare, "
-                "ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min "
+                f"ROUND({_EXPR_RETARD_S} / 60.0, 1) AS retard_min "
                 "FROM observations WHERE trip_id = ? AND start_date = ?",
                 connexion, params=(trip_id, start_date),
             )
@@ -3461,7 +3461,7 @@ def _pct_perturbees_sql(connexion, debut_iso, fin_iso):
                COUNT(DISTINCT CASE WHEN retard_min > 0 THEN trip_id || '|' || start_date END)
         FROM (
             SELECT trip_id, start_date,
-                   ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1) AS retard_min
+                   ROUND({_EXPR_RETARD_S} / 60.0, 1) AS retard_min
             FROM observations WHERE {where}
         )
         """,
