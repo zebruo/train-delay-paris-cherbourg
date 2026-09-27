@@ -2850,13 +2850,20 @@ def calculer_contexte_tendances_mobile(connexion, request: Request, gare: str):
 def _construire_lignes_annulations_mobile(evenements_df, maintenant, jours=7):
     """Annulations récentes (écran 'Perturbations' mobile) : mêmes événements
     'trajet_annule' que calculer_contexte_travaux (Perturbations desktop),
-    mais bornés aux `jours` derniers jours et dédoublonnés par circulation
+    bornés aux `jours` derniers jours et dédoublonnés par circulation
     (train, start_date) — le flux peut enregistrer plusieurs événements pour
-    la même annulation au fil de la collecte."""
-    annules = evenements_df[
-        (evenements_df["type"] == "trajet_annule")
-        & (evenements_df["poll_time"] >= maintenant - pd.Timedelta(days=jours))
-    ].drop_duplicates(subset=["train", "start_date"]).sort_values("poll_time", ascending=False)
+    la même annulation au fil de la collecte. Réutilise
+    _evenements_annules_filtres_ligne (même filtre "touche au moins une des
+    11 gares de la ligne" que le desktop) : avant, le mobile n'appliquait
+    pas ce filtre — un train annulé entièrement hors axe (ex: un aléa
+    purement côté Rouen) pouvait apparaître ici sans apparaître dans
+    "Circulations annulées" côté desktop. Aligné le 2026-09-28, décision
+    utilisateur."""
+    fin_local = maintenant.tz_convert(PARIS_TZ)
+    debut_local = fin_local - pd.Timedelta(days=jours)
+    annules = _evenements_annules_filtres_ligne(
+        evenements_df, debut_local, fin_local, reference_donnees["variantes"], reference_donnees["calendrier"],
+    ).drop_duplicates(subset=["train", "start_date"]).sort_values("poll_time", ascending=False)
     lignes = []
     for _, ligne in annules.iterrows():
         lignes.append({
