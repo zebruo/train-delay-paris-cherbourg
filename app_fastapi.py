@@ -35,6 +35,7 @@ from formatting import (
     build_stop_names,
     build_trip_data,
     calculer_periode,
+    calculer_retard_min,
     calculer_stats_bloc,
     choisir_variante,
     cle_circulation,
@@ -407,7 +408,7 @@ def preparer_donnees(df, stop_names, variantes, calendrier):
     df["arret_ajoute"] = df["heure_theorique"].str.startswith("~")
     df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
     df["retard_depart_min"] = (df["departure_delay_s"] / 60).round(1)
-    df["retard_min"] = df["retard_arrivee_min"].fillna(df["retard_depart_min"])
+    df["retard_min"] = calculer_retard_min(df)
 
     # category plutôt que object (chaîne Python "normale") pour les colonnes
     # à faible cardinalité : quelques dizaines/milliers de valeurs distinctes
@@ -1406,6 +1407,30 @@ _EXPR_TYPE_JOUR = """
 """
 _EXPR_VACANCES = "CASE WHEN vacances_scolaires = 1 THEN 'Vacances' WHEN vacances_scolaires = 0 THEN 'Hors vacances' END"
 
+# SQLite : MAX(a, b) scalaire renvoie NULL dès qu'UN SEUL argument est NULL
+# (contrairement à un MAX() agrégat) — contrairement à pandas .max(axis=1),
+# qui ignore nativement les NaN. Idiome vérifié (7 cas limites testés en
+# direct : arrivée/départ connus, NULL d'un côté, NULL des deux, égaux) :
+# MAX(COALESCE(a,b), COALESCE(b,a)) donne bien "le pire des deux connus,
+# NULL seulement si les deux sont NULL" — équivalent exact de
+# formatting.calculer_retard_min côté pandas. Remplace, à date, la règle
+# "priorité arrivée, repli si NULL" (COALESCE(arrival_delay_s,
+# departure_delay_s) seul) : bug réel trouvé en prod, ~0,9 % des relevés,
+# ~6-7 circulations/jour, présent 68 jours sur 74 de collecte (train pile à
+# l'heure en arrivée mais reparti très en retard, ex. train 851007 à
+# Mantes-la-Jolie ou 852712 à Lison, 60 min d'arrêt prolongé — voir mémoire
+# du projet, 2026-09-24/25). Peut aussi rendre une circulation invisible
+# aux Rapports (périmètre fixe aux 11 gares) quand son seul point de
+# contact avec l'axe est justement la gare où le retard est masqué (train
+# 13127 vers Rouen via Mantes-la-Jolie). Toujours en SECONDES : les
+# appelants qui veulent des minutes font eux-mêmes
+# ROUND({_EXPR_RETARD_S} / 60.0, 1), comme ils le faisaient déjà pour
+# COALESCE(...).
+_EXPR_RETARD_S = (
+    "MAX(COALESCE(arrival_delay_s, departure_delay_s), "
+    "COALESCE(departure_delay_s, arrival_delay_s))"
+)
+
 
 def _construire_where_sql(
     gare, train, sens, limiter_ligne, limiter_retard=False, exiger_retard_connu=True,
@@ -2074,7 +2099,7 @@ def _pire_gare_et_moyenne_sql(
     where, params = _construire_where_sql(
         gare, train, sens, limiter_ligne, limiter_retard, debut_iso=debut_iso, fin_iso=fin_iso,
     )
-    expr_retard = "ROUND(COALESCE(arrival_delay_s, departure_delay_s) / 60.0, 1)"
+    expr_retard = f"ROUND({_EXPR_RETARD_S} / 60.0, 1)"
 
     connexion.execute("DROP TABLE IF EXISTS temp.releves_filtres")
     try:

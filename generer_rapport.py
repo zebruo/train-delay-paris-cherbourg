@@ -46,8 +46,8 @@ from matplotlib.ticker import AutoMinorLocator
 from matplotlib.transforms import blended_transform_factory
 
 from formatting import (
-    PARIS_TZ, build_stop_names, build_trip_data, calculer_periode, choisir_variante,
-    cle_circulation, derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel,
+    PARIS_TZ, build_stop_names, build_trip_data, calculer_periode, calculer_retard_min,
+    choisir_variante, cle_circulation, derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel,
     format_gare, format_heure_avec_arret, format_min_sans_zero, format_numero_train,
     load_calendrier, load_reference, texte_categorie_maximale, texte_periode_rapport,
     titre_dynamique_jour_heure,
@@ -345,7 +345,7 @@ def charger_donnees(borne_debut_utc, fin_utc):
     df["train"] = df["trip_id"].str.split(":").str[0]
     df["retard_arrivee_min"] = (df["arrival_delay_s"] / 60).round(1)
     df["retard_depart_min"] = (df["departure_delay_s"] / 60).round(1)
-    df["retard_min"] = df["retard_arrivee_min"].fillna(df["retard_depart_min"])
+    df["retard_min"] = calculer_retard_min(df)
     df["poll_time"] = pd.to_datetime(df["poll_time"])
 
     try:

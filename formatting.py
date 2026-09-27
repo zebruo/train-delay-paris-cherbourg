@@ -327,6 +327,20 @@ def titre_dynamique_jour_heure(base, stats, colonne_valeur, labels, formater_lab
     return f"{base} — max : {formater_label(label)} ({formater_valeur(valeur)})"
 
 
+def calculer_retard_min(df):
+    """Fusionne retard_arrivee_min/retard_depart_min (colonnes déjà
+    présentes dans df) en la valeur de retard à retenir pour une ligne : le
+    PIRE des deux, en ignorant les NULL — remplace la règle "priorité
+    arrivée, repli sur départ SEULEMENT si arrivée NULL" (.fillna()), qui
+    masquait un retard de départ réel dès que l'arrivée était connue (même
+    à 0) : ~0,9 % des relevés en prod concernés, ~6-7 circulations/jour,
+    présent 68 jours sur 74 de collecte (voir mémoire du projet,
+    2026-09-24/25). .max(axis=1) ignore nativement les NaN, sauf si les
+    deux le sont — comportement voulu, équivalent exact de _EXPR_RETARD_S
+    côté SQL (app_fastapi.py). Décision utilisateur, 2026-09-24."""
+    return df[["retard_arrivee_min", "retard_depart_min"]].max(axis=1)
+
+
 def derniers_par_passage_avec_date(df):
     """Comme derniers_par_passage (voir plus bas), mais conserve aussi
     poll_time (date du dernier relevé de ce passage) — utilisé par
