@@ -38,7 +38,7 @@ Communes aux deux interfaces :
 - **Suivi d'un train** — évolution du retard relevé par relevé pour une circulation donnée.
 - **Perturbations** — alertes SNCF officielles et trajets annulés/arrêts supprimés détectés en temps réel.
 - **Vérification GTFS** — écart entre le référentiel utilisé par l'appli et les horaires SNCF actuellement publiés (disparus/modifiés/nouveaux/renommés).
-- **Quizz** — questions à choix multiples sur la bonne lecture des statistiques affichées (contenu statique dérivé du guide statistiques, `static/quizz.js`, 20 questions) ; un index permet de sauter directement à une question précise sans perdre la progression de la partie en cours.
+- **Quizz** (hors section mobile) — questions à choix multiples sur la bonne lecture des statistiques affichées (contenu statique dérivé du guide statistiques, `static/quizz.js`, 20 questions) ; un index permet de sauter directement à une question précise sans perdre la progression de la partie en cours.
 
 Propre à `viewer.py` :
 
