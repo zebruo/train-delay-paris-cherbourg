@@ -52,7 +52,7 @@ Propre à l'appli web :
 Propre à la section mobile (`/mobile`) :
 
 - **Mon train** — résout gare de départ + gare d'arrivée + jour de la semaine + heure théorique en train (jusqu'à 3 candidats proposés en cas d'ambiguïté), affiche sa carte de stats (% à l'heure, retard moyen/max, historique des 90 derniers jours) à la gare choisie — bascule possible entre départ et arrivée sans relancer une recherche.
-- **Tendances** — retards par heure ou par jour à une gare donnée, avec meilleur créneau / créneau à éviter.
+- **Tendances** — retards par heure ou par jour à une gare donnée, avec meilleur créneau / créneau le plus perturbé.
 - **Alertes** — travaux/perturbations actives et annulations récentes.
 - **Favoris** — trajets (gare/heure/train) enregistrés en local (`localStorage`, pas de compte utilisateur), stats rafraîchies à chaque ouverture de l'onglet.
 
@@ -94,10 +94,15 @@ Puis renseigner `PI2_HOST`, `PI4_HOST`, `VPS_HOST`, `NAS_HOST`,
 `CHEMIN_DISTANT_PI` et `CHEMIN_DISTANT_VPS` dans `config.py` (voir
 Architecture ci-dessus pour le rôle actuel de chaque Pi — `PI4_HOST` est la
 source active de production, `PI2_HOST` optionnel si un seul Pi suffit),
-et `NAS_HOST`/`SSH_KEY_NAS`/
+et `NAS_HOST`/`NAS_PORT`/`SSH_KEY_NAS`/
 `VPS_HOST`/`SSH_KEY_VPS` dans `config.sh` (utilisé par les scripts bash
 tournant sur le Pi, notamment `executer_rapport_pi.sh`), avec tes propres
-valeurs. `FREE_MOBILE_USER`/`FREE_MOBILE_PASS` dans `config.py` sont
+valeurs. `NAS_PORT` : port SSH du NAS s'il a été changé du défaut (22) —
+nécessite aussi `--rsync-path=/usr/bin/rsync` sur les appels `rsync` vers
+le NAS (déjà en place dans `sauvegarder_observations_nas.sh`/
+`envoyer_rapport_nas_pi.sh`) si le NAS est un Synology avec `rsync` setuid,
+sans quoi le transfert échoue silencieusement avec "Permission denied"
+malgré une authentification SSH réussie. `FREE_MOBILE_USER`/`FREE_MOBILE_PASS` dans `config.py` sont
 optionnels — uniquement sur la VPS, pour l'alerte SMS de `verifier_gtfs.py`
 quand « Nouveaux » reste > 0 plusieurs jours de suite (identifiants dans
 l'Espace Abonné Free -> Notifications par SMS), et pour celle de
