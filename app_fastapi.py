@@ -894,7 +894,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
         "sens_options": ["Tous"] + sorted(v for v in df["sens"].dropna().unique() if v),
     })
 
-    # Barre de stats du haut (Retard cumulé/max/Gare la + touchée...) :
+    # Barre de stats du haut (Retard cumulé/max/Retard moyen le + élevé...) :
     # affiche depuis toujours le total depuis le tout début de la collecte,
     # pas seulement la fenêtre glissante ci-dessus (df) — calculée en SQL sur
     # observations.db (voir calculer_stats_globales_sql, Phase 2 du bornage
@@ -1181,6 +1181,33 @@ def _lire_cache_rapport_historique(connexion, nom_periode, fin_local):
         return json.loads(contexte_json)
     except (ValueError, TypeError, json.JSONDecodeError):
         return None
+
+
+def _lire_cache_stats_globales_historique(connexion):
+    """Lit la ligne unique de cache_stats_globales_historique (écrite par
+    rafraichir_caches_historique.py) — même principe que
+    _lire_cache_graphique_historique, pour la barre de stats globale
+    (Gare/Train/Sens par défaut, "Limiter aux trains avec retard" décoché).
+    format_min_sans_zero (la fonction elle-même, non sérialisable) est
+    retirée avant écriture du cache par rafraichir_caches_historique.py —
+    ré-attachée ici après lecture, comme pour Rapports."""
+    try:
+        row = connexion.execute(
+            "SELECT derniere_maj_iso, contexte_json FROM cache_stats_globales_historique WHERE id = 1"
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    derniere_maj_iso, contexte_json = row
+    try:
+        if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
+            return None
+        contexte = json.loads(contexte_json)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+    contexte["format_min_sans_zero"] = format_min_sans_zero
+    return contexte
 
 
 def calculer_contexte_graphique(connexion, df_avant_retard, periode, gare, train, sens, limiter_ligne):
@@ -1470,7 +1497,7 @@ def _construire_where_sql(
     params dupliqués, "params + params") à chaque appel — mesuré sur
     observations.db réel : jusqu'à ~1s cumulés par barre de stats sur un
     filtre Gare, la même sous-requête étant recalculée 3 fois (Retard max/
-    cumulé, Gare la + touchée, Retard moyen). Matérialiser une seule fois
+    cumulé, Retard moyen le + élevé, Retard moyen). Matérialiser une seule fois
     par requête HTTP ramène ce coût à une seule évaluation."""
     conditions = []
     if exiger_retard_connu:
@@ -1613,7 +1640,7 @@ def _cte_dernier_par_passage_complet(where):
     pour chaque (trip_id, start_date, gare), seule la ligne la plus récente
     (poll_time DESC) via ROW_NUMBER() (SQLite >= 3.25, largement présent).
     Base commune à Retard max et Retard cumulé (calculer_stats_bloc,
-    formatting.py) — contrairement à Gare la + touchée, qui est une
+    formatting.py) — contrairement à Retard moyen le + élevé, qui est une
     moyenne brute sur TOUTES les lignes, pas sur ce dernier-connu. Garde
     trip_id/start_date/gare/poll_time (pas juste retard_min) : nécessaire à
     _materialiser_circulations_arrivees_periode, qui doit retrouver la
@@ -2069,14 +2096,12 @@ def _retard_max_et_cumule_sql(
         connexion.execute("DROP TABLE IF EXISTS temp.derniers_par_passage")
 
     # "train"/"trains" (pluriel éventuel) vit déjà dans le texte lui-même
-    # (mot_singulier/mot_pluriel non vides ci-dessus) — pas besoin du 2e
-    # élément du tuple ici, contrairement à Gare la + touchée plus bas
-    # (voir label_pire_gare, _pire_gare_et_moyenne_sql). dict(lignes_train)
+    # (mot_singulier/mot_pluriel non vides ci-dessus). dict(lignes_train)
     # -> Series : GROUP BY garantit des clés (train) uniques, aucun risque
     # de collision — réutilise formatting.texte_categorie_maximale (version
     # pandas) au lieu d'une copie locale sur tuples (audit de nettoyage,
     # 2026-08-19 : les deux étaient identiques à la structure d'entrée près).
-    retard_max_texte, _ = texte_categorie_maximale(
+    retard_max_texte = texte_categorie_maximale(
         pd.Series(dict(lignes_train)), "train", "trains", format_numero_train, lambda v: f"{v:.0f} min",
     )
     heures, minutes = divmod(round(somme), 60)
@@ -2087,7 +2112,7 @@ def _retard_max_et_cumule_sql(
 def _pire_gare_et_moyenne_sql(
     connexion, gare, train, sens, limiter_ligne, limiter_retard, debut_iso=None, fin_iso=None,
 ):
-    """Gare la + touchée (moyenne BRUTE de retard_min par gare, toutes les
+    """Retard moyen le + élevé (moyenne BRUTE de retard_min par gare, toutes les
     lignes, pas seulement le dernier relevé connu par passage — contrairement
     à Retard max/cumulé) ET Retard moyen / relevé (même moyenne, non groupée)
     — mesuré 2026-08-16 sur observations.db réel (défaut, sans filtre Gare) :
@@ -2118,10 +2143,15 @@ def _pire_gare_et_moyenne_sql(
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.releves_filtres")
 
-    pire_gare_texte, pire_gare_pluriel = texte_categorie_maximale(
+    pire_gare_texte = texte_categorie_maximale(
         pd.Series(dict(lignes_gare)), "", "", lambda g: g, lambda v: f"moy {format_min_sans_zero(v)} min",
     )
-    label_pire_gare = "Gare les + touchées" if pire_gare_pluriel else "Gare la + touchée"
+    # Libellé invariant (pas de forme plurielle à choisir, contrairement à
+    # avant) : nomme la MESURE ("Retard moyen le + élevé"), pas la gare —
+    # même principe que "Retard max"/"Retard cumulé" à côté. "Gare la +
+    # touchée" jugé trop connoté par l'utilisateur, 2026-09-27 (suggère un
+    # problème alors que l'écart entre gares est souvent minime).
+    label_pire_gare = "Retard moyen le + élevé"
     return moyenne, nb_releves, pire_gare_texte, label_pire_gare
 
 
@@ -2427,7 +2457,24 @@ def calculer_stats_globales_sql_avec_cache(connexion, gare, train, sens, limiter
     docstring de calculer_stats_globales_sql et _cache_resultats_stats_
     globales ci-dessus pour le pourquoi (calcul intrinsèquement coûteux,
     cache borné car il ne stocke que le petit dict de résultats, jamais de
-    DataFrame)."""
+    DataFrame).
+
+    Combinaison par défaut (Toutes/Tous/Tous/limiter_ligne coché/limiter_
+    retard décoché) : d'abord la version précalculée par rafraichir_caches_
+    historique.py (cron, ~15 min), quasi instantanée à lire, AVANT le cache
+    mémoire ci-dessous — celui-ci se vide entièrement à chaque nouveau
+    relevé (~5 min) et le premier appel qui suit repaie alors le calcul
+    complet en direct (mesuré 25s le 2026-09-27, base ayant grossi depuis
+    les ~7-20s d'origine, 2026-08-24) : changer d'onglet pile après une
+    collecte pouvait bloquer ~25s. Repli sur le cache mémoire/calcul live
+    inchangé pour les autres combinaisons (rares, jamais précalculées) ou
+    tant qu'aucun cache disque n'est encore disponible/à jour (juste après
+    déploiement, ou cron en panne — voir _lire_cache_stats_globales_
+    historique)."""
+    if _est_combinaison_filtres_par_defaut(gare, train, sens, limiter_ligne) and not limiter_retard:
+        contexte_cache = _lire_cache_stats_globales_historique(connexion)
+        if contexte_cache is not None:
+            return contexte_cache
     dernier_poll = connexion.execute("SELECT MAX(poll_time) FROM observations").fetchone()[0]
     cache = _cache_resultats_stats_globales
     if cache["dernier_poll"] != dernier_poll:
@@ -2475,7 +2522,7 @@ def _calculer_stats_globales_sql_interne(
     # len(df_filtre) côté pandas incluait les lignes sans retard connu (pas
     # de dropna) — exiger_retard_connu=False pour ce seul compte, comme
     # tooltip_resume_collecte l'explique déjà (plus large que "Retard
-    # moyen"/"Gare la + touchée"). limiter_retard=limiter_retard : len(df_
+    # moyen"/"Retard moyen le + élevé"). limiter_retard=limiter_retard : len(df_
     # filtre) applique restreindre_aux_trains_en_retard quand la case est
     # cochée (df_filtre, pas df_avant_retard, contrairement à total/en_retard
     # ci-dessus).
@@ -2498,7 +2545,7 @@ def _calculer_stats_globales_sql_interne(
         "départ tous deux vides) — visibles dans le Tableau avec « – » sur les colonnes "
         "Arr. et Dép., mais qui ne peuvent pas contribuer à une moyenne. C'est pourquoi ce "
         "nombre est légèrement supérieur à celui utilisé par « Retard moyen / relevé »/"
-        "« Gare la + touchée » ci-dessous, qui excluent ces cas."
+        "« Retard moyen le + élevé » ci-dessous, qui excluent ces cas."
     )
 
     # "depuis le début de la collecte" n'a de sens que pour la barre de
@@ -2565,8 +2612,8 @@ def _calculer_stats_globales_sql_interne(
             else f"depuis le tout début de la collecte, le {date_debut_collecte}"
         )
         tooltip_cumule = (
-            f"Plutôt pensé pour construire un dossier SNCF. "
-            f"Calculé {depuis_texte}."
+            f"Chiffre brut, tous retards confondus (plutôt pensé pour "
+            f"construire un dossier SNCF). Calculé {depuis_texte}."
         )
     else:
         stats = None
