@@ -389,6 +389,29 @@
             // l'utilisateur, 2026-09-24 (bandeau stats de Rapports resté
             // affiché en repassant sur Circulations via le cache).
             document.getElementById("stats").innerHTML = entree.statsHtml;
+            // #frise-contenu : même mécanisme, 3e élément SÉPARÉ de
+            // #zone-contenu (swap OOB htmx indépendant, présente sur CHAQUE
+            // requête réelle quel que soit l'onglet — voir
+            // calculer_contexte_frise, appelée après la branche par vue).
+            // Sans requête réseau ici, elle garde le dernier contenu reçu en
+            // direct (ex: la frise de "Suivi d'un train") au lieu de celui
+            // de l'onglet cachable qu'on réaffiche. Bug réel trouvé par
+            // l'utilisateur, 2026-09-27 (frise de Suivi d'un train restée
+            // affichée en repassant sur Circulations via le cache).
+            document.getElementById("frise-contenu").innerHTML = entree.friseHtml;
+            // #resume-collecte/#pct-a-lheure-releves/#badge-travaux : même
+            // mécanisme, mais compteurs GLOBAUX identiques quel que soit
+            // l'onglet à un instant donné — sans ce fix, le défaut restait
+            // invisible en pratique la plupart du temps (contrairement à
+            // #stats/#frise-contenu, dont le contenu dépend directement de
+            // l'onglet). Fenêtres de risque réelles mais étroites :
+            // ces compteurs périmés jusqu'au prochain rafraîchissement
+            // automatique (5 min max) après une nouvelle collecte, ou
+            // #badge-travaux figé si une alerte démarre/se termine pendant
+            // la navigation en cache. Ajoutés par cohérence, 2026-09-27.
+            document.getElementById("resume-collecte").innerHTML = entree.resumeHtml;
+            document.getElementById("pct-a-lheure-releves").innerHTML = entree.pctHtml;
+            document.getElementById("badge-travaux").innerHTML = entree.badgeHtml;
         }
 
         function activerOnglet(bouton, nom) {
@@ -412,6 +435,10 @@
                     horodatage: Date.now(),
                     html: document.getElementById("zone-contenu").innerHTML,
                     statsHtml: document.getElementById("stats").innerHTML,
+                    friseHtml: document.getElementById("frise-contenu").innerHTML,
+                    resumeHtml: document.getElementById("resume-collecte").innerHTML,
+                    pctHtml: document.getElementById("pct-a-lheure-releves").innerHTML,
+                    badgeHtml: document.getElementById("badge-travaux").innerHTML,
                 };
             }
         });
