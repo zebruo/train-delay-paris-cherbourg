@@ -17,6 +17,8 @@ import re
 import subprocess
 from zoneinfo import ZoneInfo
 
+from ssh_utils import executer_ssh
+
 # Les dates de rapport (noms de fichier PDF) sont des jours calendaires
 # français, pas des instants UTC — nécessaire pour comparer correctement
 # à "aujourd'hui" dans _rapport_etat ci-dessous, contrairement à l'écart en
@@ -44,10 +46,7 @@ def recuperer_etat_vps(vps_host, timeout=8):
     voyant doit pouvoir signaler) — la validité de la sortie est vérifiée
     directement ci-dessous plutôt que via le code de retour."""
     try:
-        resultat = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", vps_host, COMMANDE_DISTANTE],
-            capture_output=True, text=True, timeout=timeout,
-        )
+        resultat = executer_ssh(vps_host, COMMANDE_DISTANTE, timeout)
     except (subprocess.TimeoutExpired, OSError):
         return None
 
@@ -160,10 +159,7 @@ def _decouper_sections(sortie):
 
 def _executer(hote, commande, timeout):
     try:
-        resultat = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, commande],
-            capture_output=True, text=True, timeout=timeout,
-        )
+        resultat = executer_ssh(hote, commande, timeout)
     except (subprocess.TimeoutExpired, OSError):
         return None
     return resultat.stdout
