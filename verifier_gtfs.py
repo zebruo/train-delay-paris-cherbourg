@@ -284,13 +284,18 @@ def lancer_a_distance(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=30):
     (comme pour observations.db) : viewer.py doit re-rapatrier le fichier
     par rsync après cet appel plutôt que d'écrire dans sa propre copie
     locale. hote générique (pas "pi_host") : appelée avec VPS_HOST depuis
-    le 2026-08-13 (la VPS remplace le Pi). Retourne True/False."""
+    le 2026-08-13 (la VPS remplace le Pi). Retourne True/False.
+
+    Import de ssh_utils DIFFÉRÉ (pas en tête de fichier) : ce module tourne
+    aussi en cron sur la VPS (main(), 03:15), qui n'appelle jamais cette
+    fonction — un import en tête de fichier serait quand même évalué à
+    chaque lancement du cron et planterait si ssh_utils.py n'y est pas
+    déployé (il ne l'est pas, ce fichier est PC-only)."""
+    from ssh_utils import executer_ssh
+
     commande = f"cd {chemin_distant} && .venv/bin/python verifier_gtfs.py >> {LOG_FILE} 2>&1"
     try:
-        subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, commande],
-            capture_output=True, timeout=timeout, check=True,
-        )
+        executer_ssh(hote, commande, timeout, check=True, text=False)
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         return False
