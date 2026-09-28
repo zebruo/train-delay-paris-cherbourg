@@ -14,6 +14,7 @@ import urllib.request
 import zipfile
 
 from config import CHEMIN_DISTANT_VPS
+from ssh_utils import executer_ssh
 
 # Codes gare des 11 gares de la ligne. Un trajet est retenu s'il en dessert
 # au moins 2 — capture aussi bien les liaisons de bout en bout (Paris-
@@ -198,10 +199,7 @@ def lire_feed_version_distante(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=
     spécifique au Pi."""
     commande = f"cat {chemin_distant}/{META_FILE} 2>/dev/null"
     try:
-        resultat = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, commande],
-            capture_output=True, text=True, timeout=timeout,
-        )
+        resultat = executer_ssh(hote, commande, timeout)
         return json.loads(resultat.stdout).get("feed_version")
     except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError):
         return None
@@ -233,10 +231,7 @@ def deployer_vers_serveur(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=30):
         # mkdir -p d'abord : rsync ne crée pas le dossier distant gtfs/ tout
         # seul si l'arborescence n'existe pas encore là-bas (ex: premier
         # déploiement vers un serveur tout neuf).
-        subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, f"mkdir -p {chemin_distant}/{GTFS_DIR}"],
-            check=True, capture_output=True, timeout=timeout,
-        )
+        executer_ssh(hote, f"mkdir -p {chemin_distant}/{GTFS_DIR}", timeout, check=True, text=False)
         subprocess.run(
             ["rsync", "-az", f"{GTFS_DIR}/stops.txt", f"{hote}:{chemin_distant}/{GTFS_DIR}/stops.txt"],
             check=True, capture_output=True, timeout=timeout,
@@ -261,16 +256,13 @@ def redemarrer_service_vps(hote, service="train-delay", timeout=15):
     temps de le repérer. sudo passwordless déjà en place sur ce compte
     (voir mémoire du projet). Retourne True/False."""
     try:
-        subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, f"sudo systemctl restart {service}"],
-            check=True, capture_output=True, timeout=timeout,
-        )
+        executer_ssh(hote, f"sudo systemctl restart {service}", timeout, check=True, text=False)
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         return False
 
 
-def rafraichir_caches_historique_vps(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=60):
+def rafraichir_caches_historique_vps(hote, chemin_distant=CHEMIN_DISTANT_VPS, timeout=120):
     """Relance rafraichir_caches_historique.py sur la VPS par SSH — même
     principe que verifier_gtfs.lancer_a_distance, à appeler après
     redemarrer_service_vps() par le bouton "Déployer vers la VPS". Les 4
@@ -279,13 +271,14 @@ def rafraichir_caches_historique_vps(hote, chemin_distant=CHEMIN_DISTANT_VPS, ti
     mémoire) mais ne savent pas que le référentiel vient de changer — sans
     cet appel, ils continueraient de servir un contenu calculé avec
     l'ancien référentiel (libellés de trajet notamment) jusqu'au prochain
-    passage du cron (~15 min). Retourne True/False."""
+    passage du cron (~15 min). Retourne True/False.
+    timeout=120 (et non 60) : le script complet prend ~70s en conditions
+    réelles (mesuré le 2026-09-28, 5 caches), 60s était trop juste et
+    provoquait un TimeoutExpired silencieux (donc un retour False alors
+    que le rafraîchissement avait bien démarré côté VPS)."""
     commande = f"cd {chemin_distant} && .venv/bin/python3 rafraichir_caches_historique.py"
     try:
-        subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", hote, commande],
-            capture_output=True, timeout=timeout, check=True,
-        )
+        executer_ssh(hote, commande, timeout, check=True, text=False)
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         return False
