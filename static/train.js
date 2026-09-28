@@ -15,13 +15,31 @@ function traceRun(run, couleur) {
     };
 }
 
+// Point pas figé : l'info-bulle complète le retard connu par l'heure
+// d'arrivée estimée à ce point (déjà calculée côté serveur,
+// _construire_points_figes), sans quoi le chiffre seul pourrait passer pour
+// une heure d'arrivée confirmée. Deux formulations possibles : le train
+// est réellement sorti du flux avant d'atteindre cette gare (sorti_du_flux),
+// ou il est simplement encore en cours de trajet (rien d'anormal) — ne
+// jamais annoncer une sortie du flux dans ce 2e cas.
+function texteInfoBulleEscalier(point, donnees) {
+    const retard = point.y.toFixed(1) + " min";
+    if (!point.heure_estimee) return retard;
+    const precision = donnees.sorti_du_flux
+        ? "non confirmée — train sorti du flux à " + donnees.dernier_releve_texte
+        : "peut encore changer";
+    return retard + "<br>Arrivée estimée à " + point.gare + " : " + point.heure_estimee + "<br><i>" + precision + "</i>";
+}
+
 function dessinerEscalier(donnees) {
     const traces = donnees.runs.map((r) => traceRun(r, r.fige ? COULEUR_FIGE : COULEUR_PAS_FIGE));
     traces.push({
         x: donnees.points.map((p) => p.x), y: donnees.points.map((p) => p.y),
         type: "scatter", mode: "markers",
         marker: { size: 7, color: donnees.points.map((p) => (p.fige ? COULEUR_FIGE : COULEUR_PAS_FIGE)) },
-        showlegend: false, hovertemplate: "%{y:.1f} min<extra></extra>",
+        showlegend: false,
+        text: donnees.points.map((p) => texteInfoBulleEscalier(p, donnees)),
+        hovertemplate: "%{text}<extra></extra>",
     });
     // Légende manuelle (2 entrées fixes, comme _render_train_escalier) : une
     // trace fantôme par entrée, sans point réel affiché sur le graphique.

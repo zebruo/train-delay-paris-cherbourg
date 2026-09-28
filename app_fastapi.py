@@ -1040,14 +1040,17 @@ def _pct_en_retard(groupe):
     return 100 * en_retard / total if total else float("nan")
 
 
-def serie_avec_trous(serie, unite, explication_max, explication_moyenne):
+def serie_avec_trous(serie, unite, explication_max, explication_moyenne, explication_point):
     """Équivalent JSON de tracer_serie_temporelle + marquer_maximum +
     marquer_moyenne (graphiques.py), pour un tracé Plotly côté navigateur
     au lieu d'un ax matplotlib. Même détection de trou (écart > 10 min) et
     même coupure de la ligne principale juste avant chaque reprise — un
     point `null` dans "points" est un vrai trou pour Plotly (pas une
     interpolation), les segments "trous" sont tracés séparément en
-    pointillé gris côté JS."""
+    pointillé gris côté JS. explication_point : texte constant (pas par
+    point, un seul calcul) affiché au survol de n'importe quel point de la
+    courbe principale (static/graphique.js, traceLigne) — jusqu'ici cette
+    courbe n'avait aucune explication, juste la valeur brute."""
     serie = serie.sort_index()
     if serie.empty:
         return {"points": {"x": [], "y": []}, "trous": [], "max": None, "moyenne": None}
@@ -1089,7 +1092,10 @@ def serie_avec_trous(serie, unite, explication_max, explication_moyenne):
             "texte_explication": mise_en_forme_hover(explication_moyenne),
         }
 
-    return {"points": points, "trous": trous, "max": maximum, "moyenne": moyenne}
+    return {
+        "points": points, "trous": trous, "max": maximum, "moyenne": moyenne,
+        "explication_point": mise_en_forme_hover(explication_point),
+    }
 
 
 def _est_combinaison_filtres_par_defaut(gare, train, sens, limiter_ligne):
@@ -1324,17 +1330,18 @@ def _construire_reponse_graphique(moyenne_par_releve, pct_par_releve, nb_releves
     les 3 autres périodes), pour ne jamais laisser leurs textes/tooltips
     diverger."""
     explication_max_retard = (
-        "Indique le pic de tous les relevés à cet instant (selon les filtres actifs). "
-        "C'est différent du « Retard max » affiché juste au-dessus de ce graphique, qui est "
-        "le plus grand retard d'un seul train à un instant donné, pas une moyenne."
+        "Point le plus haut de cette moyenne. À ne pas confondre avec « Retard max » ci-dessus, "
+        "qui suit le plus grand retard d'un seul train sur tout son trajet, pas une moyenne."
     )
     explication_max_pct = (
-        "Indique le pic en % de trains simultanément en retard, à cet instant précis. "
-        "C'est différent des « circulations perturbées » affichées juste au-dessus de ce "
-        "graphique, qui comptent, sur toute la période, le nombre de circulations ayant eu "
-        "du retard à un moment de leur trajet, même rattrapé ensuite."
+        "Moment où la plus grande proportion de trains contrôlés est en retard en même temps. "
+        "À ne pas confondre avec « Circulations perturbées » ci-dessus, qui compte, sur toute "
+        "la période, les circulations ayant eu du retard à un moment de leur trajet, même "
+        "rattrapé ensuite."
     )
-    explication_moyenne = "Moyenne sur la période affichée, pour repérer si un point est au-dessus ou en dessous de la tendance."
+    explication_moyenne = "Moyenne de ces points, sur toute la période affichée (voir quizz)."
+    explication_point_retard = "Retard moyen de tous les trains contrôlés à cet instant (voir quizz)."
+    explication_point_pct = "% de trains en retard parmi tous les trains contrôlés à cet instant (voir quizz)."
 
     elements_filtres = []
     if _gare_est_filtree(gare):
@@ -1346,8 +1353,12 @@ def _construire_reponse_graphique(moyenne_par_releve, pct_par_releve, nb_releves
     suffixe_filtres = f" — {' · '.join(elements_filtres)}" if elements_filtres else ""
 
     donnees = {
-        "retard": serie_avec_trous(moyenne_par_releve, " min", explication_max_retard, explication_moyenne),
-        "pct": serie_avec_trous(pct_par_releve, " %", explication_max_pct, explication_moyenne),
+        "retard": serie_avec_trous(
+            moyenne_par_releve, " min", explication_max_retard, explication_moyenne, explication_point_retard,
+        ),
+        "pct": serie_avec_trous(
+            pct_par_releve, " %", explication_max_pct, explication_moyenne, explication_point_pct,
+        ),
         "titre_haut": "Évolution du retard moyen dans le temps" + suffixe_filtres,
         "titre_bas": "Évolution de la proportion de trains en retard" + suffixe_filtres,
         "periode": periode,
@@ -4121,14 +4132,34 @@ def construire_options_trajet(df_pour_trajets, df_complet, filtre_jour_retard, c
     return options
 
 
-def _construire_points_figes(ordre_gares, position_gare, start_date, horaires_par_gare, dernier_poll, valeur_gare):
+def _construire_points_figes(
+    ordre_gares, position_gare, start_date, horaires_par_gare, dernier_poll, valeur_gare, sorti_du_flux=False,
+):
     """Factorise la partie commune à calculer_escalier/calculer_dernier_releve
     (audit de nettoyage, 2026-08-17 : ces deux fonctions ne différaient que
     par la source du retard par gare) : pour chaque gare de l'ordre donné,
     récupère son retard via valeur_gare(gare) (None/NaN si non disponible —
     la gare est alors simplement absente du tracé), calcule "figé" par
     comparaison au dernier poll du trajet, puis wrap en {points, runs}
-    (voir _runs_json)."""
+    (voir _runs_json). Pour un point PAS figé (jamais confirmé — le train a
+    pu sortir du flux avant d'atteindre cette gare), heure_estimee reprend
+    ce même passage_estime (déjà calculé pour le test "figé" ci-dessus,
+    aucun coût supplémentaire) formaté "~HH:MM" via format_heure_reelle,
+    pour l'afficher dans l'info-bulle du point (static/train.js) — "" pour
+    un point figé (l'horaire réel est déjà connu via le retard lui-même,
+    pas besoin d'estimation). dernier_releve_texte (heure locale du dernier
+    poll du trajet) et sorti_du_flux accompagnent cette estimation dans
+    l'info-bulle : un point pas figé peut aussi bien signifier "le train est
+    encore en cours de trajet, cette gare n'est pas encore atteinte" (rien
+    d'anormal) que "le train est réellement sorti du flux avant d'y arriver"
+    — sorti_du_flux (calculé par l'appelant, qui seul connaît le dernier
+    poll TOUTES circulations confondues) distingue les deux, pour ne pas
+    annoncer à tort une sortie du flux sur une circulation toujours active.
+    Chaque point porte aussi son nom de gare (format_gare) : sans lui,
+    "Arrivée estimée : ~13:46" sur une gare INTERMÉDIAIRE (ex: Bayeux) peut
+    se lire à tort comme l'arrivée du train à son terminus — alors que ce
+    n'est qu'une estimation locale à CETTE gare, remontée utilisateur
+    2026-09-28."""
     points = []
     for gare in ordre_gares:
         retard = valeur_gare(gare)
@@ -4136,23 +4167,34 @@ def _construire_points_figes(ordre_gares, position_gare, start_date, horaires_pa
             continue
         passage_estime = estimer_passage_reel(horaires_par_gare.get(gare), start_date, retard)
         fige = passage_estime is not None and passage_estime <= dernier_poll
-        points.append((position_gare[gare], round(float(retard), 1), bool(fige)))
+        heure_estimee = "" if fige or passage_estime is None else format_heure_reelle(passage_estime.timestamp())
+        points.append((position_gare[gare], round(float(retard), 1), bool(fige), heure_estimee, format_gare(gare)))
 
     return {
-        "points": [{"x": x, "y": y, "fige": f} for x, y, f in points],
+        "points": [{"x": x, "y": y, "fige": f, "heure_estimee": h, "gare": g} for x, y, f, h, g in points],
         "runs": _runs_json(points),
+        "dernier_releve_texte": pd.Timestamp(dernier_poll).tz_convert(PARIS_TZ).strftime("%H:%M"),
+        "sorti_du_flux": sorti_du_flux,
     }
 
 
-def calculer_escalier(trajet, ordre_gares, position_gare, start_date, horaires_par_gare):
+def calculer_escalier(trajet, ordre_gares, position_gare, start_date, horaires_par_gare, dernier_poll_global):
     """Porte _render_train_escalier (viewer.py:2113-2158) : dernière valeur
     connue par gare, jugée "figée" (déjà passée) ou non par rapport au tout
-    dernier relevé du trajet."""
+    dernier relevé du trajet. dernier_poll_global (_cache_observations
+    ["dernier_poll"] côté appelant, TOUTES circulations confondues, déjà
+    tenu à jour sans coût — voir _charger_observations_incremental) sert
+    uniquement à distinguer,
+    pour un point pas figé, une circulation réellement sortie du flux (son
+    dernier poll est plus ancien que dernier_poll_global) d'une circulation
+    encore active (son dernier poll EST dernier_poll_global) — voir
+    _construire_points_figes."""
     dernier_poll_trajet = pd.to_datetime(trajet["poll_time"]).max()
     dernieres = trajet.sort_values("poll_time").groupby("gare").last()
     return _construire_points_figes(
         ordre_gares, position_gare, start_date, horaires_par_gare, dernier_poll_trajet,
         lambda gare: dernieres.loc[gare, "retard_min"] if gare in dernieres.index else None,
+        sorti_du_flux=dernier_poll_trajet < dernier_poll_global,
     )
 
 
@@ -4311,7 +4353,10 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
         )
 
     if vue_train == "Escalier":
-        donnees_vue = calculer_escalier(trajet, ordre_gares, position_gare, start_date, horaires_par_gare)
+        donnees_vue = calculer_escalier(
+            trajet, ordre_gares, position_gare, start_date, horaires_par_gare,
+            pd.Timestamp(_cache_observations["dernier_poll"]),
+        )
     else:
         donnees_vue = calculer_detail(trajet, ordre_gares, position_gare, start_date, horaires_par_gare)
 

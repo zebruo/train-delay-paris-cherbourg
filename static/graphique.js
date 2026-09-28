@@ -4,7 +4,7 @@
 // point max, moyenne) sont calculées côté serveur (voir serie_avec_trous,
 // app_fastapi.py) ; ce fichier ne fait que les transformer en traces Plotly.
 
-function traceLigne(serie, couleur, axeX, axeY, nom) {
+function traceLigne(serie, couleur, axeX, axeY, nom, unite) {
     return {
         x: serie.points.x, y: serie.points.y,
         type: "scatter", mode: "lines+markers",
@@ -12,7 +12,8 @@ function traceLigne(serie, couleur, axeX, axeY, nom) {
         marker: { size: 3 },
         name: nom,
         xaxis: axeX, yaxis: axeY,
-        hovertemplate: "%{y}<br>%{x}<extra></extra>",
+        hovertemplate: "%{y}" + unite + "<br>%{x}<br>" + serie.explication_point + "<extra></extra>",
+        hoverlabel: { align: "left" },
     };
 }
 
@@ -129,6 +130,7 @@ function dessinerGraphique(donnees) {
     window._donneesGraphique = donnees;
     const couleurs = { retard: "#1f77b4", pct: "#c2410c" };
     const noms = { retard: "Retard moyen (min)", pct: "% trains en retard" };
+    const unites = { retard: " min", pct: " %" };
     const axes = { retard: { x: "x", y: "y" }, pct: { x: "x2", y: "y2" } };
 
     const traces = [];
@@ -136,7 +138,7 @@ function dessinerGraphique(donnees) {
         const serie = donnees[cle];
         const { x: axeX, y: axeY } = axes[cle];
         traces.push(traceTrous(serie, axeX, axeY, i === 0));
-        traces.push(traceLigne(serie, couleurs[cle], axeX, axeY, "Relevés — " + noms[cle]));
+        traces.push(traceLigne(serie, couleurs[cle], axeX, axeY, "Relevés — " + noms[cle], unites[cle]));
         const max = traceMax(serie, couleurs[cle], axeX, axeY);
         if (max) traces.push(max);
         const moyenne = traceMoyenne(serie, couleurs[cle], axeX, axeY);

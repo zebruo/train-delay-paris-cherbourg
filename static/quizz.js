@@ -69,16 +69,16 @@ const QUIZZ_QUESTIONS = [
             "<p>Retard cumulé « reflète l'état final réel » : il ne garde que le dernier retard connu à chaque passage en gare. Retard moyen / relevé « reflète toute l'histoire des prédictions même corrigées » : il moyenne chaque relevé individuel du système, y compris les signaux d'alerte temporaires vus en temps réel puis rattrapés.</p>" +
             "<p>Exemple : 2 trains, interrogés toutes les 5 min à chacune de leurs gares (comme le fait vraiment le collecteur).</p>" +
             "<pre class=\"quizz-exemple\">Train 1 — Gare A : 0, 0, 0, 0, 0            (5 relevés, dernier = 0)\n" +
-            "Train 1 — Gare B : 0, 0, 0                  (3 relevés, dernier = 0)\n" +
+            "Train 1 — Gare B : 0, 10, 0                 (3 relevés, dernier = 0)\n" +
             "Train 1 — Gare C (terminus) : 0, 0, 5, 8, 8 (5 relevés, dernier = 8)\n\n" +
             "Train 2 — Gare A : 0, 0, 0, 0               (4 relevés, dernier = 0)\n" +
             "Train 2 — Gare B : 0, 0, 0, 3, 3            (5 relevés, dernier = 3)\n" +
             "Train 2 — Gare C (terminus) : 0, 0, 10, 15, 15, 15 (6 relevés, dernier = 15)\n\n" +
-            "Retard cumulé (dernier relevé, 1 fois par passage — 6 passages) :\n" +
+            "Retard cumulé (dernier relevé retenu de chaque passage — 6 passages) :\n" +
             "(0 + 0 + 8) + (0 + 3 + 15) = 26 min\n\n" +
             "Retard moyen / relevé (tous les relevés, sans exception — 28 relevés) :\n" +
-            "82 ÷ 28 ≈ 2,93 min</pre>" +
-            "<p>19 des 28 relevés sont à 0 min (trains à l'heure la plupart du temps) — ils ne comptent pour rien dans le Retard cumulé (seul le dernier par passage compte), mais pèsent pleinement dans le Retard moyen / relevé. D'où l'écart : 26 ÷ 6 passages ferait 4,33 min, très différent des 2,93 min réellement obtenus.</p>",
+            "92 ÷ 28 ≈ 3,29 min</pre>" +
+            "<p>18 des 28 relevés sont à 0 min (trains à l'heure la plupart du temps) — ils ne comptent pour rien dans le Retard cumulé (seul le dernier relevé de chaque passage compte), mais pèsent pleinement dans le Retard moyen / relevé (relevé à 10 min de Train 1 — Gare B).</p>",
     },
     {
         question: "La stat « Retard moyen / relevé » (barre du haut) et la courbe de l'onglet Graphique donnent souvent des valeurs légèrement différentes (ex: 1.1 min vs 1 min) sur la même période. Pourquoi ?",
@@ -257,10 +257,10 @@ const QUIZZ_QUESTIONS = [
         explication: "La frise reste toujours restreinte à une fenêtre fixe de 7 jours et aux 11 gares de la ligne, et ignore volontairement « Limiter aux trains avec retard » (qui gonflerait artificiellement la moyenne affichée gare par gare, en excluant les trains ponctuels) — alors que le « Retard moyen par relevé » de la barre du haut suit tous les filtres actifs (Gare/Train/Sens/Limiter aux trains avec retard) sur toute la période choisie. Deux indicateurs qui se ressemblent mais ne répondent pas à la même question.",
     },
     {
-        question: "« Retard moyen le + élevé » désigne la gare avec le retard moyen par relevé le plus élevé. Un seul train très en retard, resté dans le flux temps réel plusieurs dizaines de minutes (donc sondé à répétition), peut-il à lui seul faire basculer ce classement ?",
+        question: "Un seul train très en retard, resté dans le flux temps réel plusieurs dizaines de minutes (donc sondé à répétition), peut-il à lui seul faire basculer le classement « Retard moyen le + élevé » ?",
         choix: [
             "Non, chaque train ne compte qu'une seule fois dans cette moyenne",
-            "Oui — et rien dans ce chiffre ne permet de savoir si une gare l'emporte à cause d'un vrai gros problème ou simplement parce qu'un train y est resté sondé plus longtemps",
+            "Oui — et rien dans ce chiffre ne permet de savoir si une gare l'emporte à cause d'un vrai problème ou simplement parce qu'un train y est resté sondé plus longtemps",
             "Non, seule la dernière valeur connue de chaque train compte",
             "Oui, mais uniquement si ce train dessert au moins 3 gares différentes",
         ],
@@ -268,16 +268,18 @@ const QUIZZ_QUESTIONS = [
         explication: "« Retard moyen le + élevé » moyenne à plat tous les relevés individuels, donc un seul train très en retard, sondé à répétition, peut suffire à faire basculer ce classement.",
         explicationHTML:
             "<p>« Retard moyen le + élevé » moyenne à plat tous les relevés individuels, donc un seul train très en retard, sondé à répétition, peut suffire à faire basculer ce classement.</p>" +
-            "<p>Exemple : Gare A n'a qu'un seul train perturbé ce jour-là, mais très en retard et resté longtemps dans le flux ; Gare B a 5 trains différents, chacun un peu en retard.</p>" +
+            "<p>Exemple : Gare A a 1 train très perturbé et resté longtemps dans le flux et 5 autres ponctuels ; Gare B a 5 trains différents, chacun un peu en retard.</p>" +
             "<pre class=\"quizz-exemple\">Gare A — 1 train à 60 min, resté 45 min dans le flux (10 relevés) :\n" +
             "10 relevés à 60 min\n" +
             "Gare A — 5 autres trains ponctuels, 1 relevé chacun :\n" +
             "5 relevés à 0 min\n\n" +
-            "Gare B — 5 trains DIFFÉRENTS à 8 min chacun, 1 relevé chacun :\n" +
-            "5 relevés à 8 min\n\n" +
+            "Gare B — 3 trains différents à 15 min chacun, 1 relevé chacun :\n" +
+            "3 relevés à 15 min\n" +
+            "Gare B — 2 trains différents à 10 min chacun, 1 relevé chacun :\n" +
+            "2 relevés à 10 min\n\n" +
             "Retard moyen Gare A : (10 × 60 + 5 × 0) ÷ 15 = 40 min\n" +
-            "Retard moyen Gare B : (5 × 8) ÷ 5 = 8 min</pre>" +
-            "<p>Il ne distingue pas un vrai problème touchant plusieurs trains d'un seul train très en retard resté longtemps dans le flux. Son utilité est plutôt de pointer vers quelque chose à vérifier, un signal à creuser (aller aussi regarder l'onglet « Circulations » pour cette gare).</p>",
+            "Retard moyen Gare B : (3 × 15 + 2 × 10) ÷ 5 = 13 min</pre>" +
+            "<p>Le classement place pourtant Gare A devant Gare B (40 min contre 13 min), alors que Gare B a davantage de circulations concernées (5 contre 1) — ce chiffre seul ne dit rien sur l'ampleur réelle du problème. Son utilité est plutôt de pointer vers quelque chose à vérifier, un signal à creuser (aller aussi regarder l'onglet « Circulations » pour cette gare).</p>",
     },
 ];
 
