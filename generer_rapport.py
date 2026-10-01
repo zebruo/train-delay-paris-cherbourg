@@ -49,7 +49,7 @@ from formatting import (
     LABEL_RETARD_MOYEN_ELEVE, PARIS_TZ, build_stop_names, build_trip_data, calculer_periode, calculer_retard_min,
     choisir_variante, cle_circulation, derniers_par_passage, derniers_par_passage_avec_date, estimer_passage_reel,
     format_gare, format_heure_avec_arret, format_min_sans_zero, format_numero_train,
-    load_calendrier, load_reference, texte_categorie_maximale, texte_periode_rapport,
+    load_calendrier, load_reference, texte_categorie_maximale, texte_ecart_points, texte_periode_rapport,
     titre_dynamique_jour_heure,
 )
 
@@ -528,10 +528,22 @@ def generer(nom_periode, maintenant=None):
     # compteur, 2026-08-20 (aucune annulation "sur la ligne" ce jour-là).
     if annulations_periode.empty:
         noms_annulations = []
+        nb_circulations_annulees = 0
     else:
         annulations_periode = annulations_periode[annulations_periode.apply(_touche_la_ligne, axis=1)]
         noms_annulations = sorted({format_numero_train(t) for t in annulations_periode["train"]})
-    nb_annulations = len(noms_annulations)
+        # Une ligne par circulation (train + date) : perturbations.
+        # enregistrer_evenements dédoublonne déjà à l'écriture par (type,
+        # trip_id, start_date) — même compte que le tableau dépliable du web
+        # (_construire_detail_annulations, app_fastapi.py).
+        nb_circulations_annulees = len(annulations_periode)
+    # Deux comptes distincts depuis le 2026-10-01 : le libellé dit
+    # "Circulations annulées", mais le chiffre affiché comptait les TRAINS
+    # (dédoublonnés) — 83 en septembre 2026 contre 102 circulations dans le
+    # tableau du web, jugé trompeur par l'utilisateur. Le chiffre principal
+    # compte maintenant les circulations, le nombre de trains passe entre
+    # parenthèses devant la liste des numéros.
+    nb_trains_annules = len(noms_annulations)
 
     # Météo : une valeur par (poll_time, gare) dans les données sources (une
     # requête par gare distincte, voir collect_realtime.py), mais répétée sur
@@ -781,17 +793,22 @@ def generer(nom_periode, maintenant=None):
     )
     # Invisible des stats de retard ci-dessus (voir circulation_est_arrivee)
     # — d'où sa propre ligne, plutôt qu'un chiffre de plus noyé dans ligne2.
-    if nb_annulations > SEUIL_TRAINS_ANNULES_AFFICHES:
-        reste = nb_annulations - SEUIL_TRAINS_ANNULES_AFFICHES
+    if nb_trains_annules > SEUIL_TRAINS_ANNULES_AFFICHES:
+        reste = nb_trains_annules - SEUIL_TRAINS_ANNULES_AFFICHES
         noms_texte = (
             f"{', '.join(noms_annulations[:SEUIL_TRAINS_ANNULES_AFFICHES])} "
             f"et {reste} autre{'s' if reste > 1 else ''}"
         )
     else:
         noms_texte = ", ".join(noms_annulations)
+    # Nombre de trains précisé seulement s'il diffère du nombre de
+    # circulations (un même train annulé plusieurs jours) — sinon la ligne
+    # s'allongerait pour rien dans le cas courant (quotidien).
+    if nb_trains_annules != nb_circulations_annulees:
+        noms_texte = f"{nb_trains_annules} train{'s' if nb_trains_annules > 1 else ''} : {noms_texte}"
     texte_annulations = (
-        f"Circulations annulées  : {nb_annulations} ({noms_texte})."
-        if nb_annulations else "Circulations annulées  : aucune."
+        f"Circulations annulées  : {nb_circulations_annulees} ({noms_texte})."
+        if nb_circulations_annulees else "Circulations annulées  : aucune."
     )
     # Un seul ax_stats.text() multi-lignes (\n) pour tout ce détail, plutôt
     # que 5 appels séparés à des fractions d'axe choisies à la main : chaque
@@ -832,13 +849,27 @@ def generer(nom_periode, maintenant=None):
         # lorsqu'elle apporte une vraie comparaison.
         if moyenne_mois is not None and moyenne_mois_precedent is not None:
             delta = moyenne_mois - moyenne_mois_precedent
-            couleur_delta = "#c0392b" if delta > 0 else "#2f855a"
+            texte_ecart = texte_ecart_points(delta)
+            # Rouge = plus de circulations perturbées que le mois précédent
+            # (dégradation), vert = moins (amélioration), gris neutre si
+            # "stable" — avant le 2026-10-01 un écart nul passait en vert
+            # (simple "else"), comme une amélioration.
+            if texte_ecart == "stable":
+                couleur_delta = "#555"
+            else:
+                couleur_delta = "#c0392b" if delta > 0 else "#2f855a"
             texte_comparaison = (
                 f"{moyenne_mois:.0f} % de circulations perturbées ce mois-ci, contre "
-                f"{moyenne_mois_precedent:.0f} % le mois précédent "
-                f"({'+' if delta >= 0 else ''}{delta:.0f} points)"
+                f"{moyenne_mois_precedent:.0f} % le mois précédent ({texte_ecart})"
             )
-            ax_d.text(0, 0.5, texte_comparaison, fontsize=8.5, color=couleur_delta, va="center")
+            # Centrée sur la page ENTIÈRE (même transform mixte que le titre,
+            # voir transform_titre plus haut, pour la même raison) et
+            # remontée vers le bloc de stats (y=0.85 au lieu de 0.5 dans sa
+            # rangée) — demande explicite de l'utilisateur, 2026-10-01 : elle
+            # était calée à gauche et trop éloignée des stats.
+            transform_comparaison = blended_transform_factory(fig.transFigure, ax_d.transAxes)
+            ax_d.text(0.5, 0.85, texte_comparaison, fontsize=8.5, color=couleur_delta,
+                      va="center", ha="center", transform=transform_comparaison)
 
         ax_a = fig.add_subplot(gs[3, :])
         ax_b = fig.add_subplot(gs[4, :])

@@ -374,6 +374,22 @@ def format_min_sans_zero(valeur):
     return f"{arrondi:.0f}" if arrondi == int(arrondi) else f"{arrondi:.1f}"
 
 
+def texte_ecart_points(delta):
+    """Écart entre deux pourcentages, en points, pour la comparaison "ce
+    mois-ci / le mois précédent" du rapport mensuel (PDF et onglet web
+    Rapports — un seul point de vérité pour que les deux disent la même
+    chose). Une décimale ("-0.2 point", "+3.4 points"), "stable" si l'écart
+    arrondi est nul — avant le 2026-10-01 l'écart était arrondi à l'entier
+    en gardant son signe, d'où un "-0 points" incompréhensible pour un
+    écart réel de -0.2 (septembre 2026 : 19.69 % contre 19.89 %), repéré
+    par l'utilisateur. "point" au singulier sous 2, comme en français."""
+    arrondi = round(delta, 1)
+    if arrondi == 0:
+        return "stable"
+    unite = "point" if abs(arrondi) < 2 else "points"
+    return f"{'+' if arrondi > 0 else '-'}{format_min_sans_zero(abs(arrondi))} {unite}"
+
+
 # Libellé de la stat "gare avec le retard moyen le plus élevé" — un seul
 # point de vérité plutôt que recopié à la main dans app_fastapi.py et
 # generer_rapport.py (audit de nettoyage, 2026-09-28 : la formule de fusion

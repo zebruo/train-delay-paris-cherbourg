@@ -62,6 +62,7 @@ from formatting import (
     load_reference,
     resoudre_trains_pour_gare_heure,
     texte_categorie_maximale,
+    texte_ecart_points,
     texte_periode_rapport,
     titre_dynamique_jour_heure,
     trajet_origine_destination,
@@ -606,10 +607,13 @@ def annulations_periode(evenements_df, debut_local, fin_local, variantes, calend
 def _evenements_annules_filtres_ligne(evenements_df, debut_local, fin_local, variantes, calendrier):
     """Événements "trajet_annule" dans [debut_local, fin_local) dont le
     trajet théorique touche au moins une des 11 gares de la ligne — factorisé
-    entre annulations_periode (compte dédoublonné par train, pour la stat
-    d'en-tête) et _construire_detail_annulations (une ligne par occurrence,
-    pour le tableau dépliable), qui appliquaient ce même filtre en double
-    avant cette factorisation, 2026-09-24."""
+    entre annulations_periode (compte dédoublonné par train) et
+    _construire_detail_annulations (une ligne par occurrence, pour le
+    tableau dépliable), qui appliquaient ce même filtre en double avant
+    cette factorisation, 2026-09-24. Depuis le 2026-10-01, le chiffre
+    principal de la carte "Circulations annulées" (_stats.html) est le
+    nombre de lignes de _construire_detail_annulations (circulations), le
+    compte par train ne sert plus qu'à préciser "N trains" dans le bouton."""
     debut_utc = debut_local.tz_convert("UTC")
     fin_utc = fin_local.tz_convert("UTC")
     annules = evenements_df[
@@ -634,11 +638,10 @@ def _evenements_annules_filtres_ligne(evenements_df, debut_local, fin_local, var
 
 
 def _construire_detail_annulations(evenements_df, debut_local, fin_local, variantes, calendrier):
-    """Détail dépliable de "Circulations annulées" (quotidien/hebdomadaire
-    seulement, jamais mensuel — même restriction que detail_perturbees/
-    detail_retard_cumule, voir calculer_contexte_rapport_sql : la liste
-    dépasserait vite plusieurs centaines de lignes sur un mois, perdant tout
-    intérêt de vue d'ensemble). Une ligne par ANNULATION DISTINCTE
+    """Détail dépliable de "Circulations annulées", pour toutes les périodes
+    mensuel compris (étendu au mensuel le 2026-10-01, voir calculer_
+    contexte_rapport_sql — contrairement à detail_perturbees/detail_retard_
+    cumule, restés quotidien/hebdomadaire). Une ligne par ANNULATION DISTINCTE
     (train+date), pas dédoublonnée par train contrairement à
     annulations_periode : un même train annulé 2 jours différents dans la
     semaine y apparaît 2 fois, chacune avec sa propre date/cause."""
@@ -3700,14 +3703,19 @@ def calculer_contexte_rapport_sql(connexion, nom_periode, maintenant_utc=None):
             contexte["nb_significatives_retard_cumule"] = sum(
                 1 for d in contexte["detail_retard_cumule"] if d["statut"] == "significatif"
             )
-            # Détail dépliable de "Circulations annulées" (même restriction
-            # quotidien/hebdomadaire que ci-dessus) — contexte["annulations"]
-            # (compte dédoublonné par train, calculé plus haut pour toutes
-            # les périodes y compris mensuel) reste inchangé.
-            contexte["detail_annulations"] = _construire_detail_annulations(
-                evenements_df, debut_local, fin_local,
-                reference_donnees["variantes"], reference_donnees["calendrier"],
-            )
+        # Détail dépliable de "Circulations annulées" — pour TOUTES les
+        # périodes, mensuel compris (contrairement aux deux détails
+        # ci-dessus) : sur un mois, la liste reste de l'ordre de la centaine
+        # de lignes (102 en septembre 2026, dont 71 pour une grève), pas
+        # plusieurs centaines, alors que sans ce tableau _stats.html
+        # retombait sur la liste brute des numéros séparés par des virgules
+        # (83 trains en septembre), illisible — demande explicite de
+        # l'utilisateur, 2026-10-01. contexte["annulations"] (compte
+        # dédoublonné par train, calculé plus haut) reste inchangé.
+        contexte["detail_annulations"] = _construire_detail_annulations(
+            evenements_df, debut_local, fin_local,
+            reference_donnees["variantes"], reference_donnees["calendrier"],
+        )
     finally:
         connexion.execute("DROP TABLE IF EXISTS temp.circulations_arrivees_periode")
         connexion.execute("DROP TABLE IF EXISTS temp.derniers_complet_periode")
@@ -3831,6 +3839,13 @@ def calculer_contexte_rapport_pour_affichage(connexion, nom_periode):
             "rapport_mensuel": True,
             "rapport_moyenne_mois": ctx["moyenne_mois"],
             "rapport_moyenne_mois_precedent": ctx["moyenne_mois_precedent"],
+            # Même texte que le PDF (formatting.texte_ecart_points) : "-0.2
+            # point"/"stable" plutôt que l'ancien "-0 points" — 2026-10-01.
+            "rapport_texte_ecart": (
+                texte_ecart_points(ctx["moyenne_mois"] - ctx["moyenne_mois_precedent"])
+                if ctx["moyenne_mois"] is not None and ctx["moyenne_mois_precedent"] is not None
+                else None
+            ),
             "rapport_graph_pct_jour_json": json_pour_script({
                 "x": [d.strftime("%Y-%m-%d") for d in pct_par_jour.index],
                 "y": [None if pd.isna(v) else round(float(v), 1) for v in pct_par_jour],

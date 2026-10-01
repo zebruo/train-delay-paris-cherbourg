@@ -57,10 +57,9 @@
         {% if rapport_moyenne_mois is not none %}
             <p class="rapport-comparaison">
                 {% if rapport_moyenne_mois_precedent is not none %}
-                    {% set delta = rapport_moyenne_mois - rapport_moyenne_mois_precedent %}
                     {{ "%.0f"|format(rapport_moyenne_mois) }} % de circulations perturbées ce mois-ci, contre
                     {{ "%.0f"|format(rapport_moyenne_mois_precedent) }} % le mois précédent
-                    ({{ "+" if delta >= 0 else "" }}{{ "%.0f"|format(delta) }} points)
+                    ({{ rapport_texte_ecart }})
                 {% else %}
                     {{ "%.0f"|format(rapport_moyenne_mois) }} % de circulations perturbées ce mois-ci
                     (comparaison au mois précédent indisponible)
