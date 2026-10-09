@@ -62,3 +62,9 @@ diag_vps.png
 # 2026-08-17) — à supprimer une fois l'investigation terminée
 surveiller_stoparea.py
 surveiller_stoparea_control.py
+
+# Script d'analyse ponctuel (circulations "sorti du flux" jamais comptées
+# dans les rapports, voir mémoire du projet, 2026-10-09) — lecture seule,
+# jamais appelé par l'appli, gardé sur disque pour pouvoir relancer
+# l'analyse mais pas suivi en git
+analyse_sans_terminus.py
