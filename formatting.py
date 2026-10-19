@@ -995,6 +995,27 @@ def resoudre_trains_pour_gare_heure(
 
 
 SEUIL_VARIANTE_PROCHE_MIN = 5
+# Une variante qui ne circule que sur une courte période (travaux, horaire
+# ponctuel) affiche aussi ses dates, même sans voisine à moins de
+# SEUIL_VARIANTE_PROCHE_MIN minutes — cas réel du train 3344 à Caen,
+# 2026-10-19 : variante 14h35 → 17h02 « Circule : Sam » qui ne roule en fait
+# que les samedis 21/11 et 28/11 (variante voisine la plus proche à 10 min),
+# affichée sans dates, comme si elle partait à 14h35 tous les samedis.
+SEUIL_VARIANTE_COURTE_JOURS = 28
+
+
+def _duree_plage_jours(date_min, date_max):
+    """Nombre de jours entre deux dates 'JJ/MM' sans année (bornes d'une
+    variante, voir _jours_semaine_actifs) — même hypothèse que
+    _cle_recence_date_max : une plage ne dure jamais plus d'un an (fenêtre
+    glissante ~151 jours du GTFS), donc date_max « avant » date_min dans
+    l'année signifie qu'elle franchit un 31/12. Année 2000 (bissextile)
+    arbitraire, juste pour que le 29/02 reste une date valide."""
+    debut = datetime.strptime(f"{date_min}/2000", "%d/%m/%Y")
+    fin = datetime.strptime(f"{date_max}/2000", "%d/%m/%Y")
+    if fin < debut:
+        fin = fin.replace(year=2001)
+    return (fin - debut).days
 
 
 def _horaire_variable_texte(minutes, date_min, date_max, entrees_train):
@@ -1021,12 +1042,38 @@ def _horaire_variable_texte(minutes, date_min, date_max, entrees_train):
     plage affichée — 'toutes périodes confondues' reste neutre dans les
     deux cas. date_min/date_max : période de la VARIANTE SÉLECTIONNÉE
     uniquement (pas une heuristique de proximité — juste les vraies bornes
-    de dates de ce service_id, voir _jours_semaine_actifs)."""
+    de dates de ce service_id, voir _jours_semaine_actifs).
+
+    Affichée aussi, depuis le 2026-10-19, quand la variante elle-même ne
+    circule que sur moins de SEUIL_VARIANTE_COURTE_JOURS jours (voir ce
+    seuil), même sans voisine proche — sauf si une autre variante du même
+    train part à la même minute (horaire découpé en morceaux, voir plus bas)."""
+    if date_min is None or date_max is None:
+        return None
     a_un_voisin = any(
         m != minutes and abs(m - minutes) <= SEUIL_VARIANTE_PROCHE_MIN
         for m, _, _ in entrees_train
     )
-    if not a_un_voisin or date_min is None or date_max is None:
+    # « Courte » seulement si aucune AUTRE variante du même train ne part à
+    # la même minute de cette gare : la SNCF découpe souvent un même horaire
+    # en plusieurs service_id successifs de quelques semaines — afficher les
+    # dates d'un seul de ces morceaux laisserait croire que l'horaire s'arrête
+    # ensuite. Mesuré le 2026-10-19 sur le référentiel : sans cette condition,
+    # 17,8 % des horaires auraient affiché des dates (4 056 morceaux d'un même
+    # horaire) ; avec, 0,3 % (78 variantes réellement ponctuelles, surtout des
+    # week-ends de travaux).
+    # Jumelle = même minute ET autre période : entrees_train contient une
+    # entrée par destination possible (voir construire_index_gare_heure), la
+    # même variante y figure donc plusieurs fois avec les mêmes bornes.
+    a_une_jumelle = any(
+        m == minutes and (d_min, d_max) != (date_min, date_max)
+        for m, d_min, d_max in entrees_train
+    )
+    variante_courte = (
+        not a_une_jumelle
+        and _duree_plage_jours(date_min, date_max) < SEUIL_VARIANTE_COURTE_JOURS
+    )
+    if not a_un_voisin and not variante_courte:
         return None
     return (
         f"{minutes // 60:02d}h{minutes % 60:02d} → du {date_min} au {date_max}. "
