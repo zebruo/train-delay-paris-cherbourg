@@ -314,7 +314,13 @@ def verifier_alerte_meteofrance(meteofrance_a_reussi, maintenant):
         pass
 
 
-def main():
+# NOSONAR sur la ligne ci-dessous : avertissement « complexité cognitive 42 >
+# 15 » (règle python:S3776) volontairement ignoré — main() est un
+# enchaînement linéaire et commenté de 4 étapes (flux, extraction,
+# enrichissement, insertion) ; la découper toucherait au script de collecte
+# de production (toutes les 5 min sur la VPS) sans aucun gain fonctionnel.
+# Décision de l'utilisateur, 2026-11-09.
+def main():  # NOSONAR
     known_trip_ids, stop_names, stop_sequences, terminus_par_trajet = load_reference_data()
     # Lecture indépendante du même fichier via pandas (formatting.py) plutôt
     # que de dupliquer la logique origine/destination de trajet_sens ici :
