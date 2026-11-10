@@ -882,7 +882,7 @@ def preparer_contexte_commun(request: Request, gare: str, train: str, sens: str)
     alertes_actif, libelle_travaux = calculer_alertes_actives(alertes_df)
     contexte["libelle_travaux"] = libelle_travaux
 
-    df, erreur, debut_collecte, total_lignes = charger_observations()
+    df, erreur, _, _ = charger_observations()
     if erreur:
         contexte["erreur"] = erreur
         return contexte, None, None, None, alertes_df, alertes_actif
@@ -1136,7 +1136,7 @@ def _lire_cache_graphique_historique(connexion):
         if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
             return None
         return json.loads(contexte_json)
-    except (ValueError, TypeError, json.JSONDecodeError):
+    except (ValueError, TypeError):  # inclut json.JSONDecodeError (sous-classe de ValueError)
         return None
 
 
@@ -1157,7 +1157,7 @@ def _lire_cache_jour_heure_historique(connexion):
         if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
             return None
         return json.loads(contexte_json)
-    except (ValueError, TypeError, json.JSONDecodeError):
+    except (ValueError, TypeError):  # inclut json.JSONDecodeError (sous-classe de ValueError)
         return None
 
 
@@ -1189,7 +1189,7 @@ def _lire_cache_rapport_historique(connexion, nom_periode, fin_local):
         if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
             return None
         return json.loads(contexte_json)
-    except (ValueError, TypeError, json.JSONDecodeError):
+    except (ValueError, TypeError):  # inclut json.JSONDecodeError (sous-classe de ValueError)
         return None
 
 
@@ -1214,7 +1214,7 @@ def _lire_cache_stats_globales_historique(connexion):
         if pd.Timestamp.now(tz="UTC") - pd.Timestamp(derniere_maj_iso) > CACHE_HISTORIQUE_MAX_AGE:
             return None
         contexte = json.loads(contexte_json)
-    except (ValueError, TypeError, json.JSONDecodeError):
+    except (ValueError, TypeError):  # inclut json.JSONDecodeError (sous-classe de ValueError)
         return None
     contexte["format_min_sans_zero"] = format_min_sans_zero
     return contexte
@@ -3375,7 +3375,7 @@ def _construire_detail_retard_cumule_sql(connexion, debut_iso, fin_iso, variante
         # référentiel résolu) — indispensable pour ne fusionner ensuite que
         # des gares réellement adjacentes, jamais deux gares à retard
         # identique mais séparées par d'autres gares entre-temps.
-        gares_retards.sort(key=lambda gr: position_gare.get(gr[0], len(ordre_gares)))
+        gares_retards.sort(key=lambda gr, pos=position_gare, fin=len(ordre_gares): pos.get(gr[0], fin))
 
         groupes = []
         for gare, retard_min in gares_retards:
@@ -3737,7 +3737,7 @@ def calculer_contexte_rapport_sql_avec_cache(connexion, nom_periode):
     """Enrobe calculer_contexte_rapport_sql d'un cache mémoire — voir
     _cache_resultats_rapport ci-dessus."""
     maintenant_utc = pd.Timestamp.now(tz="UTC")
-    debut_local, fin_local = calculer_periode(nom_periode, maintenant_utc)
+    _, fin_local = calculer_periode(nom_periode, maintenant_utc)
     dernier_poll = connexion.execute("SELECT MAX(poll_time) FROM observations").fetchone()[0]
     cache = _cache_resultats_rapport
     if cache["dernier_poll"] != dernier_poll:
@@ -4238,7 +4238,7 @@ def calculer_dernier_releve(trajet, ordre_gares, position_gare, start_date, hora
     )
 
 
-def calculer_detail(trajet, ordre_gares, position_gare, start_date, horaires_par_gare):
+def calculer_detail(trajet, position_gare, start_date, horaires_par_gare):
     """Porte _render_train_detail (viewer.py:2160-2221) : une ligne par
     relevé retenu (dédoublonné par signature — ignore un relevé qui ne
     change rien par rapport au précédent, sauf le tout dernier), dégradé
@@ -4373,7 +4373,7 @@ def calculer_contexte_train(request: Request, df, gare, train, sens):
             pd.Timestamp(_cache_observations["dernier_poll"]),
         )
     else:
-        donnees_vue = calculer_detail(trajet, ordre_gares, position_gare, start_date, horaires_par_gare)
+        donnees_vue = calculer_detail(trajet, position_gare, start_date, horaires_par_gare)
 
     labels = [
         f"{format_gare(g)}<br>{h}" if h else format_gare(g)
