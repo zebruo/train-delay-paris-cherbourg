@@ -20,7 +20,14 @@ def executer_ssh(hote, commande, timeout, *, check=False, text=True, capture_out
     check=True), TimeoutExpired, OSError remontent tels quels — chaque
     appelant garde son propre try/except et son interprétation du
     résultat (stdout/stderr/returncode) inchangés."""
+    # "--" avant l'hôte : sans lui, un nom d'hôte commençant par "-o" serait
+    # interprété par ssh comme une OPTION (ex. -oProxyCommand=..., vérifié
+    # avec `ssh -G`, 2026-11-20, alerte SonarQube « command injection »).
+    # Avec "--", ssh refuse un tel nom ; un hôte normal (user@ip, alias de
+    # ~/.ssh/config) fonctionne comme avant. `commande`, elle, est exécutée
+    # par le shell distant par conception : les appelants ne l'assemblent
+    # qu'à partir de constantes ou de config.py.
     return subprocess.run(
-        [*SSH_BASE_ARGS, hote, commande],
+        [*SSH_BASE_ARGS, "--", hote, commande],
         capture_output=capture_output, text=text, timeout=timeout, check=check,
     )

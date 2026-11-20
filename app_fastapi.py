@@ -4746,13 +4746,25 @@ def mobile_carte_train(
     return templates.TemplateResponse(request, "_mobile_carte_stats.html", contexte)
 
 
+# Période demandée dans l'URL -> nom de fichier FIXE écrit ici : le chemin
+# servi ne contient jamais de texte venu de la requête, seulement une de ces
+# 3 constantes (alerte SonarQube « path traversal » sur telecharger_rapport,
+# 2026-11-20 — déjà impossible avant via la liste blanche, rendu explicite).
+RAPPORTS_PDF_FICHIERS = {
+    "quotidien": "quotidien.pdf",
+    "hebdomadaire": "hebdomadaire.pdf",
+    "mensuel": "mensuel.pdf",
+}
+
+
 @app.get("/rapports/{periode}/telecharger")
 def telecharger_rapport(periode: str):
     """Sert la copie à nom fixe poussée par le Pi (envoyer_rapport_vps_pi.sh)
     — cette appli ne génère jamais elle-même de PDF, voir RAPPORTS_PDF_DIR."""
-    if periode not in ("quotidien", "hebdomadaire", "mensuel"):
+    nom_fichier = RAPPORTS_PDF_FICHIERS.get(periode)
+    if nom_fichier is None:
         raise HTTPException(status_code=404)
-    chemin = os.path.join(RAPPORTS_PDF_DIR, f"{periode}.pdf")
+    chemin = os.path.join(RAPPORTS_PDF_DIR, nom_fichier)
     if not os.path.isfile(chemin):
         raise HTTPException(status_code=404)
     return FileResponse(chemin, media_type="application/pdf", filename=f"rapport_{periode}.pdf")

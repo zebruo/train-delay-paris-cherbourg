@@ -369,6 +369,14 @@ def generer(nom_periode, maintenant=None):
     l'historique après une remise à zéro du compteur), en simulant la date à
     laquelle le rapport aurait dû être généré plutôt que de dépendre de
     l'heure système actuelle."""
+    # Validation explicite AVANT tout usage de nom_periode : il sert plus bas
+    # à construire un chemin de dossier (rapports/<nom_periode>/). Déjà
+    # refusé auparavant par le KeyError de PERIODES[...] juste en dessous,
+    # rendu lisible ici (alerte SonarQube « path traversal », 2026-11-20).
+    if nom_periode not in PERIODES:
+        raise ValueError(
+            f"Période inconnue : {nom_periode!r} (attendu : {', '.join(PERIODES)})"
+        )
     titre = PERIODES[nom_periode]
 
     if maintenant is None:
