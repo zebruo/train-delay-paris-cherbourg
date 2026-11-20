@@ -223,19 +223,39 @@ VOYANT_OK, VOYANT_ATTENTION, VOYANT_ECHEC = "✓", "!!", "XX"
 SEUIL_ATTENTION_PCT = 80
 
 
+def _duree_depuis(ligne):
+    """'... since Mon 2026-08-17 00:37:18 CEST; 8h ago' -> '8h', ou None si
+    la ligne n'a pas cette forme. Découpe de texte (partition/strip) plutôt
+    qu'une expression régulière : chaque appel ne fait qu'un passage sur la
+    ligne, donc un temps proportionnel à sa longueur quelle que soit l'entrée.
+    Les deux expressions régulières précédentes avaient un temps cubique puis
+    quadratique dans le pire cas (alerte SonarQube « backtracking »,
+    2026-11-21 ; 10 s sur 3 000 espaces pour la première). Même résultat que
+    la dernière sur 28 lignes réelles et limites."""
+    _, trouve, reste = ligne.partition("since ")
+    if not trouve:
+        return None
+    _, trouve, reste = reste.partition(";")
+    if not trouve:
+        return None
+    reste = reste.strip()
+    if not reste.endswith("ago"):
+        return None
+    duree = reste[:-3]
+    if not duree[-1:].isspace():
+        return None  # « ago » doit être un mot séparé de la durée
+    return duree.strip() or None
+
+
 def _service_etat(section):
     # "Active: active (running) since Mon 2026-08-17 00:37:18 CEST; 8h ago"
     # -> "actif — depuis 8h" ; repli sur la ligne brute si le motif attendu
     # de systemctl change un jour.
     ligne = _ligne(section, 0)
     actif = "active (running)" in ligne
-    # [^;]* et \S.*? au lieu de .*? et .+? : même résultat sur toute vraie ligne
-    # de systemctl, mais sans les quantificateurs qui se chevauchent (ancienne
-    # forme : 10 s sur 3 000 espaces, vérifié le 2026-11-20 — alerte SonarQube
-    # « backtracking »).
-    match = re.search(r"since [^;]*;\s*(\S.*?)\s+ago\s*$", ligne)
+    duree = _duree_depuis(ligne)
     etat = "actif" if actif else (ligne or "?")
-    depuis = f" — depuis {match.group(1)}" if match else ""
+    depuis = f" — depuis {duree}" if duree else ""
     mem_courante = section[1].strip() if len(section) > 1 and section[1].strip().isdigit() else None
     mem_pic = section[2].strip() if len(section) > 2 and section[2].strip().isdigit() else None
     nb_erreurs_brut = section[3].strip() if len(section) > 3 and section[3].strip().isdigit() else None
