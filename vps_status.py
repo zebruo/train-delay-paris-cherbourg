@@ -453,8 +453,15 @@ if __name__ == "__main__":
     import sys
     from config import PI4_HOST, VPS_HOST
 
-    if len(sys.argv) > 1 and sys.argv[1] == "bilan":
+    # L'hôte vient UNIQUEMENT de config.py : jusqu'au 2026-11-20 un nom
+    # d'hôte pouvait aussi être passé en argument (python3 vps_status.py
+    # <hote>, option de débogage jamais documentée) — retiré, c'était la
+    # seule donnée de ligne de commande à atteindre ssh_utils.executer_ssh
+    # (alerte SonarQube « command argument injection »).
+    if len(sys.argv) > 2 or (len(sys.argv) == 2 and sys.argv[1] != "bilan"):
+        print("Usage : python3 vps_status.py [bilan]")
+        sys.exit(1)
+    if len(sys.argv) == 2:
         print(formater_bilan(generer_bilan(VPS_HOST, PI4_HOST)))
     else:
-        hote = sys.argv[1] if len(sys.argv) > 1 else VPS_HOST
-        print(recuperer_etat_vps(hote))
+        print(recuperer_etat_vps(VPS_HOST))
