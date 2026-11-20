@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source config.sh
 
-if [ $# -ne 1 ]; then
+if [[ $# -ne 1 ]]; then
     echo "Usage : $0 quotidien|hebdomadaire|mensuel" >&2
     exit 1
 fi

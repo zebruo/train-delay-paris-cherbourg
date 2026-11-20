@@ -26,9 +26,9 @@ compter_crons() {
 
 etat() {
     compter_crons
-    if [ "$ACTIVES" -gt 0 ] && [ "$DORMANTES" -eq 0 ]; then
+    if [[ "$ACTIVES" -gt 0 && "$DORMANTES" -eq 0 ]]; then
         echo "en_ligne"
-    elif [ "$ACTIVES" -eq 0 ] && [ "$DORMANTES" -gt 0 ]; then
+    elif [[ "$ACTIVES" -eq 0 && "$DORMANTES" -gt 0 ]]; then
         echo "en_sommeil"
     else
         echo "incoherent (crons actives=$ACTIVES, en sommeil=$DORMANTES)"

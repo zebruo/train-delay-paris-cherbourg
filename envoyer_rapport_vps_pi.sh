@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source config.sh
 
-if [ $# -ne 2 ]; then
+if [[ $# -ne 2 ]]; then
     echo "Usage : $0 quotidien|hebdomadaire|mensuel <chemin_local_du_rapport>" >&2
     exit 1
 fi

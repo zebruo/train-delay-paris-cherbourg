@@ -11,7 +11,7 @@ source config.sh
 NAS_DIR="/volume1/Documents/backups train-delay/rapports"
 SSH_KEY="$SSH_KEY_NAS"
 
-if [ $# -ne 1 ]; then
+if [[ $# -ne 1 ]]; then
     echo "Usage : $0 <chemin_local_du_rapport>" >&2
     exit 1
 fi

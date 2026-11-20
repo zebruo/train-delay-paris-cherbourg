@@ -35,9 +35,9 @@ etat() {
     compter_crons
     local svc
     svc=$(systemctl is-active "$SERVICE" || true)
-    if [ "$svc" = "active" ] && [ "$ACTIVES" -gt 0 ] && [ "$DORMANTES" -eq 0 ]; then
+    if [[ "$svc" == "active" && "$ACTIVES" -gt 0 && "$DORMANTES" -eq 0 ]]; then
         echo "en_ligne"
-    elif [ "$svc" != "active" ] && [ "$ACTIVES" -eq 0 ] && [ "$DORMANTES" -gt 0 ]; then
+    elif [[ "$svc" != "active" && "$ACTIVES" -eq 0 && "$DORMANTES" -gt 0 ]]; then
         echo "en_sommeil"
     else
         echo "incoherent (service=$svc, crons actives=$ACTIVES, en sommeil=$DORMANTES)"
