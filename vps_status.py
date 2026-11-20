@@ -186,7 +186,10 @@ def generer_bilan(vps_host, pi_host=None, timeout=20):
 
 def _ligne(section, index=0, defaut=""):
     lignes = [l for l in section if l.strip()] if section else []
-    return lignes[index].strip() if index < len(lignes) else defaut
+    # 0 <= index : sans cette borne basse, un index négatif sur une liste vide
+    # lèverait IndexError (aucun appel actuel n'en passe, alerte SonarQube
+    # « IndexError », 2026-11-20).
+    return lignes[index].strip() if 0 <= index < len(lignes) else defaut
 
 
 def _ligne_prefixee(section, prefixe, defaut=""):
@@ -226,7 +229,11 @@ def _service_etat(section):
     # de systemctl change un jour.
     ligne = _ligne(section, 0)
     actif = "active (running)" in ligne
-    match = re.search(r"since .*?;\s*(.+?)\s*ago\s*$", ligne)
+    # [^;]* et \S.*? au lieu de .*? et .+? : même résultat sur toute vraie ligne
+    # de systemctl, mais sans les quantificateurs qui se chevauchent (ancienne
+    # forme : 10 s sur 3 000 espaces, vérifié le 2026-11-20 — alerte SonarQube
+    # « backtracking »).
+    match = re.search(r"since [^;]*;\s*(\S.*?)\s+ago\s*$", ligne)
     etat = "actif" if actif else (ligne or "?")
     depuis = f" — depuis {match.group(1)}" if match else ""
     mem_courante = section[1].strip() if len(section) > 1 and section[1].strip().isdigit() else None
@@ -318,7 +325,9 @@ def _gtfs_etat(section):
     match_ref = re.search(r'"reference":\s*"([\d-]+)"', etat_ligne)
     reference = match_ref.group(1) if match_ref else "?"
     match_ecarts = re.search(
-        r"(\d+) identiques, (\d+) modifiés\), (\d+) disparus, (\d+) nouveaux, (\d+) renommés", log_ligne,
+        # \b : ne tente de démarrer qu'au début d'une suite de chiffres (sinon
+        # recherche quadratique sur une longue suite de chiffres).
+        r"\b(\d+) identiques, (\d+) modifiés\), (\d+) disparus, (\d+) nouveaux, (\d+) renommés", log_ligne,
     )
     if not match_ecarts:
         return VOYANT_ATTENTION, f"référentiel du {reference}"
